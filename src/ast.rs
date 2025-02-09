@@ -10,6 +10,7 @@ pub enum Expr {
     Ok(Box<Expr>),
     Err(Box<Expr>),
     Some(Box<Expr>),
+    Try(Box<Expr>),
 
     Unit,
     None,

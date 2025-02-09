@@ -25,6 +25,7 @@ pub enum Token {
     Arrow,      // ->
     LeftAngle,  // <
     RightAngle, // >
+    Question,   // ?
 
     // operators
     Plus,   // +
@@ -239,6 +240,11 @@ impl Lexer {
         let token = match self.current_char {
             None => Token::EOF,
             Some(c) => match c {
+                '?' => {
+                    self.advance();
+                    Token::Question
+                }
+
                 '.' => {
                     self.advance();
                     Token::Dot

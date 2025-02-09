@@ -12,6 +12,7 @@ const PRECEDENCE_SUM: i32 = 5;
 const PRECEDENCE_PRODUCT: i32 = 6;
 const PRECEDENCE_PREFIX: i32 = 7;
 const PRECEDENCE_CALL: i32 = 8;
+const PRECEDENCE_QUESTION: i32 = 8;
 const PRECEDENCE_MEMBER: i32 = 9;
 
 #[derive(Debug)]
@@ -644,6 +645,11 @@ impl Parser {
                 self.parse_member_access(left, method)
             }
 
+            Token::Question => {
+                self.advance(); // consume ?
+                Ok(Expr::Try(Box::new(left)))
+            }
+
             Token::Plus
             | Token::Minus
             | Token::Star
@@ -779,6 +785,7 @@ impl Parser {
         match token {
             Token::Dot => PRECEDENCE_MEMBER,
             Token::LeftParen => PRECEDENCE_CALL,
+            Token::Question => PRECEDENCE_QUESTION,
             Token::Equals | Token::NotEquals => PRECEDENCE_EQUALS,
             Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => PRECEDENCE_COMPARE,
             Token::Or | Token::BitOr => PRECEDENCE_OR,
