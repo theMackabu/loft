@@ -2,6 +2,11 @@ use crate::ast::NumericType;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
+    // definitions
+    Pound,      // #
+    Dollar,     // $
+    MacroRules, // macro_rules!
+
     // keywords
     Let,    // let
     Mut,    // mut
@@ -386,9 +391,19 @@ impl Lexer {
         let token = match self.current_char {
             None => Token::EOF,
             Some(c) => match c {
+                '#' => {
+                    self.advance();
+                    Token::Pound
+                }
+
                 '?' => {
                     self.advance();
                     Token::Question
+                }
+
+                '$' => {
+                    self.advance();
+                    Token::Dollar
                 }
 
                 '.' => {
@@ -636,6 +651,7 @@ impl Lexer {
                         "use" => Token::Use,
                         "mod" => Token::Module,
                         "as" => Token::As,
+                        "macro_rules" => Token::MacroRules,
                         _ => Token::Identifier(ident),
                     }
                 }

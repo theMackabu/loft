@@ -24,6 +24,13 @@ pub enum MacroDelimiter {
 }
 
 #[derive(Debug, Clone)]
+pub struct Attribute {
+    pub is_inner: bool,
+    pub name: String,
+    pub tokens: Vec<TokenInfo>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Path {
     pub segments: Vec<String>,
 }
@@ -163,11 +170,14 @@ pub enum Stmt {
         path: UsePath,
         alias: Option<String>,
         visibility: bool,
+        attributes: Vec<Attribute>,
     },
+
     Module {
         name: String,
         visibility: bool,
         body: Vec<Stmt>,
+        attributes: Vec<Attribute>,
     },
 
     Struct {
@@ -175,6 +185,7 @@ pub enum Stmt {
         visibility: bool,
         type_params: Vec<String>,
         fields: Vec<(String, bool, Type)>, // field_name, expr, is_shorthand
+        attributes: Vec<Attribute>,
     },
 
     TypeAlias {
@@ -182,6 +193,7 @@ pub enum Stmt {
         visibility: bool,
         type_params: Vec<String>,
         ty: Type,
+        attributes: Vec<Attribute>,
     },
 
     Enum {
@@ -189,6 +201,7 @@ pub enum Stmt {
         visibility: bool,
         type_params: Vec<String>,
         variants: Vec<EnumVariant>,
+        attributes: Vec<Attribute>,
     },
 
     Let {
@@ -196,6 +209,7 @@ pub enum Stmt {
         mutable: bool,
         type_annotation: Option<Type>,
         initializer: Option<Box<Expr>>,
+        attributes: Vec<Attribute>,
     },
 
     Const {
@@ -203,6 +217,7 @@ pub enum Stmt {
         visibility: bool,
         type_annotation: Option<Type>,
         initializer: Box<Expr>,
+        attributes: Vec<Attribute>,
     },
 
     Static {
@@ -210,6 +225,14 @@ pub enum Stmt {
         visibility: bool,
         type_annotation: Option<Type>,
         initializer: Box<Expr>,
+        attributes: Vec<Attribute>,
+    },
+
+    MacroDefinition {
+        visibility: bool,
+        name: String,
+        tokens: Vec<TokenInfo>,
+        attributes: Vec<Attribute>,
     },
 
     Function {
@@ -220,5 +243,6 @@ pub enum Stmt {
         params: Vec<(String, bool, Type)>,
         return_type: Option<Type>,
         body: Vec<Stmt>,
+        attributes: Vec<Attribute>,
     },
 }

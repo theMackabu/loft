@@ -123,6 +123,8 @@ impl Parser {
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         self.enter_recursion()?;
 
+        let attributes = self.parse_attributes()?;
+
         let visibility = if matches!(self.current.token, Token::Pub) {
             self.advance(); // consume 'pub'
             true
@@ -131,18 +133,19 @@ impl Parser {
         };
 
         let result = match self.current.token {
-            Token::Let => self.parse_let_statement(),
             Token::Return => self.parse_return_statement(),
+            Token::Let => self.parse_let_statement(attributes),
 
-            Token::Use => self.parse_use_statement(visibility),
-            Token::Type => self.parse_type_alias(visibility),
-            Token::Enum => self.parse_enum_declaration(visibility),
-            Token::Module => self.parse_module_statement(visibility),
-            Token::Struct => self.parse_struct_declaration(visibility),
-            Token::Fn => self.parse_function_statement(visibility),
+            Token::Use => self.parse_use_statement(visibility, attributes),
+            Token::Type => self.parse_type_alias(visibility, attributes),
+            Token::Enum => self.parse_enum_declaration(visibility, attributes),
+            Token::Module => self.parse_module_statement(visibility, attributes),
+            Token::Struct => self.parse_struct_declaration(visibility, attributes),
+            Token::Fn => self.parse_function_statement(visibility, attributes),
+            Token::MacroRules => self.parse_macro_definition(attributes, visibility),
 
-            Token::Const => self.parse_const_static_statement(DeclarationKind::Const, visibility),
-            Token::Static => self.parse_const_static_statement(DeclarationKind::Static, visibility),
+            Token::Const => self.parse_const_static_statement(DeclarationKind::Const, visibility, attributes),
+            Token::Static => self.parse_const_static_statement(DeclarationKind::Static, visibility, attributes),
 
             Token::LeftBrace => {
                 self.advance();
@@ -157,7 +160,7 @@ impl Parser {
 
             Token::Async => {
                 if self.peek.token == Token::Fn {
-                    self.parse_function_statement(visibility)
+                    self.parse_function_statement(visibility, attributes)
                 } else {
                     let expr = self.parse_expression(0)?;
                     match self.current.token {
@@ -197,7 +200,7 @@ impl Parser {
         return result;
     }
 
-    fn parse_struct_declaration(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
+    fn parse_struct_declaration(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'struct'
 
         let name = self.expect_identifier()?;
@@ -247,6 +250,7 @@ impl Parser {
             visibility,
             type_params,
             fields,
+            attributes,
         })
     }
 
@@ -263,7 +267,7 @@ impl Parser {
         Ok(Path { segments })
     }
 
-    fn parse_use_statement(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
+    fn parse_use_statement(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'use'
 
         let path = self.parse_use_path()?;
@@ -277,7 +281,7 @@ impl Parser {
 
         self.expect(Token::Semicolon)?;
 
-        Ok(Stmt::Use { path, alias, visibility })
+        Ok(Stmt::Use { path, alias, visibility, attributes })
     }
 
     fn parse_use_path(&mut self) -> Result<UsePath, ParseError> {
@@ -297,7 +301,7 @@ impl Parser {
         }
     }
 
-    fn parse_module_statement(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
+    fn parse_module_statement(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'module'
 
         let name = self.expect_identifier()?;
@@ -311,10 +315,10 @@ impl Parser {
 
         self.expect(Token::RightBrace)?;
 
-        Ok(Stmt::Module { name, visibility, body })
+        Ok(Stmt::Module { name, visibility, body, attributes })
     }
 
-    fn parse_function_statement(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
+    fn parse_function_statement(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         let is_async = if self.current.token == Token::Async {
             self.advance(); // consume 'async'
             true
@@ -400,10 +404,11 @@ impl Parser {
             params,
             return_type,
             body,
+            attributes,
         })
     }
 
-    fn parse_enum_declaration(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
+    fn parse_enum_declaration(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'enum'
 
         let name = self.expect_identifier()?;
@@ -440,6 +445,7 @@ impl Parser {
             visibility,
             type_params,
             variants,
+            attributes,
         })
     }
 
@@ -495,7 +501,7 @@ impl Parser {
         }
     }
 
-    fn parse_type_alias(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
+    fn parse_type_alias(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'type'
 
         let name = self.expect_identifier()?;
@@ -514,7 +520,13 @@ impl Parser {
         let ty = self.parse_type()?;
         self.expect(Token::Semicolon)?;
 
-        Ok(Stmt::TypeAlias { name, visibility, type_params, ty })
+        Ok(Stmt::TypeAlias {
+            name,
+            visibility,
+            type_params,
+            ty,
+            attributes,
+        })
     }
 
     fn parse_type(&mut self) -> Result<Type, ParseError> {
@@ -656,7 +668,7 @@ impl Parser {
         Ok(Stmt::Return(value))
     }
 
-    fn parse_let_statement(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_let_statement(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'let'
 
         let mutable = if self.current.token == Token::Mut {
@@ -700,10 +712,11 @@ impl Parser {
             mutable,
             type_annotation,
             initializer,
+            attributes,
         })
     }
 
-    fn parse_const_static_statement(&mut self, kind: DeclarationKind, visibility: bool) -> Result<Stmt, ParseError> {
+    fn parse_const_static_statement(&mut self, kind: DeclarationKind, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'const' or 'static'
 
         let name = match &self.current.token {
@@ -738,12 +751,14 @@ impl Parser {
                 visibility,
                 type_annotation,
                 initializer,
+                attributes,
             }),
             DeclarationKind::Static => Ok(Stmt::Static {
                 name,
                 visibility,
                 type_annotation,
                 initializer,
+                attributes,
             }),
         }
     }
@@ -1219,6 +1234,80 @@ impl Parser {
         Ok(Expr::MacroInvocation { name: macro_name, delimiter, tokens })
     }
 
+    fn parse_attributes(&mut self) -> Result<Vec<Attribute>, ParseError> {
+        let mut attrs = Vec::new();
+        while self.current.token == Token::Pound {
+            attrs.push(self.parse_attribute()?);
+        }
+        Ok(attrs)
+    }
+
+    fn parse_attribute(&mut self) -> Result<Attribute, ParseError> {
+        self.expect(Token::Pound)?;
+
+        let is_inner = if self.current.token == Token::Not {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        self.expect(Token::LeftBracket)?;
+
+        let mut tokens = Vec::new();
+        while self.current.token != Token::RightBracket {
+            if self.current.token == Token::EOF {
+                return Err(ParseError::Custom {
+                    message: "Unterminated attribute, expected ']'".to_string(),
+                    location: self.current.location.clone(),
+                });
+            }
+            tokens.push(self.current.clone());
+            self.advance();
+        }
+        self.expect(Token::RightBracket)?;
+
+        let name = if let Some(first) = tokens.first() {
+            match &first.token {
+                Token::Identifier(id) => id.clone(),
+                _ => "<unknown>".to_string(),
+            }
+        } else {
+            "<empty>".to_string()
+        };
+
+        Ok(Attribute { is_inner, name, tokens })
+    }
+
+    fn parse_macro_definition(&mut self, attributes: Vec<Attribute>, visibility: bool) -> Result<Stmt, ParseError> {
+        self.advance();
+        if self.current.token != Token::Not {
+            return Err(ParseError::UnexpectedToken {
+                found: self.current.clone(),
+                expected: Some("!' after macro_rules".to_string()),
+            });
+        }
+
+        self.advance();
+        let name = self.expect_identifier()?;
+
+        let delimiter = match self.current.token {
+            Token::LeftBrace => MacroDelimiter::Brace,
+            Token::LeftParen => MacroDelimiter::Paren,
+            Token::LeftBracket => MacroDelimiter::Bracket,
+            _ => {
+                return Err(ParseError::UnexpectedToken {
+                    found: self.current.clone(),
+                    expected: Some("an opening delimiter ('{', '(' or '[') after the macro name".to_string()),
+                });
+            }
+        };
+
+        let tokens = self.parse_macro_delimited_tokens(delimiter)?;
+
+        Ok(Stmt::MacroDefinition { attributes, visibility, name, tokens })
+    }
+
     fn parse_macro_delimited_tokens(&mut self, delimiter: MacroDelimiter) -> Result<Vec<TokenInfo>, ParseError> {
         let (open_token, close_token) = match delimiter {
             MacroDelimiter::Paren => (Token::LeftParen, Token::RightParen),
@@ -1240,7 +1329,7 @@ impl Parser {
         while nesting > 0 {
             if self.current.token == Token::EOF {
                 return Err(ParseError::Custom {
-                    message: "Unterminated macro invocation".to_string(),
+                    message: "Unterminated macro definition".to_string(),
                     location: self.current.location.clone(),
                 });
             }
