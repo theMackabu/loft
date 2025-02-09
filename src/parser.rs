@@ -305,24 +305,43 @@ impl Parser {
     }
 
     fn parse_type(&mut self) -> Result<Type, ParseError> {
-        let name = self.expect_identifier()?;
-
-        if self.current.token == Token::LeftAngle {
-            self.advance();
-            let mut type_params = Vec::new();
-
-            while self.current.token != Token::RightAngle {
-                if !type_params.is_empty() {
-                    self.expect(Token::Comma)?;
+        match &self.current.token {
+            Token::LeftParen => {
+                self.advance();
+                if self.current.token == Token::RightParen {
+                    self.advance();
+                    return Ok(Type::Unit);
                 }
-                type_params.push(self.parse_type()?);
+                return Err(ParseError::Custom {
+                    message: "Unexpected token after '('".to_string(),
+                    location: self.current.location.clone(),
+                });
             }
+            Token::Identifier(name) => {
+                let name = name.clone();
+                self.advance();
 
-            self.expect(Token::RightAngle)?;
+                if self.current.token == Token::LeftAngle {
+                    self.advance();
+                    let mut type_params = Vec::new();
 
-            Ok(Type::Generic { name, type_params })
-        } else {
-            Ok(Type::Simple(name))
+                    while self.current.token != Token::RightAngle {
+                        if !type_params.is_empty() {
+                            self.expect(Token::Comma)?;
+                        }
+                        type_params.push(self.parse_type()?);
+                    }
+
+                    self.expect(Token::RightAngle)?;
+
+                    Ok(Type::Generic { name, type_params })
+                } else {
+                    Ok(Type::Simple(name))
+                }
+            }
+            _ => Err(ParseError::ExpectedIdentifier {
+                location: self.current.location.clone(),
+            }),
         }
     }
 
@@ -497,33 +516,37 @@ impl Parser {
                 let name = name.clone();
                 self.advance();
 
-                match self.current.token {
-                    Token::Assign => {
-                        self.advance(); // consume '='
-                        let value = Box::new(self.parse_expression(0)?);
-                        Ok(Expr::Assignment { target: name, value })
-                    }
-                    Token::LeftParen => {
-                        self.advance(); // consume (
-                        let mut arguments = Vec::new();
-
-                        //  arguments
-                        while self.current.token != Token::RightParen {
-                            if !arguments.is_empty() {
-                                self.expect(Token::Comma)?;
-                            }
-
-                            arguments.push(self.parse_expression(0)?);
-                        }
-
+                match name.as_str() {
+                    "Ok" => {
+                        self.expect(Token::LeftParen)?;
+                        let expr = if self.current.token == Token::RightParen { Expr::Unit } else { self.parse_expression(0)? };
                         self.expect(Token::RightParen)?;
-
-                        Ok(Expr::Call {
-                            function: Box::new(Expr::Identifier(name)),
-                            arguments,
-                        })
+                        Ok(Expr::Ok(Box::new(expr)))
                     }
-                    _ => Ok(Expr::Identifier(name)),
+
+                    "Err" => {
+                        self.expect(Token::LeftParen)?;
+                        let expr = if self.current.token == Token::RightParen { Expr::Unit } else { self.parse_expression(0)? };
+                        self.expect(Token::RightParen)?;
+                        Ok(Expr::Err(Box::new(expr)))
+                    }
+
+                    "Some" => {
+                        self.expect(Token::LeftParen)?;
+                        let expr = self.parse_expression(0)?;
+                        self.expect(Token::RightParen)?;
+                        Ok(Expr::Some(Box::new(expr)))
+                    }
+
+                    "None" => {
+                        if self.current.token == Token::LeftParen {
+                            self.expect(Token::LeftParen)?;
+                            self.expect(Token::RightParen)?;
+                        }
+                        Ok(Expr::None)
+                    }
+
+                    _ => self.parse_identifier_expression(name),
                 }
             }
 
@@ -532,6 +555,37 @@ impl Parser {
                     location: self.current.location.to_owned(),
                 })
             }
+        }
+    }
+
+    fn parse_identifier_expression(&mut self, name: String) -> Result<Expr, ParseError> {
+        match self.current.token {
+            Token::Assign => {
+                self.advance(); // consume '='
+                let value = Box::new(self.parse_expression(0)?);
+                Ok(Expr::Assignment { target: name, value })
+            }
+
+            Token::LeftParen => {
+                self.advance(); // consume (
+                let mut arguments = Vec::new();
+
+                while self.current.token != Token::RightParen {
+                    if !arguments.is_empty() {
+                        self.expect(Token::Comma)?;
+                    }
+                    arguments.push(self.parse_expression(0)?);
+                }
+
+                self.expect(Token::RightParen)?;
+
+                Ok(Expr::Call {
+                    function: Box::new(Expr::Identifier(name)),
+                    arguments,
+                })
+            }
+
+            _ => Ok(Expr::Identifier(name)),
         }
     }
 
@@ -555,49 +609,8 @@ impl Parser {
 
             Token::Dot => {
                 self.advance(); // consume .
-
-                match &self.current.token {
-                    Token::Identifier(member) => {
-                        let member = member.clone();
-                        self.advance();
-
-                        match self.current.token {
-                            Token::Assign => {
-                                self.advance(); // consume =
-                                let value = Box::new(self.parse_expression(0)?);
-                                Ok(Expr::MemberAssignment {
-                                    object: Box::new(left),
-                                    member,
-                                    value,
-                                })
-                            }
-
-                            Token::LeftParen => {
-                                self.advance(); // consume (
-                                let mut arguments = Vec::new();
-
-                                while self.current.token != Token::RightParen {
-                                    if !arguments.is_empty() {
-                                        self.expect(Token::Comma)?;
-                                    }
-                                    arguments.push(self.parse_expression(0)?);
-                                }
-
-                                self.expect(Token::RightParen)?;
-
-                                Ok(Expr::Call {
-                                    function: Box::new(Expr::MemberAccess { object: Box::new(left), member }),
-                                    arguments,
-                                })
-                            }
-
-                            _ => Ok(Expr::MemberAccess { object: Box::new(left), member }),
-                        }
-                    }
-                    _ => Err(ParseError::ExpectedIdentifier {
-                        location: self.current.location.to_owned(),
-                    }),
-                }
+                let method = self.expect_identifier()?;
+                self.parse_member_access(left, method)
             }
 
             Token::Plus
@@ -624,6 +637,42 @@ impl Parser {
             }
 
             _ => Ok(left),
+        }
+    }
+
+    fn parse_member_access(&mut self, object: Expr, member: String) -> Result<Expr, ParseError> {
+        match self.current.token {
+            Token::Assign => {
+                self.advance(); // consume =
+                let value = Box::new(self.parse_expression(0)?);
+                Ok(Expr::MemberAssignment {
+                    object: Box::new(object),
+                    member,
+                    value,
+                })
+            }
+
+            Token::LeftParen => {
+                self.advance(); // consume (
+                let mut arguments = Vec::new();
+
+                while self.current.token != Token::RightParen {
+                    if !arguments.is_empty() {
+                        self.expect(Token::Comma)?;
+                    }
+                    arguments.push(self.parse_expression(0)?);
+                }
+
+                self.expect(Token::RightParen)?;
+
+                Ok(Expr::MethodCall {
+                    object: Box::new(object),
+                    method: member,
+                    arguments,
+                })
+            }
+
+            _ => Ok(Expr::MemberAccess { object: Box::new(object), member }),
         }
     }
 

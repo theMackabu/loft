@@ -7,6 +7,19 @@ pub enum Expr {
     String(String),
     Identifier(String),
 
+    Ok(Box<Expr>),
+    Err(Box<Expr>),
+    Some(Box<Expr>),
+
+    Unit,
+    None,
+
+    MethodCall {
+        object: Box<Expr>,
+        method: String,
+        arguments: Vec<Expr>,
+    },
+
     MemberAccess {
         object: Box<Expr>,
         member: String,
@@ -57,6 +70,7 @@ pub enum Type {
     Simple(String),
     Generic { name: String, type_params: Vec<Type> },
     TypeParam(String),
+    Unit,
 }
 
 #[derive(Debug)]
