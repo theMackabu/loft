@@ -1281,10 +1281,11 @@ impl Parser {
 
     fn parse_macro_definition(&mut self, attributes: Vec<Attribute>, visibility: bool) -> Result<Stmt, ParseError> {
         self.advance();
+
         if self.current.token != Token::Not {
             return Err(ParseError::UnexpectedToken {
                 found: self.current.clone(),
-                expected: Some("!' after macro_rules".to_string()),
+                expected: Some("expected '!' after macro_rules".to_string()),
             });
         }
 
@@ -1298,7 +1299,7 @@ impl Parser {
             _ => {
                 return Err(ParseError::UnexpectedToken {
                     found: self.current.clone(),
-                    expected: Some("an opening delimiter ('{', '(' or '[') after the macro name".to_string()),
+                    expected: Some("expected an opening delimiter ('{', '(' or '[') after the macro name".to_string()),
                 });
             }
         };
