@@ -283,75 +283,85 @@ impl Parser {
     fn parse_function_parameters(&mut self) -> Result<Vec<(Pattern, Type)>, ParseError> {
         let mut params = Vec::new();
         self.expect(Token::LeftParen)?;
+
         while self.current.token != Token::RightParen {
             if !params.is_empty() {
                 self.expect(Token::Comma)?;
             }
-            params.push(self.parse_parameter()?);
+            let (pattern, opt_type) = self.parse_parameter()?;
+            let ty = match opt_type {
+                Some(t) => t,
+                None => Type::Path(Path { segments: vec!["Self".into()] }),
+            };
+            params.push((pattern, ty));
         }
         self.expect(Token::RightParen)?;
         Ok(params)
     }
 
-    fn parse_parameter(&mut self) -> Result<(Pattern, Type), ParseError> {
-        if self.current.token == Token::Identifier("self".to_string()) {
+    fn parse_parameter(&mut self) -> Result<(Pattern, Option<Type>), ParseError> {
+        if self.current.token == Token::BitAnd {
             self.advance();
-            return Ok((
-                Pattern::Identifier {
-                    name: "self".to_string(),
-                    mutable: false,
-                },
-                Type::Path(Path { segments: vec![] }),
-            ));
-        }
+            let mut is_mut_ref = false;
+            if self.current.token == Token::Mut {
+                is_mut_ref = true;
+                self.advance();
+            }
 
-        let pattern = if self.current.token == Token::BitAnd {
-            self.advance(); // consume '&'
-            let is_mut_ref = if self.current.token == Token::Mut {
-                self.advance();
-                true
-            } else {
-                false
-            };
             if let Token::Identifier(id) = &self.current.token {
-                let ident = id.clone();
-                self.advance();
-                Pattern::Reference {
-                    mutable: is_mut_ref,
-                    pattern: Box::new(Pattern::Identifier { name: ident, mutable: false }),
+                if id == "self" {
+                    self.advance();
+                    return Ok((
+                        Pattern::Reference {
+                            mutable: is_mut_ref,
+                            pattern: Box::new(Pattern::Identifier {
+                                name: "self".to_string(),
+                                mutable: false,
+                            }),
+                        },
+                        None,
+                    ));
+                } else {
                 }
             } else {
                 return Err(ParseError::ExpectedIdentifier {
                     location: self.current.location.clone(),
                 });
             }
+        }
+
+        if let Token::Identifier(id) = &self.current.token {
+            if id == "self" {
+                self.advance();
+                return Ok((
+                    Pattern::Identifier {
+                        name: "self".to_string(),
+                        mutable: false,
+                    },
+                    None,
+                ));
+            }
+        }
+
+        let mut is_mut_binding = false;
+        if self.current.token == Token::Mut {
+            is_mut_binding = true;
+            self.advance();
+        }
+        let pattern = if let Token::Identifier(id) = &self.current.token {
+            let ident = id.clone();
+            self.advance();
+            Pattern::Identifier { name: ident, mutable: is_mut_binding }
         } else {
-            let mut is_mut_binding = false;
-            if self.current.token == Token::Mut {
-                is_mut_binding = true;
-                self.advance();
-            }
-            if let Token::Identifier(id) = &self.current.token {
-                let ident = id.clone();
-                self.advance();
-                Pattern::Identifier { name: ident, mutable: is_mut_binding }
-            } else {
-                return Err(ParseError::ExpectedIdentifier {
-                    location: self.current.location.clone(),
-                });
-            }
+            return Err(ParseError::ExpectedIdentifier {
+                location: self.current.location.clone(),
+            });
         };
 
         self.expect(Token::Colon)?;
-        if self.current.token != Token::BitAnd {
-            return Err(ParseError::Custom {
-                message: "Parameter type must be a reference (e.g. &mut T)".to_string(),
-                location: self.current.location.clone(),
-            });
-        }
         let param_type = self.parse_type()?;
 
-        Ok((pattern, param_type))
+        Ok((pattern, Some(param_type)))
     }
 
     fn parse_path(&mut self) -> Result<Path, ParseError> {
