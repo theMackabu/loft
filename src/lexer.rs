@@ -17,19 +17,27 @@ pub enum Token {
     Async,  // async
     Await,  // await
 
+    // project
+    Use,         // use
+    Module,      // mod
+    As,          // as
+    DoubleColon, // ::
+
     // symbols
-    Dot,        // .
-    LeftParen,  //(
-    RightParen, //)
-    LeftBrace,  // {
-    RightBrace, // }
-    Semicolon,  // ;
-    Colon,      // :
-    Comma,      // ,
-    Arrow,      // ->
-    LeftAngle,  // <
-    RightAngle, // >
-    Question,   // ?
+    Dot,          // .
+    LeftParen,    //(
+    RightParen,   //)
+    LeftBracket,  // [
+    RightBracket, // ]
+    LeftBrace,    // {
+    RightBrace,   // }
+    Semicolon,    // ;
+    Colon,        // :
+    Comma,        // ,
+    Arrow,        // ->
+    LeftAngle,    // <
+    RightAngle,   // >
+    Question,     // ?
 
     // operators
     Plus,   // +
@@ -264,6 +272,16 @@ impl Lexer {
                     Token::RightParen
                 }
 
+                '[' => {
+                    self.advance();
+                    Token::LeftBracket
+                }
+
+                ']' => {
+                    self.advance();
+                    Token::RightBracket
+                }
+
                 '{' => {
                     self.advance();
                     Token::LeftBrace
@@ -312,6 +330,17 @@ impl Lexer {
                             Token::Arrow
                         }
                         _ => Token::Minus,
+                    }
+                }
+
+                ':' => {
+                    if self.peek() == Some(':') {
+                        self.advance();
+                        self.advance();
+                        Token::DoubleColon
+                    } else {
+                        self.advance();
+                        Token::Colon
                     }
                 }
 
@@ -469,6 +498,9 @@ impl Lexer {
                         "pub" => Token::Pub,
                         "async" => Token::Async,
                         "await" => Token::Await,
+                        "use" => Token::Use,
+                        "mod" => Token::Module,
+                        "as" => Token::As,
                         _ => Token::Identifier(ident),
                     }
                 }

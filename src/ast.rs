@@ -1,10 +1,41 @@
 use crate::lexer::Token;
 
+#[derive(Debug, Clone)]
+pub struct Path {
+    pub segments: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    Unit,
+    Path(Path),
+    Simple(String),
+    TypeParam(String),
+
+    Generic { name: String, type_params: Vec<Type> },
+    Array { element_type: Box<Type>, size: usize },
+}
+
+#[derive(Debug)]
+pub enum EnumVariant {
+    Simple(String),
+    Tuple(String, Vec<Type>),
+    Struct(String, Vec<(String, Type)>),
+}
+
+#[derive(Debug)]
+pub enum UsePath {
+    Simple(String),
+    Nested(Vec<String>),
+}
+
 #[derive(Debug)]
 pub enum Expr {
+    Path(Path),
     Integer(i64),
     Boolean(bool),
     String(String),
+    Array(Vec<Expr>),
     Identifier(String),
     Await(Box<Expr>),
 
@@ -15,6 +46,11 @@ pub enum Expr {
 
     Unit,
     None,
+
+    Index {
+        array: Box<Expr>,
+        index: Box<Expr>,
+    },
 
     MethodCall {
         object: Box<Expr>,
@@ -72,26 +108,22 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug, Clone)]
-pub enum Type {
-    Simple(String),
-    Generic { name: String, type_params: Vec<Type> },
-    TypeParam(String),
-    Unit,
-}
-
-#[derive(Debug)]
-pub enum EnumVariant {
-    Simple(String),
-    Tuple(String, Vec<Type>),
-    Struct(String, Vec<(String, Type)>),
-}
-
 #[derive(Debug)]
 pub enum Stmt {
     Return(Option<Expr>),
     ExpressionStmt(Expr),
     ExpressionValue(Expr),
+
+    Use {
+        path: UsePath,
+        alias: Option<String>,
+        visibility: bool,
+    },
+    Module {
+        name: String,
+        visibility: bool,
+        body: Vec<Stmt>,
+    },
 
     Struct {
         name: String,

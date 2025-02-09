@@ -1,9 +1,9 @@
-use crate::ast::{EnumVariant, Expr, Stmt, Type};
-use crate::lexer::{Lexer, Location, Token, TokenInfo};
+use crate::ast::*;
+use crate::lexer::*;
+
 use std::collections::HashSet;
 
 const MAX_RECURSION_DEPTH: i32 = 500;
-
 const PRECEDENCE_LOWEST: i32 = 0;
 const PRECEDENCE_EQUALS: i32 = 1;
 const PRECEDENCE_COMPARE: i32 = 2;
@@ -14,6 +14,7 @@ const PRECEDENCE_PRODUCT: i32 = 6;
 const PRECEDENCE_PREFIX: i32 = 7;
 const PRECEDENCE_CALL: i32 = 8;
 const PRECEDENCE_QUESTION: i32 = 8;
+const PRECEDENCE_INDEX: i32 = 9;
 const PRECEDENCE_MEMBER: i32 = 9;
 
 #[derive(Debug)]
@@ -125,9 +126,11 @@ impl Parser {
             Token::Let => self.parse_let_statement(),
             Token::Return => self.parse_return_statement(),
 
+            Token::Use => self.parse_use_statement(visibility),
             Token::Type => self.parse_type_alias(visibility),
             Token::Const => self.parse_const_statement(visibility),
             Token::Enum => self.parse_enum_declaration(visibility),
+            Token::Module => self.parse_module_statement(visibility),
             Token::Struct => self.parse_struct_declaration(visibility),
             Token::Async | Token::Fn => self.parse_function_statement(visibility),
 
@@ -216,6 +219,70 @@ impl Parser {
             type_params,
             fields,
         })
+    }
+
+    fn parse_path(&mut self) -> Result<Path, ParseError> {
+        let mut segments = Vec::new();
+
+        segments.push(self.expect_identifier()?);
+
+        while self.current.token == Token::DoubleColon {
+            self.advance(); // consume '::'
+            segments.push(self.expect_identifier()?);
+        }
+
+        Ok(Path { segments })
+    }
+
+    fn parse_use_statement(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'use'
+
+        let path = self.parse_use_path()?;
+
+        let alias = if self.current.token == Token::As {
+            self.advance(); // consume 'as'
+            Some(self.expect_identifier()?)
+        } else {
+            None
+        };
+
+        self.expect(Token::Semicolon)?;
+
+        Ok(Stmt::Use { path, alias, visibility })
+    }
+
+    fn parse_use_path(&mut self) -> Result<UsePath, ParseError> {
+        let mut segments = Vec::new();
+
+        segments.push(self.expect_identifier()?);
+
+        while self.current.token == Token::DoubleColon {
+            self.advance(); // consume '::'
+            segments.push(self.expect_identifier()?);
+        }
+
+        if segments.len() == 1 {
+            Ok(UsePath::Simple(segments.remove(0)))
+        } else {
+            Ok(UsePath::Nested(segments))
+        }
+    }
+
+    fn parse_module_statement(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'module'
+
+        let name = self.expect_identifier()?;
+
+        self.expect(Token::LeftBrace)?;
+
+        let mut body = Vec::new();
+        while self.current.token != Token::RightBrace {
+            body.push(self.parse_statement()?);
+        }
+
+        self.expect(Token::RightBrace)?;
+
+        Ok(Stmt::Module { name, visibility, body })
     }
 
     fn parse_function_statement(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
@@ -400,9 +467,9 @@ impl Parser {
                     location: self.current.location.clone(),
                 });
             }
-            Token::Identifier(name) => {
-                let name = name.clone();
-                self.advance();
+
+            Token::Identifier(_) => {
+                let path = self.parse_path()?;
 
                 if self.current.token == Token::LeftAngle {
                     self.advance();
@@ -417,11 +484,32 @@ impl Parser {
 
                     self.expect(Token::RightAngle)?;
 
-                    Ok(Type::Generic { name, type_params })
+                    Ok(Type::Generic {
+                        name: path.segments.join("::"),
+                        type_params,
+                    })
                 } else {
-                    Ok(Type::Simple(name))
+                    Ok(Type::Path(path))
                 }
             }
+
+            Token::LeftBracket => {
+                self.advance(); // consume [
+                let element_type = Box::new(self.parse_type()?);
+                self.expect(Token::Semicolon)?;
+                let size = match &self.current.token {
+                    Token::Integer(n) => *n as usize,
+                    _ => {
+                        return Err(ParseError::ExpectedExpression {
+                            location: self.current.location.clone(),
+                        })
+                    }
+                };
+                self.advance();
+                self.expect(Token::RightBracket)?;
+                Ok(Type::Array { element_type, size })
+            }
+
             _ => Err(ParseError::ExpectedIdentifier {
                 location: self.current.location.clone(),
             }),
@@ -568,6 +656,21 @@ impl Parser {
                 self.advance();
                 let operand = Box::new(self.parse_expression(PRECEDENCE_PREFIX)?);
                 Ok(Expr::Unary { operator, operand })
+            }
+
+            Token::LeftBracket => {
+                self.advance(); // consume [
+                let mut elements = Vec::new();
+
+                while self.current.token != Token::RightBracket {
+                    if !elements.is_empty() {
+                        self.expect(Token::Comma)?;
+                    }
+                    elements.push(self.parse_expression(0)?);
+                }
+
+                self.expect(Token::RightBracket)?;
+                Ok(Expr::Array(elements))
             }
 
             Token::LeftBrace => {
@@ -719,6 +822,17 @@ impl Parser {
                         self.parse_member_access(left, method)
                     }
                 }
+            }
+
+            Token::LeftBracket => {
+                self.advance(); // consume [
+                let index = self.parse_expression(0)?;
+                self.expect(Token::RightBracket)?;
+
+                Ok(Expr::Index {
+                    array: Box::new(left),
+                    index: Box::new(index),
+                })
             }
 
             Token::Question => {
@@ -898,6 +1012,7 @@ impl Parser {
             Token::Star | Token::Slash | Token::Rem => PRECEDENCE_PRODUCT,
             Token::BitXor => PRECEDENCE_OR,
             Token::Not => PRECEDENCE_PREFIX,
+            Token::LeftBracket => PRECEDENCE_INDEX,
             _ => PRECEDENCE_LOWEST,
         }
     }
