@@ -176,6 +176,11 @@ impl Parser {
         let mut left = match &self.current_token {
             Token::If => self.parse_if_expression(),
 
+            Token::LeftBrace => {
+                self.advance();
+                self.parse_block_expression()
+            }
+
             Token::Integer(n) => {
                 let n = *n;
                 self.advance();
@@ -193,6 +198,14 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Identifier(name))
             }
+
+            Token::LeftParen => {
+                self.advance();
+                let expr = self.parse_expression(0)?;
+                self.expect(Token::RightParen)?;
+                Ok(expr)
+            }
+
             _ => Err(ParseError::ExpectedExpression),
         }?;
 
@@ -239,6 +252,7 @@ impl Parser {
         Ok(Expr::If { condition, then_branch, else_branch })
     }
 
+    // { block }
     fn parse_block_expression(&mut self) -> Result<Expr, ParseError> {
         let mut statements = Vec::new();
         let mut value = None;
