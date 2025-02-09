@@ -297,11 +297,6 @@ impl Lexer {
                     Token::Semicolon
                 }
 
-                ':' => {
-                    self.advance();
-                    Token::Colon
-                }
-
                 ',' => {
                     self.advance();
                     Token::Comma
