@@ -135,7 +135,7 @@ impl Parser {
             Token::Enum => self.parse_enum_declaration(visibility),
             Token::Module => self.parse_module_statement(visibility),
             Token::Struct => self.parse_struct_declaration(visibility),
-            Token::Async | Token::Fn => self.parse_function_statement(visibility),
+            Token::Fn => self.parse_function_statement(visibility),
 
             Token::LeftBrace => {
                 self.advance();
@@ -146,6 +146,25 @@ impl Parser {
             Token::If => {
                 let expr = self.parse_if_expression()?;
                 Ok(Stmt::ExpressionValue(expr))
+            }
+
+            Token::Async => {
+                if self.peek.token == Token::Fn {
+                    self.parse_function_statement(visibility)
+                } else {
+                    let expr = self.parse_expression(0)?;
+                    match self.current.token {
+                        Token::RightBrace => Ok(Stmt::ExpressionValue(expr)),
+                        Token::Semicolon => {
+                            self.advance();
+                            Ok(Stmt::ExpressionStmt(expr))
+                        }
+                        _ => Err(ParseError::UnexpectedToken {
+                            found: self.current.clone(),
+                            expected: Some("';' or '}'".to_string()),
+                        }),
+                    }
+                }
             }
 
             _ => {
@@ -728,6 +747,8 @@ impl Parser {
 
     fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
         match &self.current.token {
+            Token::Async => self.parse_async_prefix(),
+
             Token::If => self.parse_if_expression(),
 
             Token::Minus | Token::Not => {
@@ -754,8 +775,10 @@ impl Parser {
 
             Token::LeftBrace => {
                 self.advance();
-                self.parse_block_expression()
+                self.parse_block_expression_with_async(false)
             }
+
+            Token::BitOr => self.parse_closure_expression_with_async(false),
 
             Token::Integer(n, type_suffix) => {
                 let n = *n;
@@ -792,48 +815,6 @@ impl Parser {
                 let expr = self.parse_expression(0)?;
                 self.expect(Token::RightParen)?;
                 Ok(expr)
-            }
-
-            Token::BitOr => {
-                self.advance(); // consume first |
-
-                let mut params = Vec::new();
-
-                if self.current.token == Token::BitOr {
-                    self.advance(); // consume second |
-                } else {
-                    while self.current.token != Token::BitOr {
-                        if !params.is_empty() {
-                            self.expect(Token::Comma)?;
-
-                            if self.current.token == Token::BitOr {
-                                break;
-                            }
-                        }
-
-                        let param_name = self.expect_identifier()?;
-
-                        let param_type = if self.current.token == Token::Colon {
-                            self.advance(); // consume :
-                            Some(self.parse_type()?)
-                        } else {
-                            None
-                        };
-
-                        params.push((param_name, param_type));
-                    }
-                    self.expect(Token::BitOr)?;
-                }
-
-                let body = if self.current.token == Token::LeftBrace {
-                    self.advance();
-                    let block = self.parse_block_expression()?;
-                    Box::new(block)
-                } else {
-                    Box::new(self.parse_expression(0)?)
-                };
-
-                Ok(Expr::Closure { params, body })
             }
 
             Token::Identifier(name) => {
@@ -924,6 +905,87 @@ impl Parser {
                 })
             }
         }
+    }
+
+    fn parse_async_prefix(&mut self) -> Result<Expr, ParseError> {
+        self.advance(); // consume the async token
+        let is_async = true;
+        match self.current.token {
+            Token::LeftBrace => {
+                self.advance(); // consume '{'
+                self.parse_block_expression_with_async(is_async)
+            }
+            Token::BitOr => self.parse_closure_expression_with_async(is_async),
+            _ => Err(ParseError::Custom {
+                message: "Expected async block or async closure after 'async'".to_string(),
+                location: self.current.location.clone(),
+            }),
+        }
+    }
+
+    fn parse_block_expression_with_async(&mut self, is_async: bool) -> Result<Expr, ParseError> {
+        self.enter_recursion()?;
+        let mut statements = Vec::new();
+        let mut returns = false;
+        while self.current.token != Token::RightBrace {
+            let stmt = self.parse_statement()?;
+            if matches!(stmt, Stmt::Return(_)) {
+                returns = true;
+            }
+            statements.push(stmt);
+        }
+
+        let value = if !returns && !statements.is_empty() {
+            if let Some(Stmt::ExpressionValue(expr)) = statements.pop() {
+                Some(Box::new(expr))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        self.expect(Token::RightBrace)?; // consume '}'
+        self.exit_recursion();
+        Ok(Expr::Block { statements, value, returns, is_async })
+    }
+
+    fn parse_closure_expression_with_async(&mut self, is_async: bool) -> Result<Expr, ParseError> {
+        self.advance(); // consume the first '|'
+        let mut params: Vec<(String, Option<Type>)> = Vec::new();
+
+        if self.current.token == Token::BitOr {
+            self.advance(); // consume the second '|'
+        } else {
+            while self.current.token != Token::BitOr {
+                if !params.is_empty() {
+                    self.expect(Token::Comma)?;
+                }
+                let param_name = self.expect_identifier()?;
+                let param_type = if self.current.token == Token::Colon {
+                    self.advance(); // consume ':'
+                    Some(self.parse_type()?)
+                } else {
+                    None
+                };
+
+                params.push((param_name, param_type));
+            }
+            self.expect(Token::BitOr)?; // consume the closing '|'
+        }
+
+        let body = if self.current.token == Token::LeftBrace {
+            self.advance(); // consume '{'
+            self.parse_block_expression_with_async(false)?
+        } else {
+            self.parse_expression(0)?
+        };
+
+        Ok(Expr::Closure {
+            params,
+            body: Box::new(body),
+            is_async,
+        })
     }
 
     fn parse_identifier_expression(&mut self, name: String) -> Result<Expr, ParseError> {
@@ -1204,45 +1266,7 @@ impl Parser {
         Ok(Expr::If { condition, then_branch, else_branch })
     }
 
-    // { block }
-    fn parse_block_expression(&mut self) -> Result<Expr, ParseError> {
-        self.enter_recursion()?;
-        let result = {
-            let mut statements = Vec::new();
-            let mut returns = false;
-            while self.current.token != Token::RightBrace {
-                let stmt = self.parse_statement()?;
-
-                if matches!(stmt, Stmt::Return(_)) {
-                    returns = true;
-                }
-
-                statements.push(stmt);
-
-                if returns {
-                    // warn about unreachable code
-                    break;
-                }
-            }
-
-            let value = if !returns && !statements.is_empty() {
-                if let Some(Stmt::ExpressionValue(expr)) = statements.pop() {
-                    Some(Box::new(expr))
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            self.expect(Token::RightBrace)?;
-
-            Ok(Expr::Block { statements, value, returns })
-        };
-
-        self.exit_recursion();
-        return result;
-    }
+    fn parse_block_expression(&mut self) -> Result<Expr, ParseError> { self.parse_block_expression_with_async(false) }
 
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {

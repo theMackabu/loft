@@ -80,6 +80,7 @@ pub enum Expr {
     Closure {
         params: Vec<(String, Option<Type>)>,
         body: Box<Expr>,
+        is_async: bool,
     },
 
     MethodCall {
@@ -130,6 +131,7 @@ pub enum Expr {
         statements: Vec<Stmt>,
         value: Option<Box<Expr>>,
         returns: bool,
+        is_async: bool,
     },
 
     StructInit {
