@@ -4,6 +4,7 @@ pub enum Token {
     Let,    // let
     Mut,    // mut
     Const,  // const
+    Struct, // struct
     Enum,   // enum
     Fn,     // fn
     Return, // return
@@ -456,6 +457,7 @@ impl Lexer {
                         "let" => Token::Let,
                         "mut" => Token::Mut,
                         "const" => Token::Const,
+                        "struct" => Token::Struct,
                         "enum" => Token::Enum,
                         "fn" => Token::Fn,
                         "return" => Token::Return,

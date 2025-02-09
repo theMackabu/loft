@@ -102,13 +102,22 @@ impl Parser {
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         self.enter_recursion()?;
 
+        let visibility = if matches!(self.current.token, Token::Pub) {
+            self.advance(); // consume 'pub'
+            true
+        } else {
+            false
+        };
+
         let result = match self.current.token {
             Token::Let => self.parse_let_statement(),
-            Token::Const => self.parse_const_statement(),
-            Token::Pub | Token::Async | Token::Fn => self.parse_function_statement(),
             Token::Return => self.parse_return_statement(),
-            Token::Type => self.parse_type_alias(),
-            Token::Enum => self.parse_enum_declaration(),
+
+            Token::Type => self.parse_type_alias(visibility),
+            Token::Const => self.parse_const_statement(visibility),
+            Token::Enum => self.parse_enum_declaration(visibility),
+            Token::Struct => self.parse_struct_declaration(visibility),
+            Token::Async | Token::Fn => self.parse_function_statement(visibility),
 
             Token::LeftBrace => {
                 self.advance();
@@ -144,14 +153,59 @@ impl Parser {
         return result;
     }
 
-    fn parse_function_statement(&mut self) -> Result<Stmt, ParseError> {
-        let visibility = if self.current.token == Token::Pub {
-            self.advance(); // consume 'pub'
-            true
+    fn parse_struct_declaration(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'struct'
+
+        let name = self.expect_identifier()?;
+
+        // Parse generic type parameters
+        let type_params = if self.current.token == Token::LeftAngle {
+            self.advance();
+            let params = self.parse_type_params()?;
+            self.expect(Token::RightAngle)?;
+            params
         } else {
-            false
+            Vec::new()
         };
 
+        self.expect(Token::LeftBrace)?;
+
+        let mut fields = Vec::new();
+
+        while self.current.token != Token::RightBrace {
+            if !fields.is_empty() {
+                self.expect(Token::Comma)?;
+
+                if self.current.token == Token::RightBrace {
+                    break;
+                }
+            }
+
+            let field_visibility = if self.current.token == Token::Pub {
+                self.advance();
+                true
+            } else {
+                false
+            };
+
+            let field_name = self.expect_identifier()?;
+            self.expect(Token::Colon)?;
+            let field_type = self.parse_type()?;
+
+            fields.push((field_name, field_visibility, field_type));
+        }
+
+        self.expect(Token::RightBrace)?;
+
+        Ok(Stmt::Struct {
+            name,
+            visibility,
+            type_params,
+            fields,
+        })
+    }
+
+    fn parse_function_statement(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
         let is_async = if self.current.token == Token::Async {
             self.advance(); // consume 'async'
             true
@@ -161,70 +215,32 @@ impl Parser {
 
         self.expect(Token::Fn)?; // consume 'fn'
 
-        let name = match &self.current.token {
-            Token::Identifier(name) => {
-                let name = name.clone();
-                self.advance();
-                name
-            }
-            _ => {
-                return Err(ParseError::ExpectedIdentifier {
-                    location: self.current.location.to_owned(),
-                })
-            }
-        };
+        let name = self.expect_identifier()?;
 
         self.expect(Token::LeftParen)?;
 
-        // parse parameters
         let mut params = Vec::new();
         while self.current.token != Token::RightParen {
             if !params.is_empty() {
                 self.expect(Token::Comma)?;
             }
 
-            let param_name = match &self.current.token {
-                Token::Identifier(name) => {
-                    let name = name.clone();
-                    self.advance();
-                    name
-                }
-                _ => {
-                    return Err(ParseError::ExpectedIdentifier {
-                        location: self.current.location.to_owned(),
-                    })
-                }
-            };
-
+            let param_name = self.expect_identifier()?;
             self.expect(Token::Colon)?;
-
-            let param_type = match &self.current.token {
-                Token::Identifier(typ) => {
-                    let typ = typ.clone();
-                    self.advance();
-                    typ
-                }
-                _ => {
-                    return Err(ParseError::ExpectedIdentifier {
-                        location: self.current.location.to_owned(),
-                    })
-                }
-            };
+            let param_type = self.expect_identifier()?;
 
             params.push((param_name, param_type));
         }
 
         self.expect(Token::RightParen)?;
 
-        // parse return type
         let return_type = if self.current.token == Token::Arrow {
-            self.advance(); // consume ->
+            self.advance();
             Some(self.parse_type()?)
         } else {
             None
         };
 
-        // parse function body
         self.expect(Token::LeftBrace)?;
 
         let mut body = Vec::new();
@@ -244,7 +260,7 @@ impl Parser {
         })
     }
 
-    fn parse_enum_declaration(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_enum_declaration(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'enum'
 
         let name = self.expect_identifier()?;
@@ -276,7 +292,12 @@ impl Parser {
 
         self.expect(Token::RightBrace)?;
 
-        Ok(Stmt::Enum { name, type_params, variants })
+        Ok(Stmt::Enum {
+            name,
+            visibility,
+            type_params,
+            variants,
+        })
     }
 
     fn parse_enum_variant(&mut self) -> Result<EnumVariant, ParseError> {
@@ -331,7 +352,7 @@ impl Parser {
         }
     }
 
-    fn parse_type_alias(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_type_alias(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'type'
 
         let name = self.expect_identifier()?;
@@ -350,7 +371,7 @@ impl Parser {
         let ty = self.parse_type()?;
         self.expect(Token::Semicolon)?;
 
-        Ok(Stmt::TypeAlias { name, type_params, ty })
+        Ok(Stmt::TypeAlias { name, visibility, type_params, ty })
     }
 
     fn parse_type(&mut self) -> Result<Type, ParseError> {
@@ -476,7 +497,7 @@ impl Parser {
         })
     }
 
-    fn parse_const_statement(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_const_statement(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'const'
 
         let name = match &self.current.token {
@@ -503,7 +524,12 @@ impl Parser {
         let initializer = Box::new(self.parse_expression(0)?);
         self.expect(Token::Semicolon)?;
 
-        Ok(Stmt::Const { name, type_annotation, initializer })
+        Ok(Stmt::Const {
+            name,
+            visibility,
+            type_annotation,
+            initializer,
+        })
     }
 
     fn parse_expression(&mut self, precedence: i32) -> Result<Expr, ParseError> {

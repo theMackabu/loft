@@ -88,16 +88,25 @@ pub enum Stmt {
     ExpressionStmt(Expr),
     ExpressionValue(Expr),
 
-    Enum {
+    Struct {
         name: String,
+        visibility: bool,
         type_params: Vec<String>,
-        variants: Vec<EnumVariant>,
+        fields: Vec<(String, bool, Type)>,
     },
 
     TypeAlias {
         name: String,
+        visibility: bool,
         type_params: Vec<String>,
         ty: Type,
+    },
+
+    Enum {
+        name: String,
+        visibility: bool,
+        type_params: Vec<String>,
+        variants: Vec<EnumVariant>,
     },
 
     Let {
@@ -109,6 +118,7 @@ pub enum Stmt {
 
     Const {
         name: String,
+        visibility: bool,
         type_annotation: Option<Type>,
         initializer: Box<Expr>,
     },
