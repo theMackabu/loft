@@ -303,13 +303,24 @@ impl Parser {
         while self.current.token != Token::RightParen {
             if !params.is_empty() {
                 self.expect(Token::Comma)?;
+
+                if self.current.token == Token::RightParen {
+                    break;
+                }
             }
+
+            let is_mutable = if self.current.token == Token::Mut {
+                self.advance(); // consume 'mut'
+                true
+            } else {
+                false
+            };
 
             let param_name = self.expect_identifier()?;
             self.expect(Token::Colon)?;
-            let param_type = self.expect_identifier()?;
+            let param_type = self.parse_type()?;
 
-            params.push((param_name, param_type));
+            params.push((param_name, is_mutable, param_type));
         }
 
         self.expect(Token::RightParen)?;
@@ -501,18 +512,27 @@ impl Parser {
             Token::LeftBracket => {
                 self.advance(); // consume [
                 let element_type = Box::new(self.parse_type()?);
-                self.expect(Token::Semicolon)?;
-                let size = match &self.current.token {
-                    Token::Integer(n, _) => *n as usize,
-                    _ => {
-                        return Err(ParseError::ExpectedExpression {
-                            location: self.current.location.clone(),
-                        })
-                    }
-                };
-                self.advance();
-                self.expect(Token::RightBracket)?;
-                Ok(Type::Array { element_type, size })
+
+                if self.current.token == Token::Semicolon {
+                    self.advance(); // consume ;
+                    let size = match &self.current.token {
+                        Token::Integer(n, _) => {
+                            let size = *n as usize;
+                            self.advance();
+                            size
+                        }
+                        _ => {
+                            return Err(ParseError::ExpectedExpression {
+                                location: self.current.location.clone(),
+                            })
+                        }
+                    };
+                    self.expect(Token::RightBracket)?;
+                    Ok(Type::Array { element_type, size })
+                } else {
+                    self.expect(Token::RightBracket)?;
+                    Ok(Type::Slice { element_type })
+                }
             }
 
             _ => Err(ParseError::ExpectedIdentifier {
@@ -591,8 +611,13 @@ impl Parser {
             None
         };
 
-        self.expect(Token::Assign)?;
-        let initializer = Box::new(self.parse_expression(0)?);
+        let initializer = if self.current.token == Token::Assign {
+            self.advance(); // consume =
+            Some(Box::new(self.parse_expression(0)?))
+        } else {
+            None
+        };
+
         self.expect(Token::Semicolon)?;
 
         Ok(Stmt::Let {

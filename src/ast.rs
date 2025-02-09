@@ -28,8 +28,9 @@ pub enum Type {
     Simple(String),
     TypeParam(String),
 
-    Generic { path: Path, type_params: Vec<Type> },
+    Slice { element_type: Box<Type> },
     Array { element_type: Box<Type>, size: usize },
+    Generic { path: Path, type_params: Vec<Type> },
 }
 
 #[derive(Debug)]
@@ -173,7 +174,7 @@ pub enum Stmt {
         name: String,
         mutable: bool,
         type_annotation: Option<Type>,
-        initializer: Box<Expr>,
+        initializer: Option<Box<Expr>>,
     },
 
     Const {
@@ -187,7 +188,7 @@ pub enum Stmt {
         name: String,
         visibility: bool,
         is_async: bool,
-        params: Vec<(String, String)>,
+        params: Vec<(String, bool, Type)>,
         return_type: Option<Type>,
         body: Vec<Stmt>,
     },
