@@ -1740,6 +1740,43 @@ impl Parser {
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
         match &self.current.token {
+            Token::LeftParen => {
+                self.advance(); // consume '('
+
+                if self.current.token == Token::RightParen {
+                    self.advance(); // consume ')'
+                    return Ok(Pattern::Tuple(vec![]));
+                }
+
+                let mut patterns = Vec::new();
+                patterns.push(self.parse_pattern()?);
+
+                while self.current.token == Token::Comma {
+                    self.advance(); // consume ','
+                    if self.current.token == Token::RightParen {
+                        break;
+                    }
+                    patterns.push(self.parse_pattern()?);
+                }
+
+                self.expect(Token::RightParen)?; // consume ')'
+                return Ok(Pattern::Tuple(patterns));
+            }
+
+            Token::Mut => {
+                self.advance(); // consume 'mut'
+                let inner = self.parse_pattern()?;
+                match inner {
+                    Pattern::Identifier { name, .. } => Ok(Pattern::Identifier { name, mutable: true }),
+                    _ => {
+                        return Err(ParseError::Custom {
+                            message: "'mut' is only allowed with identifier patterns".to_string(),
+                            location: self.current.location.clone(),
+                        });
+                    }
+                }
+            }
+
             Token::Identifier(name) => {
                 let name = name.clone();
                 self.advance();
