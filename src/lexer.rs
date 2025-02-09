@@ -33,25 +33,52 @@ pub enum Token {
     EOF,
 }
 
+#[derive(Debug, Clone)]
+pub struct Location {
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct TokenInfo {
+    pub token: Token,
+    pub location: Location,
+}
+
 #[derive(Clone)]
 pub struct Lexer {
     input: Vec<char>,
     position: usize,
     current_char: Option<char>,
+
+    // error info
+    line: usize,
+    column: usize,
 }
 
 impl Lexer {
     pub fn new(input: String) -> Self {
         let chars: Vec<char> = input.chars().collect();
         let current = chars.get(0).copied();
+
         Self {
             input: chars,
             position: 0,
             current_char: current,
+            line: 1,
+            column: 1,
         }
     }
 
     fn advance(&mut self) {
+        if let Some(c) = self.current_char {
+            if c == '\n' {
+                self.line += 1;
+                self.column = 1;
+            } else {
+                self.column += 1;
+            }
+        }
         self.position += 1;
         self.current_char = self.input.get(self.position).copied();
     }
@@ -129,8 +156,10 @@ impl Lexer {
         Err("Unterminated string literal")
     }
 
-    pub fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> TokenInfo {
         self.skip_whitespace();
+
+        let location = Location { line: self.line, column: self.column };
 
         let token = match self.current_char {
             None => Token::EOF,
@@ -218,6 +247,6 @@ impl Lexer {
             },
         };
 
-        token
+        TokenInfo { token, location }
     }
 }

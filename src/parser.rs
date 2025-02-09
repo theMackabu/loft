@@ -1,40 +1,70 @@
 use crate::ast::{Expr, Stmt};
-use crate::lexer::{Lexer, Token};
+use crate::lexer::{Lexer, Location, Token, TokenInfo};
 
 #[derive(Debug)]
 pub enum ParseError {
-    UnexpectedToken(Token),
-    ExpectedIdentifier,
-    ExpectedExpression,
-    Custom(String),
+    UnexpectedToken { found: TokenInfo, expected: Option<String> },
+    ExpectedIdentifier { location: Location },
+    ExpectedExpression { location: Location },
+    Custom { message: String, location: Location },
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::UnexpectedToken { found, expected } => {
+                if let Some(expected) = expected {
+                    write!(
+                        f,
+                        "Error at line {}, column {}: Expected {}, but found {:?}",
+                        found.location.line, found.location.column, expected, found.token
+                    )
+                } else {
+                    write!(f, "Error at line {}, column {}: Unexpected token {:?}", found.location.line, found.location.column, found.token)
+                }
+            }
+            ParseError::ExpectedIdentifier { location } => {
+                write!(f, "Error at line {}, column {}: Expected identifier", location.line, location.column)
+            }
+            ParseError::ExpectedExpression { location } => {
+                write!(f, "Error at line {}, column {}: Expected expression", location.line, location.column)
+            }
+            ParseError::Custom { message, location } => {
+                write!(f, "Error at line {}, column {}: {}", location.line, location.column, message)
+            }
+        }
+    }
 }
 
 pub struct Parser {
     lexer: Lexer,
-    current_token: Token,
+    current: TokenInfo,
 }
 
 impl Parser {
     pub fn new(mut lexer: Lexer) -> Self {
-        let current_token = lexer.next_token();
-        Self { lexer, current_token }
+        let current = lexer.next_token();
+        Self { lexer, current }
     }
 
-    fn advance(&mut self) { self.current_token = self.lexer.next_token(); }
+    fn advance(&mut self) { self.current = self.lexer.next_token(); }
 
     fn expect(&mut self, token: Token) -> Result<(), ParseError> {
-        if self.current_token == token {
+        if self.current.token == token {
             self.advance();
             Ok(())
         } else {
-            Err(ParseError::UnexpectedToken(self.current_token.clone()))
+            Err(ParseError::UnexpectedToken {
+                found: self.current.clone(),
+                expected: Some(format!("{:?}", token)),
+            })
         }
     }
 
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut statements = Vec::new();
 
-        while self.current_token != Token::EOF {
+        while self.current.token != Token::EOF {
             statements.push(self.parse_statement()?);
         }
 
@@ -42,7 +72,7 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
-        match self.current_token {
+        match self.current.token {
             Token::Let => self.parse_let_statement(),
             Token::Fn => self.parse_function_statement(),
             Token::Return => self.parse_return_statement(),
@@ -58,42 +88,54 @@ impl Parser {
     fn parse_function_statement(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'fn'
 
-        let name = match &self.current_token {
+        let name = match &self.current.token {
             Token::Identifier(name) => {
                 let name = name.clone();
                 self.advance();
                 name
             }
-            _ => return Err(ParseError::ExpectedIdentifier),
+            _ => {
+                return Err(ParseError::ExpectedIdentifier {
+                    location: self.current.location.to_owned(),
+                })
+            }
         };
 
         self.expect(Token::LeftParen)?;
 
         // parse parameters
         let mut params = Vec::new();
-        while self.current_token != Token::RightParen {
+        while self.current.token != Token::RightParen {
             if !params.is_empty() {
                 self.expect(Token::Comma)?;
             }
 
-            let param_name = match &self.current_token {
+            let param_name = match &self.current.token {
                 Token::Identifier(name) => {
                     let name = name.clone();
                     self.advance();
                     name
                 }
-                _ => return Err(ParseError::ExpectedIdentifier),
+                _ => {
+                    return Err(ParseError::ExpectedIdentifier {
+                        location: self.current.location.to_owned(),
+                    })
+                }
             };
 
             self.expect(Token::Colon)?;
 
-            let param_type = match &self.current_token {
+            let param_type = match &self.current.token {
                 Token::Identifier(typ) => {
                     let typ = typ.clone();
                     self.advance();
                     typ
                 }
-                _ => return Err(ParseError::ExpectedIdentifier),
+                _ => {
+                    return Err(ParseError::ExpectedIdentifier {
+                        location: self.current.location.to_owned(),
+                    })
+                }
             };
 
             params.push((param_name, param_type));
@@ -102,15 +144,19 @@ impl Parser {
         self.expect(Token::RightParen)?;
 
         // parse return type
-        let return_type = if self.current_token == Token::Arrow {
+        let return_type = if self.current.token == Token::Arrow {
             self.advance();
-            match &self.current_token {
+            match &self.current.token {
                 Token::Identifier(typ) => {
                     let typ = typ.clone();
                     self.advance();
                     Some(typ)
                 }
-                _ => return Err(ParseError::ExpectedIdentifier),
+                _ => {
+                    return Err(ParseError::ExpectedIdentifier {
+                        location: self.current.location.to_owned(),
+                    })
+                }
             }
         } else {
             None
@@ -120,7 +166,7 @@ impl Parser {
         self.expect(Token::LeftBrace)?;
 
         let mut body = Vec::new();
-        while self.current_token != Token::RightBrace {
+        while self.current.token != Token::RightBrace {
             body.push(self.parse_statement()?);
         }
 
@@ -132,7 +178,7 @@ impl Parser {
     fn parse_return_statement(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'return'
 
-        let value = if self.current_token == Token::Semicolon { None } else { Some(self.parse_expression(0)?) };
+        let value = if self.current.token == Token::Semicolon { None } else { Some(self.parse_expression(0)?) };
 
         self.expect(Token::Semicolon)?;
 
@@ -142,24 +188,32 @@ impl Parser {
     fn parse_let_statement(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'let'
 
-        let name = match &self.current_token {
+        let name = match &self.current.token {
             Token::Identifier(name) => {
                 let name = name.clone();
                 self.advance();
                 name
             }
-            _ => return Err(ParseError::ExpectedIdentifier),
+            _ => {
+                return Err(ParseError::ExpectedIdentifier {
+                    location: self.current.location.to_owned(),
+                })
+            }
         };
 
-        let type_annotation = if self.current_token == Token::Colon {
+        let type_annotation = if self.current.token == Token::Colon {
             self.advance();
-            match &self.current_token {
+            match &self.current.token {
                 Token::Identifier(typ) => {
                     let typ = typ.clone();
                     self.advance();
                     Some(typ)
                 }
-                _ => return Err(ParseError::ExpectedIdentifier),
+                _ => {
+                    return Err(ParseError::ExpectedIdentifier {
+                        location: self.current.location.to_owned(),
+                    })
+                }
             }
         } else {
             None
@@ -173,7 +227,7 @@ impl Parser {
     }
 
     fn parse_expression(&mut self, precedence: i32) -> Result<Expr, ParseError> {
-        let mut left = match &self.current_token {
+        let mut left = match &self.current.token {
             Token::If => self.parse_if_expression(),
 
             Token::LeftBrace => {
@@ -206,13 +260,17 @@ impl Parser {
                 Ok(expr)
             }
 
-            _ => Err(ParseError::ExpectedExpression),
+            _ => {
+                return Err(ParseError::ExpectedIdentifier {
+                    location: self.current.location.to_owned(),
+                })
+            }
         }?;
 
-        while precedence < self.get_precedence(&self.current_token) {
-            left = match &self.current_token {
+        while precedence < self.get_precedence(&self.current.token) {
+            left = match &self.current.token {
                 Token::Plus | Token::Minus | Token::Star | Token::Slash => {
-                    let operator = self.current_token.clone();
+                    let operator = self.current.token.clone();
                     self.advance();
                     let right = self.parse_expression(self.get_precedence(&operator))?;
                     Ok(Expr::Binary {
@@ -236,10 +294,10 @@ impl Parser {
         self.expect(Token::LeftBrace)?;
         let then_branch = Box::new(self.parse_block_expression()?);
 
-        let else_branch = if self.current_token == Token::Else {
+        let else_branch = if self.current.token == Token::Else {
             self.advance();
 
-            if self.current_token == Token::If {
+            if self.current.token == Token::If {
                 Some(Box::new(self.parse_if_expression()?))
             } else {
                 self.expect(Token::LeftBrace)?;
@@ -257,8 +315,8 @@ impl Parser {
         let mut statements = Vec::new();
         let mut value = None;
 
-        while self.current_token != Token::RightBrace {
-            if self.peek_token() == Token::RightBrace && self.current_token != Token::Semicolon {
+        while self.current.token != Token::RightBrace {
+            if self.peek_token() == Token::RightBrace && self.current.token != Token::Semicolon {
                 value = Some(Box::new(self.parse_expression(0)?));
                 break;
             }
@@ -271,7 +329,7 @@ impl Parser {
         Ok(Expr::Block { statements, value })
     }
 
-    fn peek_token(&self) -> Token { self.lexer.to_owned().next_token() }
+    fn peek_token(&self) -> Token { self.lexer.to_owned().next_token().token }
 
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {
