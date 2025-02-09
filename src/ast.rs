@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::lexer::{Token, TokenInfo};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -14,6 +16,12 @@ pub enum NumericType {
     U128,
     F32,
     F64,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Identifier { name: String, mutable: bool },
+    Reference { mutable: bool, pattern: Box<Pattern> },
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +54,9 @@ pub enum Type {
     Array { element_type: Box<Type>, size: usize },
     Generic { path: Path, type_params: Vec<Type> },
     Function { params: Vec<Type>, return_type: Box<Type> },
+
+    Reference { mutable: bool, inner: Box<Type> },
+    Pointer { inner: Box<Type> },
 }
 
 #[derive(Debug)]
@@ -125,6 +136,15 @@ pub enum Expr {
         value: Box<Expr>,
     },
 
+    Reference {
+        mutable: bool,
+        operand: Box<Expr>,
+    },
+
+    Dereference {
+        operand: Box<Expr>,
+    },
+
     Unary {
         operator: Token,
         operand: Box<Expr>,
@@ -188,6 +208,12 @@ pub enum Stmt {
         attributes: Vec<Attribute>,
     },
 
+    Impl {
+        target: Path,
+        items: Vec<Stmt>,
+        attributes: Vec<Attribute>,
+    },
+
     TypeAlias {
         name: String,
         visibility: bool,
@@ -240,7 +266,7 @@ pub enum Stmt {
         visibility: bool,
         is_async: bool,
         type_params: Vec<String>,
-        params: Vec<(String, bool, Type)>,
+        params: Vec<(Pattern, Type)>,
         return_type: Option<Type>,
         body: Vec<Stmt>,
         attributes: Vec<Attribute>,

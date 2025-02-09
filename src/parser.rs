@@ -135,6 +135,7 @@ impl Parser {
         let result = match self.current.token {
             Token::Return => self.parse_return_statement(),
             Token::Let => self.parse_let_statement(attributes),
+            Token::Impl => self.parse_impl_block(attributes),
 
             Token::Use => self.parse_use_statement(visibility, attributes),
             Token::Type => self.parse_type_alias(visibility, attributes),
@@ -254,6 +255,105 @@ impl Parser {
         })
     }
 
+    fn parse_impl_block(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'impl'
+
+        let target = self.parse_path()?;
+        self.expect(Token::LeftBrace)?;
+
+        let mut items = Vec::new();
+
+        while self.current.token != Token::RightBrace {
+            let method_attributes = self.parse_attributes()?;
+
+            if self.current.token != Token::Fn && self.current.token != Token::Pub {
+                return Err(ParseError::UnexpectedToken {
+                    found: self.current.clone(),
+                    expected: Some("function definition in impl block".to_string()),
+                });
+            }
+
+            let method = self.parse_function_statement(false, method_attributes)?;
+            items.push(method);
+        }
+
+        Ok(Stmt::Impl { target, items, attributes })
+    }
+
+    fn parse_function_parameters(&mut self) -> Result<Vec<(Pattern, Type)>, ParseError> {
+        let mut params = Vec::new();
+        self.expect(Token::LeftParen)?;
+        while self.current.token != Token::RightParen {
+            if !params.is_empty() {
+                self.expect(Token::Comma)?;
+            }
+            params.push(self.parse_parameter()?);
+        }
+        self.expect(Token::RightParen)?;
+        Ok(params)
+    }
+
+    fn parse_parameter(&mut self) -> Result<(Pattern, Type), ParseError> {
+        if self.current.token == Token::Identifier("self".to_string()) {
+            self.advance();
+            return Ok((
+                Pattern::Identifier {
+                    name: "self".to_string(),
+                    mutable: false,
+                },
+                Type::Path(Path { segments: vec![] }),
+            ));
+        }
+
+        let pattern = if self.current.token == Token::BitAnd {
+            self.advance(); // consume '&'
+            let is_mut_ref = if self.current.token == Token::Mut {
+                self.advance();
+                true
+            } else {
+                false
+            };
+            if let Token::Identifier(id) = &self.current.token {
+                let ident = id.clone();
+                self.advance();
+                Pattern::Reference {
+                    mutable: is_mut_ref,
+                    pattern: Box::new(Pattern::Identifier { name: ident, mutable: false }),
+                }
+            } else {
+                return Err(ParseError::ExpectedIdentifier {
+                    location: self.current.location.clone(),
+                });
+            }
+        } else {
+            let mut is_mut_binding = false;
+            if self.current.token == Token::Mut {
+                is_mut_binding = true;
+                self.advance();
+            }
+            if let Token::Identifier(id) = &self.current.token {
+                let ident = id.clone();
+                self.advance();
+                Pattern::Identifier { name: ident, mutable: is_mut_binding }
+            } else {
+                return Err(ParseError::ExpectedIdentifier {
+                    location: self.current.location.clone(),
+                });
+            }
+        };
+
+        self.expect(Token::Colon)?;
+        if self.current.token != Token::BitAnd {
+            return Err(ParseError::Custom {
+                message: "Parameter type must be a reference (e.g. &mut T)".to_string(),
+                location: self.current.location.clone(),
+            });
+        }
+        let param_type = self.parse_type()?;
+
+        Ok((pattern, param_type))
+    }
+
     fn parse_path(&mut self) -> Result<Path, ParseError> {
         let mut segments = Vec::new();
 
@@ -330,7 +430,6 @@ impl Parser {
 
         let name = self.expect_identifier()?;
 
-        // Parse generic type parameters
         let type_params = if self.current.token == Token::LeftAngle {
             self.advance(); // consume '<'
             let mut params = Vec::new();
@@ -352,33 +451,7 @@ impl Parser {
             Vec::new()
         };
 
-        self.expect(Token::LeftParen)?;
-
-        let mut params = Vec::new();
-        while self.current.token != Token::RightParen {
-            if !params.is_empty() {
-                self.expect(Token::Comma)?;
-
-                if self.current.token == Token::RightParen {
-                    break;
-                }
-            }
-
-            let is_mutable = if self.current.token == Token::Mut {
-                self.advance(); // consume 'mut'
-                true
-            } else {
-                false
-            };
-
-            let param_name = self.expect_identifier()?;
-            self.expect(Token::Colon)?;
-            let param_type = self.parse_type()?;
-
-            params.push((param_name, is_mutable, param_type));
-        }
-
-        self.expect(Token::RightParen)?;
+        let params = self.parse_function_parameters()?;
 
         let return_type = if self.current.token == Token::Arrow {
             self.advance();
@@ -531,6 +604,24 @@ impl Parser {
 
     fn parse_type(&mut self) -> Result<Type, ParseError> {
         match &self.current.token {
+            Token::BitAnd => {
+                self.advance(); // consume '&'
+                let mutable = if self.current.token == Token::Mut {
+                    self.advance();
+                    true
+                } else {
+                    false
+                };
+                let inner = self.parse_type()?;
+                Ok(Type::Reference { mutable, inner: Box::new(inner) })
+            }
+
+            Token::Star => {
+                self.advance(); // consume '*'
+                let inner = self.parse_type()?;
+                Ok(Type::Pointer { inner: Box::new(inner) })
+            }
+
             Token::LeftParen => {
                 self.advance();
                 if self.current.token == Token::RightParen {
@@ -788,6 +879,25 @@ impl Parser {
                 self.advance();
                 let operand = Box::new(self.parse_expression(PRECEDENCE_PREFIX)?);
                 Ok(Expr::Unary { operator, operand })
+            }
+
+            Token::BitAnd => {
+                self.advance();
+                let mutable = if self.current.token == Token::Mut {
+                    self.advance();
+                    true
+                } else {
+                    false
+                };
+
+                let operand = Box::new(self.parse_expression(PRECEDENCE_PREFIX)?);
+                Ok(Expr::Reference { mutable, operand })
+            }
+
+            Token::Star => {
+                self.advance(); // consume '*'
+                let operand = Box::new(self.parse_expression(PRECEDENCE_PREFIX)?);
+                Ok(Expr::Dereference { operand })
             }
 
             Token::LeftBracket => {

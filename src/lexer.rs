@@ -13,6 +13,7 @@ pub enum Token {
     Const,  // const
     Static, // static,
     Struct, // struct
+    Impl,   // impl
     Enum,   // enum
     Fn,     // fn
     Return, // return
@@ -637,6 +638,7 @@ impl Lexer {
                         "const" => Token::Const,
                         "static" => Token::Static,
                         "struct" => Token::Struct,
+                        "impl" => Token::Impl,
                         "enum" => Token::Enum,
                         "fn" => Token::Fn,
                         "return" => Token::Return,
