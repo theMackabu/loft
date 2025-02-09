@@ -503,7 +503,7 @@ impl Parser {
                 let element_type = Box::new(self.parse_type()?);
                 self.expect(Token::Semicolon)?;
                 let size = match &self.current.token {
-                    Token::Integer(n) => *n as usize,
+                    Token::Integer(n, _) => *n as usize,
                     _ => {
                         return Err(ParseError::ExpectedExpression {
                             location: self.current.location.clone(),
@@ -683,10 +683,18 @@ impl Parser {
                 self.parse_block_expression()
             }
 
-            Token::Integer(n) => {
+            Token::Integer(n, type_suffix) => {
                 let n = *n;
+                let type_suffix = type_suffix.clone();
                 self.advance();
-                Ok(Expr::Integer(n))
+                Ok(Expr::Integer(n, type_suffix))
+            }
+
+            Token::Float(n, type_suffix) => {
+                let n = *n;
+                let type_suffix = type_suffix.clone();
+                self.advance();
+                Ok(Expr::Float(n, type_suffix))
             }
 
             Token::String(s) => {
@@ -912,6 +920,12 @@ impl Parser {
                         self.parse_member_access(left, method)
                     }
                 }
+            }
+
+            Token::As => {
+                self.advance(); // consume 'as'
+                let target_type = self.parse_type()?;
+                Ok(Expr::Cast { expr: Box::new(left), target_type })
             }
 
             Token::LeftBracket => {

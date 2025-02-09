@@ -1,3 +1,5 @@
+use crate::ast::NumericType;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // keywords
@@ -73,8 +75,10 @@ pub enum Token {
 
     // literals
     Identifier(String), // ident
-    Integer(i64),       // add i32, u32, etc
     String(String),     // ""
+
+    Integer(i64, Option<NumericType>),
+    Float(f64, Option<NumericType>),
 
     EOF,
 }
@@ -197,8 +201,10 @@ impl Lexer {
         identifier
     }
 
-    fn read_number(&mut self) -> i64 {
+    fn read_number(&mut self) -> Token {
         let mut number = String::new();
+        let mut is_float = false;
+        let start_position = self.position;
 
         while let Some(c) = self.current_char {
             if c.is_digit(10) {
@@ -209,7 +215,109 @@ impl Lexer {
             }
         }
 
-        number.parse().unwrap_or(0)
+        if self.current_char == Some('.') {
+            if let Some(next_char) = self.peek() {
+                if next_char.is_digit(10) {
+                    is_float = true;
+                    number.push('.');
+                    self.advance();
+
+                    while let Some(c) = self.current_char {
+                        if c.is_digit(10) {
+                            number.push(c);
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some('e' | 'E') = self.current_char {
+            is_float = true;
+            number.push('e');
+            self.advance();
+
+            if let Some('+' | '-') = self.current_char {
+                number.push(self.current_char.unwrap());
+                self.advance();
+            }
+
+            let mut has_digits = false;
+            while let Some(c) = self.current_char {
+                if c.is_digit(10) {
+                    has_digits = true;
+                    number.push(c);
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+
+            if !has_digits {
+                return Token::Integer(0, None); // improve error handling
+            }
+        }
+
+        let type_suffix = match self.current_char {
+            Some('i') => {
+                self.advance();
+                match self.read_numeric_suffix().as_str() {
+                    "8" => Some(NumericType::I8),
+                    "16" => Some(NumericType::I16),
+                    "32" => Some(NumericType::I32),
+                    "64" => Some(NumericType::I64),
+                    "128" => Some(NumericType::I128),
+                    _ => None,
+                }
+            }
+            Some('u') => {
+                self.advance();
+                match self.read_numeric_suffix().as_str() {
+                    "8" => Some(NumericType::U8),
+                    "16" => Some(NumericType::U16),
+                    "32" => Some(NumericType::U32),
+                    "64" => Some(NumericType::U64),
+                    "128" => Some(NumericType::U128),
+                    _ => None,
+                }
+            }
+            Some('f') => {
+                self.advance();
+                match self.read_numeric_suffix().as_str() {
+                    "32" => Some(NumericType::F32),
+                    "64" => Some(NumericType::F64),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+
+        if is_float {
+            match number.parse::<f64>() {
+                Ok(value) => Token::Float(value, type_suffix),
+                Err(_) => Token::Float(0.0, None), // improve error handling
+            }
+        } else {
+            match number.parse::<i64>() {
+                Ok(value) => Token::Integer(value, type_suffix),
+                Err(_) => Token::Integer(0, None), // improve error handling
+            }
+        }
+    }
+
+    fn read_numeric_suffix(&mut self) -> String {
+        let mut suffix = String::new();
+        while let Some(c) = self.current_char {
+            if c.is_digit(10) {
+                suffix.push(c);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        suffix
     }
 
     fn read_string(&mut self) -> Result<String, &'static str> {
@@ -499,7 +607,9 @@ impl Lexer {
                         _ => Token::Identifier(ident),
                     }
                 }
-                c if c.is_digit(10) => Token::Integer(self.read_number()),
+
+                c if c.is_digit(10) => self.read_number(),
+
                 _ => {
                     self.advance();
                     Token::EOF

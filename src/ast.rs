@@ -1,5 +1,21 @@
 use crate::lexer::Token;
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum NumericType {
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    F32,
+    F64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Path {
     pub segments: Vec<String>,
@@ -32,12 +48,14 @@ pub enum UsePath {
 #[derive(Debug)]
 pub enum Expr {
     Path(Path),
-    Integer(i64),
     Boolean(bool),
     String(String),
     Array(Vec<Expr>),
     Identifier(String),
     Await(Box<Expr>),
+
+    Integer(i64, Option<NumericType>),
+    Float(f64, Option<NumericType>),
 
     Ok(Box<Expr>),
     Err(Box<Expr>),
@@ -50,6 +68,11 @@ pub enum Expr {
     Index {
         array: Box<Expr>,
         index: Box<Expr>,
+    },
+
+    Cast {
+        expr: Box<Expr>,
+        target_type: Type,
     },
 
     MethodCall {
