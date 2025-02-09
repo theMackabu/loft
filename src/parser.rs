@@ -178,6 +178,11 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Integer(n))
             }
+            Token::String(s) => {
+                let s = s.clone();
+                self.advance();
+                Ok(Expr::String(s))
+            }
             Token::Identifier(name) => {
                 let name = name.clone();
                 self.advance();

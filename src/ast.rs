@@ -3,6 +3,7 @@ use crate::lexer::Token;
 #[derive(Debug)]
 pub enum Expr {
     Integer(i64),
+    String(String),
     Identifier(String),
     Binary { left: Box<Expr>, operator: Token, right: Box<Expr> },
     Call { function: Box<Expr>, arguments: Vec<Expr> },

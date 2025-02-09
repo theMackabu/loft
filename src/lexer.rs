@@ -27,7 +27,7 @@ pub enum Token {
 
     // literals
     Identifier(String),
-    Integer(i64),
+    Integer(i64), // add i32, u32, etc
     String(String),
 
     EOF,
@@ -96,6 +96,38 @@ impl Lexer {
         number.parse().unwrap_or(0)
     }
 
+    fn read_string(&mut self) -> Result<String, &'static str> {
+        let mut string = String::new();
+        self.advance(); // Skip the opening quote
+
+        while let Some(c) = self.current_char {
+            match c {
+                '"' => {
+                    self.advance();
+                    return Ok(string);
+                }
+                '\\' => {
+                    self.advance();
+                    match self.current_char {
+                        Some('n') => string.push('\n'),
+                        Some('t') => string.push('\t'),
+                        Some('r') => string.push('\r'),
+                        Some('"') => string.push('"'),
+                        Some('\\') => string.push('\\'),
+                        _ => return Err("Invalid escape sequence"),
+                    }
+                    self.advance();
+                }
+                _ => {
+                    string.push(c);
+                    self.advance();
+                }
+            }
+        }
+
+        Err("Unterminated string literal")
+    }
+
     pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
 
@@ -162,6 +194,10 @@ impl Lexer {
                         Token::Assign
                     }
                 }
+                '"' => match self.read_string() {
+                    Ok(s) => Token::String(s),
+                    Err(_) => Token::EOF, // implement better error handling
+                },
                 c if c.is_alphabetic() => {
                     let ident = self.read_identifier();
                     match ident.as_str() {

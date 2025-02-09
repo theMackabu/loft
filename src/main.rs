@@ -6,10 +6,11 @@ use lexer::Lexer;
 use parser::Parser;
 
 fn main() {
-    let input = "
+    let input = r#"
         let x: i32 = 42;
         let y = x + 10;
-    "
+        let z = "hello world";
+    "#
     .to_string();
 
     let lexer = Lexer::new(input);
