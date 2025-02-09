@@ -12,6 +12,9 @@ pub enum Token {
     True,   // true
     False,  // false
     Type,   // type
+    Pub,    // pub
+    Async,  // async
+    Await,  // await
 
     // symbols
     Dot,        // .
@@ -461,6 +464,9 @@ impl Lexer {
                         "true" => Token::True,
                         "false" => Token::False,
                         "type" => Token::Type,
+                        "pub" => Token::Pub,
+                        "async" => Token::Async,
+                        "await" => Token::Await,
                         _ => Token::Identifier(ident),
                     }
                 }

@@ -6,6 +6,7 @@ pub enum Expr {
     Boolean(bool),
     String(String),
     Identifier(String),
+    Await(Box<Expr>),
 
     Ok(Box<Expr>),
     Err(Box<Expr>),
@@ -114,7 +115,9 @@ pub enum Stmt {
 
     Function {
         name: String,
-        params: Vec<(String, String)>, // (name, type)
+        visibility: bool,
+        is_async: bool,
+        params: Vec<(String, String)>,
         return_type: Option<Type>,
         body: Vec<Stmt>,
     },

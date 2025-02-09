@@ -105,7 +105,7 @@ impl Parser {
         let result = match self.current.token {
             Token::Let => self.parse_let_statement(),
             Token::Const => self.parse_const_statement(),
-            Token::Fn => self.parse_function_statement(),
+            Token::Pub | Token::Async | Token::Fn => self.parse_function_statement(),
             Token::Return => self.parse_return_statement(),
             Token::Type => self.parse_type_alias(),
             Token::Enum => self.parse_enum_declaration(),
@@ -145,7 +145,21 @@ impl Parser {
     }
 
     fn parse_function_statement(&mut self) -> Result<Stmt, ParseError> {
-        self.advance(); // consume 'fn'
+        let visibility = if self.current.token == Token::Pub {
+            self.advance(); // consume 'pub'
+            true
+        } else {
+            false
+        };
+
+        let is_async = if self.current.token == Token::Async {
+            self.advance(); // consume 'async'
+            true
+        } else {
+            false
+        };
+
+        self.expect(Token::Fn)?; // consume 'fn'
 
         let name = match &self.current.token {
             Token::Identifier(name) => {
@@ -220,7 +234,14 @@ impl Parser {
 
         self.expect(Token::RightBrace)?;
 
-        Ok(Stmt::Function { name, params, return_type, body })
+        Ok(Stmt::Function {
+            name,
+            visibility,
+            is_async,
+            params,
+            return_type,
+            body,
+        })
     }
 
     fn parse_enum_declaration(&mut self) -> Result<Stmt, ParseError> {
@@ -641,8 +662,17 @@ impl Parser {
 
             Token::Dot => {
                 self.advance(); // consume .
-                let method = self.expect_identifier()?;
-                self.parse_member_access(left, method)
+
+                match self.current.token {
+                    Token::Await => {
+                        self.advance(); // consume 'await'
+                        Ok(Expr::Await(Box::new(left)))
+                    }
+                    _ => {
+                        let method = self.expect_identifier()?;
+                        self.parse_member_access(left, method)
+                    }
+                }
             }
 
             Token::Question => {
