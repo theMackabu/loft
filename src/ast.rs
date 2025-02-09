@@ -60,10 +60,23 @@ pub enum Type {
 }
 
 #[derive(Debug)]
+pub enum EnumVariant {
+    Simple(String),
+    Tuple(String, Vec<Type>),
+    Struct(String, Vec<(String, Type)>),
+}
+
+#[derive(Debug)]
 pub enum Stmt {
     Return(Option<Expr>),
     ExpressionStmt(Expr),
     ExpressionValue(Expr),
+
+    Enum {
+        name: String,
+        type_params: Vec<String>,
+        variants: Vec<EnumVariant>,
+    },
 
     TypeAlias {
         name: String,

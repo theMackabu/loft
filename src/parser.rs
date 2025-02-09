@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt, Type};
+use crate::ast::{EnumVariant, Expr, Stmt, Type};
 use crate::lexer::{Lexer, Location, Token, TokenInfo};
 
 const PRECEDENCE_LOWEST: i32 = 0;
@@ -89,6 +89,7 @@ impl Parser {
             Token::Fn => self.parse_function_statement(),
             Token::Return => self.parse_return_statement(),
             Token::Type => self.parse_type_alias(),
+            Token::Enum => self.parse_enum_declaration(),
 
             Token::If => {
                 let expr = self.parse_if_expression()?;
@@ -192,6 +193,93 @@ impl Parser {
         self.expect(Token::RightBrace)?;
 
         Ok(Stmt::Function { name, params, return_type, body })
+    }
+
+    fn parse_enum_declaration(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'enum'
+
+        let name = self.expect_identifier()?;
+
+        let type_params = if self.current.token == Token::LeftAngle {
+            self.advance();
+            let params = self.parse_type_params()?;
+            self.expect(Token::RightAngle)?;
+            params
+        } else {
+            Vec::new()
+        };
+
+        self.expect(Token::LeftBrace)?;
+
+        let mut variants = Vec::new();
+
+        while self.current.token != Token::RightBrace {
+            if !variants.is_empty() {
+                self.expect(Token::Comma)?;
+
+                if self.current.token == Token::RightBrace {
+                    break;
+                }
+            }
+
+            variants.push(self.parse_enum_variant()?);
+        }
+
+        self.expect(Token::RightBrace)?;
+
+        Ok(Stmt::Enum { name, type_params, variants })
+    }
+
+    fn parse_enum_variant(&mut self) -> Result<EnumVariant, ParseError> {
+        let variant_name = self.expect_identifier()?;
+
+        match self.current.token {
+            Token::Comma | Token::RightBrace => Ok(EnumVariant::Simple(variant_name)),
+
+            Token::LeftParen => {
+                self.advance();
+                let mut types = Vec::new();
+
+                while self.current.token != Token::RightParen {
+                    if !types.is_empty() {
+                        self.expect(Token::Comma)?;
+                    }
+                    types.push(self.parse_type()?);
+                }
+
+                self.expect(Token::RightParen)?;
+                Ok(EnumVariant::Tuple(variant_name, types))
+            }
+
+            Token::LeftBrace => {
+                self.advance();
+                let mut fields = Vec::new();
+
+                while self.current.token != Token::RightBrace {
+                    if !fields.is_empty() {
+                        self.expect(Token::Comma)?;
+
+                        if self.current.token == Token::RightBrace {
+                            break;
+                        }
+                    }
+
+                    let field_name = self.expect_identifier()?;
+                    self.expect(Token::Colon)?;
+                    let field_type = self.parse_type()?;
+
+                    fields.push((field_name, field_type));
+                }
+
+                self.expect(Token::RightBrace)?;
+                Ok(EnumVariant::Struct(variant_name, fields))
+            }
+
+            _ => Err(ParseError::UnexpectedToken {
+                found: self.current.clone(),
+                expected: Some("',', '(', or '{'".to_string()),
+            }),
+        }
     }
 
     fn parse_type_alias(&mut self) -> Result<Stmt, ParseError> {
