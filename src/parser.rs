@@ -134,6 +134,19 @@ impl Parser {
             false
         };
 
+        let label = if let Token::Lifetime(l) = &self.current.token {
+            if self.peek.token == Token::Colon {
+                let lab = l.clone();
+                self.advance(); // consume lifetime
+                self.advance(); // consume ':'
+                Some(lab)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let result = match self.current.token {
             Token::Break => self.parse_break_statement(),
             Token::Return => self.parse_return_statement(),
@@ -149,6 +162,10 @@ impl Parser {
             Token::Struct => self.parse_struct_declaration(visibility, attributes),
             Token::Fn => self.parse_function_statement(visibility, attributes),
             Token::MacroRules => self.parse_macro_definition(attributes, visibility),
+
+            Token::Loop => Ok(Stmt::ExpressionStmt(self.parse_loop_expression(label)?)),
+            Token::While => Ok(Stmt::ExpressionStmt(self.parse_while_expression(label)?)),
+            Token::For => Ok(Stmt::ExpressionStmt(self.parse_for_expression(label)?)),
 
             Token::Const => self.parse_const_static_statement(DeclarationKind::Const, visibility, attributes),
             Token::Static => self.parse_const_static_statement(DeclarationKind::Static, visibility, attributes),
@@ -1540,6 +1557,49 @@ impl Parser {
         };
 
         Ok(Attribute { is_inner, name, tokens })
+    }
+
+    fn parse_loop_expression(&mut self, label: Option<String>) -> Result<Expr, ParseError> {
+        self.advance(); // consume 'loop'
+        self.expect(Token::LeftBrace)?;
+        let body = self.parse_block_expression()?;
+        Ok(Expr::Loop { label, body: Box::new(body) })
+    }
+
+    fn parse_while_expression(&mut self, label: Option<String>) -> Result<Expr, ParseError> {
+        self.advance(); // consume 'while'
+        let condition = if self.current.token == Token::Let {
+            self.advance(); // consume 'let'
+            let pattern = self.parse_pattern()?;
+            self.expect(Token::Assign)?;
+            let expr = self.parse_expression(0)?;
+            WhileCondition::Let(pattern, Box::new(expr))
+        } else {
+            let expr = self.parse_expression(0)?;
+            WhileCondition::Expression(Box::new(expr))
+        };
+        self.expect(Token::LeftBrace)?;
+        let body = self.parse_block_expression()?;
+        Ok(Expr::While {
+            label,
+            condition,
+            body: Box::new(body),
+        })
+    }
+
+    fn parse_for_expression(&mut self, label: Option<String>) -> Result<Expr, ParseError> {
+        self.advance(); // consume 'for'
+        let pattern = self.parse_pattern()?;
+        self.expect(Token::In)?;
+        let iterable = self.parse_expression(0)?;
+        self.expect(Token::LeftBrace)?;
+        let body = self.parse_block_expression()?;
+        Ok(Expr::For {
+            label,
+            pattern,
+            iterable: Box::new(iterable),
+            body: Box::new(body),
+        })
     }
 
     fn parse_macro_definition(&mut self, attributes: Vec<Attribute>, visibility: bool) -> Result<Stmt, ParseError> {

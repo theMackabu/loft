@@ -28,6 +28,10 @@ pub enum Token {
     Async,    // async
     Await,    // await
     Match,    // match
+    Loop,     // loop
+    While,    // while
+    For,      // for
+    In,       // in
 
     // project
     Use,         // use
@@ -680,6 +684,10 @@ impl Lexer {
                         "mod" => Token::Module,
                         "as" => Token::As,
                         "match" => Token::Match,
+                        "loop" => Token::Loop,
+                        "while" => Token::While,
+                        "for" => Token::For,
+                        "in" => Token::In,
                         "macro_rules" => Token::MacroRules,
                         _ => Token::Identifier(ident),
                     }

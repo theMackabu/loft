@@ -48,6 +48,12 @@ pub struct Attribute {
 }
 
 #[derive(Clone, Debug)]
+pub enum WhileCondition {
+    Expression(Box<Expr>),
+    Let(Pattern, Box<Expr>),
+}
+
+#[derive(Clone, Debug)]
 pub struct PathSegment {
     pub ident: String,
     pub generics: Vec<Type>,
@@ -213,6 +219,24 @@ pub enum Expr {
     StructInit {
         struct_name: String,
         fields: Vec<(String, Expr, bool)>,
+    },
+
+    Loop {
+        label: Option<String>,
+        body: Box<Expr>,
+    },
+
+    While {
+        label: Option<String>,
+        condition: WhileCondition,
+        body: Box<Expr>,
+    },
+
+    For {
+        label: Option<String>,
+        pattern: Pattern,
+        iterable: Box<Expr>,
+        body: Box<Expr>,
     },
 }
 
