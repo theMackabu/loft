@@ -264,12 +264,6 @@ impl Parser {
                 Ok(Expr::String(s))
             }
 
-            Token::Identifier(name) => {
-                let name = name.clone();
-                self.advance();
-                Ok(Expr::Identifier(name))
-            }
-
             Token::True => {
                 self.advance();
                 Ok(Expr::Boolean(true))
@@ -285,6 +279,40 @@ impl Parser {
                 let expr = self.parse_expression(0)?;
                 self.expect(Token::RightParen)?;
                 Ok(expr)
+            }
+
+            Token::Identifier(name) => {
+                let name = name.clone();
+                self.advance();
+
+                match self.current.token {
+                    Token::Assign => {
+                        self.advance(); // consume '='
+                        let value = Box::new(self.parse_expression(0)?);
+                        Ok(Expr::Assignment { target: name, value })
+                    }
+                    Token::LeftParen => {
+                        self.advance(); // consume (
+                        let mut arguments = Vec::new();
+
+                        //  arguments
+                        while self.current.token != Token::RightParen {
+                            if !arguments.is_empty() {
+                                self.expect(Token::Comma)?;
+                            }
+
+                            arguments.push(self.parse_expression(0)?);
+                        }
+
+                        self.expect(Token::RightParen)?;
+
+                        Ok(Expr::Call {
+                            function: Box::new(Expr::Identifier(name)),
+                            arguments,
+                        })
+                    }
+                    _ => Ok(Expr::Identifier(name)),
+                }
             }
 
             _ => {
@@ -377,6 +405,7 @@ impl Parser {
 
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {
+            Token::Assign => 0,
             Token::Plus | Token::Minus => 1,
             Token::Star | Token::Slash => 2,
             _ => 0,

@@ -7,6 +7,11 @@ pub enum Expr {
     String(String),
     Identifier(String),
 
+    Assignment {
+        target: String,
+        value: Box<Expr>,
+    },
+
     Binary {
         left: Box<Expr>,
         operator: Token,

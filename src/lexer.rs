@@ -1,36 +1,62 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // keywords
-    Let,
-    Fn,
-    Return,
-    If,
-    Else,
-    True,
-    False,
+    Let,    // let
+    Fn,     // fn
+    Return, // return
+    If,     // if
+    Else,   // else
+    True,   // true
+    False,  // false
 
     // symbols
-    LeftParen,
-    RightParen,
-    LeftBrace,
-    RightBrace,
-    Semicolon,
-    Colon,
-    Comma,
-    Arrow,
+    LeftParen,  //(
+    RightParen, //)
+    LeftBrace,  // {
+    RightBrace, // }
+    Semicolon,  // ;
+    Colon,      // :
+    Comma,      // ,
+    Arrow,      // ->
 
     // operators
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    Assign,
-    Equals,
+    Plus,   // +
+    Minus,  // -
+    Star,   // *
+    Slash,  // /
+    Assign, // =
+    Equals, // ==
+
+    // advanced operators
+    Not,           // !
+    NotEquals,     // !=
+    Rem,           // %
+    RemAssign,     // %=
+    BitAnd,        // &
+    BitAndAssign,  // &=
+    And,           // &&
+    StarEquals,    // *=
+    PlusEquals,    // +=
+    MinusEquals,   // -=
+    SlashEquals,   // /=
+    Shl,           // <<
+    ShlAssign,     // <<=
+    LessThan,      // <
+    LessEquals,    // <=
+    GreaterThan,   // >
+    GreaterEquals, // >=
+    Shr,           // >>
+    ShrAssign,     // >>=
+    BitXor,        // ^
+    BitXorAssign,  // ^=
+    BitOr,         // |
+    BitOrAssign,   // |=
+    Or,            // ||
 
     // literals
-    Identifier(String),
-    Integer(i64), // add i32, u32, etc
-    String(String),
+    Identifier(String), // ident
+    Integer(i64),       // add i32, u32, etc
+    String(String),     // ""
 
     EOF,
 }
@@ -170,52 +196,80 @@ impl Lexer {
                     self.advance();
                     Token::LeftParen
                 }
+
                 ')' => {
                     self.advance();
                     Token::RightParen
                 }
+
                 '{' => {
                     self.advance();
                     Token::LeftBrace
                 }
+
                 '}' => {
                     self.advance();
                     Token::RightBrace
                 }
+
                 ';' => {
                     self.advance();
                     Token::Semicolon
                 }
+
                 ':' => {
                     self.advance();
                     Token::Colon
                 }
+
                 ',' => {
                     self.advance();
                     Token::Comma
                 }
+
                 '+' => {
                     self.advance();
-                    Token::Plus
-                }
-                '-' => {
-                    if self.peek() == Some('>') {
+                    if self.peek() == Some('=') {
                         self.advance();
+                        Token::PlusEquals
+                    } else {
+                        Token::Plus
+                    }
+                }
+
+                '-' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::MinusEquals
+                    } else if self.peek() == Some('>') {
                         self.advance();
                         Token::Arrow
                     } else {
-                        self.advance();
                         Token::Minus
                     }
                 }
+
                 '*' => {
                     self.advance();
-                    Token::Star
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::StarEquals
+                    } else {
+                        Token::Star
+                    }
                 }
+
                 '/' => {
                     self.advance();
-                    Token::Slash
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::SlashEquals
+                    } else {
+                        Token::Slash
+                    }
                 }
+
                 '=' => {
                     if self.peek() == Some('=') {
                         self.advance();
@@ -226,10 +280,112 @@ impl Lexer {
                         Token::Assign
                     }
                 }
+
                 '"' => match self.read_string() {
                     Ok(s) => Token::String(s),
                     Err(_) => Token::EOF, // implement better error handling
                 },
+
+                '!' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::NotEquals
+                    } else {
+                        Token::Not
+                    }
+                }
+
+                '%' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::RemAssign
+                    } else {
+                        Token::Rem
+                    }
+                }
+
+                '&' => {
+                    self.advance();
+                    match self.peek() {
+                        Some('&') => {
+                            self.advance();
+                            Token::And
+                        }
+                        Some('=') => {
+                            self.advance();
+                            Token::BitAndAssign
+                        }
+                        _ => Token::BitAnd,
+                    }
+                }
+
+                '^' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::BitXorAssign
+                    } else {
+                        Token::BitXor
+                    }
+                }
+
+                '<' => {
+                    self.advance();
+                    match self.peek() {
+                        Some('<') => {
+                            self.advance();
+                            if self.peek() == Some('=') {
+                                self.advance();
+                                Token::ShlAssign
+                            } else {
+                                Token::Shl
+                            }
+                        }
+                        Some('=') => {
+                            self.advance();
+                            Token::LessEquals
+                        }
+                        _ => Token::LessThan,
+                    }
+                }
+
+                '>' => {
+                    self.advance();
+                    match self.peek() {
+                        Some('>') => {
+                            self.advance();
+                            if self.peek() == Some('=') {
+                                self.advance();
+                                Token::ShrAssign
+                            } else {
+                                Token::Shr
+                            }
+                        }
+                        Some('=') => {
+                            self.advance();
+                            Token::GreaterEquals
+                        }
+                        _ => Token::GreaterThan,
+                    }
+                }
+
+                '|' => {
+                    self.advance();
+                    match self.peek() {
+                        Some('|') => {
+                            self.advance();
+                            Token::Or
+                        }
+                        Some('=') => {
+                            self.advance();
+                            Token::BitOrAssign
+                        }
+                        _ => Token::BitOr,
+                    }
+                }
+
                 c if c.is_alphabetic() => {
                     let ident = self.read_identifier();
                     match ident.as_str() {
