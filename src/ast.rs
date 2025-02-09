@@ -1,4 +1,4 @@
-use crate::lexer::Token;
+use crate::lexer::{Token, TokenInfo};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum NumericType {
@@ -14,6 +14,13 @@ pub enum NumericType {
     U128,
     F32,
     F64,
+}
+
+#[derive(Clone, Debug)]
+pub enum MacroDelimiter {
+    Paren,
+    Bracket,
+    Brace,
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +105,12 @@ pub enum Expr {
         object: Box<Expr>,
         member: String,
         value: Box<Expr>,
+    },
+
+    MacroInvocation {
+        name: String,
+        delimiter: MacroDelimiter,
+        tokens: Vec<TokenInfo>,
     },
 
     Assignment {

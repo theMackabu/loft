@@ -1006,6 +1006,10 @@ impl Parser {
     }
 
     fn parse_identifier_expression(&mut self, name: String) -> Result<Expr, ParseError> {
+        if self.current.token == Token::Not {
+            return self.parse_macro_invocation(name);
+        }
+
         match self.current.token {
             Token::LeftAngle | Token::DoubleColon => {
                 let mut segments = vec![name];
@@ -1193,6 +1197,76 @@ impl Parser {
 
             _ => Ok(left),
         }
+    }
+
+    fn parse_macro_invocation(&mut self, macro_name: String) -> Result<Expr, ParseError> {
+        self.advance(); // consume '!'
+
+        let delimiter = match self.current.token {
+            Token::LeftParen => MacroDelimiter::Paren,
+            Token::LeftBracket => MacroDelimiter::Bracket,
+            Token::LeftBrace => MacroDelimiter::Brace,
+            _ => {
+                return Err(ParseError::UnexpectedToken {
+                    found: self.current.clone(),
+                    expected: Some("an opening delimiter ('(', '[', or '{')".to_string()),
+                });
+            }
+        };
+
+        let tokens = self.parse_macro_delimited_tokens(delimiter.clone())?;
+
+        Ok(Expr::MacroInvocation { name: macro_name, delimiter, tokens })
+    }
+
+    fn parse_macro_delimited_tokens(&mut self, delimiter: MacroDelimiter) -> Result<Vec<TokenInfo>, ParseError> {
+        let (open_token, close_token) = match delimiter {
+            MacroDelimiter::Paren => (Token::LeftParen, Token::RightParen),
+            MacroDelimiter::Bracket => (Token::LeftBracket, Token::RightBracket),
+            MacroDelimiter::Brace => (Token::LeftBrace, Token::RightBrace),
+        };
+
+        if self.current.token != open_token {
+            return Err(ParseError::UnexpectedToken {
+                found: self.current.clone(),
+                expected: Some(format!("expected opening delimiter {:?}", open_token)),
+            });
+        }
+        self.advance();
+
+        let mut tokens = Vec::new();
+        let mut nesting = 1;
+
+        while nesting > 0 {
+            if self.current.token == Token::EOF {
+                return Err(ParseError::Custom {
+                    message: "Unterminated macro invocation".to_string(),
+                    location: self.current.location.clone(),
+                });
+            }
+
+            if self.current.token == open_token {
+                nesting += 1;
+            } else if self.current.token == close_token {
+                nesting -= 1;
+                if nesting == 0 {
+                    self.advance();
+                    break;
+                }
+            }
+
+            tokens.push(self.current.clone());
+            self.advance();
+        }
+
+        if nesting != 0 {
+            return Err(ParseError::Custom {
+                message: "Unbalanced macro delimiters".to_string(),
+                location: self.current.location.clone(),
+            });
+        }
+
+        Ok(tokens)
     }
 
     fn parse_struct_init_fields(&mut self) -> Result<Vec<(String, Expr, bool)>, ParseError> {
