@@ -116,12 +116,54 @@ impl Lexer {
 
     fn peek(&self) -> Option<char> { self.input.get(self.position + 1).copied() }
 
-    fn skip_whitespace(&mut self) {
+    fn skip_whitespace_and_comments(&mut self) {
         while let Some(c) = self.current_char {
-            if !c.is_whitespace() {
-                break;
+            match c {
+                c if c.is_whitespace() => {
+                    self.advance();
+                }
+
+                '/' if self.peek() == Some('/') => {
+                    while let Some(c) = self.current_char {
+                        if c == '\n' {
+                            self.advance();
+                            break;
+                        }
+                        self.advance();
+                    }
+                }
+
+                '/' if self.peek() == Some('*') => {
+                    self.advance(); // consume '/'
+                    self.advance(); // consume '*'
+
+                    let mut depth = 1;
+
+                    while depth > 0 {
+                        match self.current_char {
+                            None => break,
+
+                            Some('*') if self.peek() == Some('/') => {
+                                self.advance(); // consume '*'
+                                self.advance(); // consume '/'
+                                depth -= 1;
+                            }
+
+                            Some('/') if self.peek() == Some('*') => {
+                                self.advance(); // consume '/'
+                                self.advance(); // consume '*'
+                                depth += 1;
+                            }
+
+                            Some(_) => {
+                                self.advance();
+                            }
+                        }
+                    }
+                }
+
+                _ => break,
             }
-            self.advance();
         }
     }
 
@@ -188,7 +230,7 @@ impl Lexer {
     }
 
     pub fn next_token(&mut self) -> TokenInfo {
-        self.skip_whitespace();
+        self.skip_whitespace_and_comments();
 
         let location = Location { line: self.line, column: self.column };
 

@@ -448,6 +448,22 @@ impl Parser {
 
     fn parse_infix(&mut self, left: Expr) -> Result<Expr, ParseError> {
         match &self.current.token {
+            Token::LeftParen => {
+                self.advance(); // consume (
+                let mut arguments = Vec::new();
+
+                while self.current.token != Token::RightParen {
+                    if !arguments.is_empty() {
+                        self.expect(Token::Comma)?;
+                    }
+                    arguments.push(self.parse_expression(0)?);
+                }
+
+                self.expect(Token::RightParen)?;
+
+                Ok(Expr::Call { function: Box::new(left), arguments })
+            }
+
             Token::Plus
             | Token::Minus
             | Token::Star
@@ -536,6 +552,7 @@ impl Parser {
 
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {
+            Token::LeftParen => PRECEDENCE_CALL,
             Token::Equals | Token::NotEquals => PRECEDENCE_EQUALS,
             Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => PRECEDENCE_COMPARE,
             Token::Or => PRECEDENCE_OR,
