@@ -48,6 +48,7 @@ pub enum Type {
     Unit,
     Path(Path),
     Simple(String),
+    Tuple(Vec<Type>),
     TypeParam(String),
 
     Slice { element_type: Box<Type> },
@@ -78,6 +79,7 @@ pub enum Expr {
     Boolean(bool),
     String(String),
     Array(Vec<Expr>),
+    Tuple(Vec<Expr>),
     Identifier(String),
     Await(Box<Expr>),
 

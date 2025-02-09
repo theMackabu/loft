@@ -655,15 +655,34 @@ impl Parser {
             }
 
             Token::LeftParen => {
-                self.advance();
+                self.advance(); // consume '('
+
                 if self.current.token == Token::RightParen {
-                    self.advance();
+                    self.advance(); // consume ')'
                     return Ok(Type::Unit);
                 }
-                return Err(ParseError::Custom {
-                    message: "Unexpected token after '('".to_string(),
-                    location: self.current.location.clone(),
-                });
+
+                let mut types = Vec::new();
+
+                while self.current.token != Token::RightParen {
+                    if !types.is_empty() {
+                        self.expect(Token::Comma)?;
+
+                        if self.current.token == Token::RightParen {
+                            break;
+                        }
+                    }
+
+                    types.push(self.parse_type()?);
+                }
+
+                self.expect(Token::RightParen)?;
+
+                if types.len() == 1 && self.current.token != Token::Comma {
+                    Ok(types.remove(0))
+                } else {
+                    Ok(Type::Tuple(types))
+                }
             }
 
             Token::Fn => {
@@ -996,10 +1015,34 @@ impl Parser {
             }
 
             Token::LeftParen => {
-                self.advance();
-                let expr = self.parse_expression(0)?;
+                self.advance(); // consume '('
+
+                if self.current.token == Token::RightParen {
+                    self.advance();
+                    return Ok(Expr::Unit);
+                }
+
+                let mut elements = Vec::new();
+
+                while self.current.token != Token::RightParen {
+                    if !elements.is_empty() {
+                        self.expect(Token::Comma)?;
+
+                        if self.current.token == Token::RightParen {
+                            break;
+                        }
+                    }
+
+                    elements.push(self.parse_expression(0)?);
+                }
+
                 self.expect(Token::RightParen)?;
-                Ok(expr)
+
+                if elements.len() == 1 && self.current.token != Token::Comma {
+                    Ok(elements.remove(0))
+                } else {
+                    Ok(Expr::Tuple(elements))
+                }
             }
 
             Token::Identifier(name) => {
