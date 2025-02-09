@@ -1062,12 +1062,38 @@ impl Parser {
     }
 
     fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
+        if let Token::Lifetime(label) = &self.current.token {
+            if self.peek.token == Token::Colon {
+                let label_str = label.clone();
+                self.advance(); // consume lifetime
+                self.advance(); // consume :
+
+                match self.current.token {
+                    Token::Loop => return self.parse_loop_expression(Some(label_str)),
+                    Token::While => return self.parse_while_expression(Some(label_str)),
+                    Token::For => return self.parse_for_expression(Some(label_str)),
+                    _ => {
+                        return Err(ParseError::UnexpectedToken {
+                            found: self.current.clone(),
+                            expected: Some("loop, while or for after label".to_string()),
+                        });
+                    }
+                }
+            }
+        }
+
         match &self.current.token {
             Token::Match => self.parse_match_expression(),
 
             Token::Async => self.parse_async_prefix(),
 
             Token::If => self.parse_if_expression(),
+
+            Token::Loop => return self.parse_loop_expression(None),
+
+            Token::While => return self.parse_while_expression(None),
+
+            Token::For => return self.parse_for_expression(None),
 
             Token::Minus | Token::Not => {
                 let operator = self.current.token.clone();
