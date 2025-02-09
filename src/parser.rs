@@ -270,6 +270,16 @@ impl Parser {
                 Ok(Expr::Identifier(name))
             }
 
+            Token::True => {
+                self.advance();
+                Ok(Expr::Boolean(true))
+            }
+
+            Token::False => {
+                self.advance();
+                Ok(Expr::Boolean(false))
+            }
+
             Token::LeftParen => {
                 self.advance();
                 let expr = self.parse_expression(0)?;
@@ -330,15 +340,36 @@ impl Parser {
     // { block }
     fn parse_block_expression(&mut self) -> Result<Expr, ParseError> {
         let mut statements = Vec::new();
+        let mut returns = false;
 
         while self.current.token != Token::RightBrace {
-            statements.push(self.parse_statement()?);
+            let stmt = self.parse_statement()?;
+
+            if matches!(stmt, Stmt::Return(_)) {
+                returns = true;
+            }
+
+            statements.push(stmt);
+
+            if returns {
+                // warn about unreachable code
+                break;
+            }
         }
 
-        let value = if let Some(Stmt::ExpressionValue(expr)) = statements.pop() { Some(Box::new(expr)) } else { None };
+        let value = if !returns && !statements.is_empty() {
+            if let Some(Stmt::ExpressionValue(expr)) = statements.pop() {
+                Some(Box::new(expr))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         self.expect(Token::RightBrace)?;
-        Ok(Expr::Block { statements, value })
+
+        Ok(Expr::Block { statements, value, returns })
     }
 
     // use for later

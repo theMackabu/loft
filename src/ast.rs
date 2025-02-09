@@ -3,6 +3,7 @@ use crate::lexer::Token;
 #[derive(Debug)]
 pub enum Expr {
     Integer(i64),
+    Boolean(bool),
     String(String),
     Identifier(String),
 
@@ -26,6 +27,7 @@ pub enum Expr {
     Block {
         statements: Vec<Stmt>,
         value: Option<Box<Expr>>,
+        returns: bool,
     },
 }
 

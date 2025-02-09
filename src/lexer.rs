@@ -6,6 +6,8 @@ pub enum Token {
     Return,
     If,
     Else,
+    True,
+    False,
 
     // symbols
     LeftParen,
@@ -236,6 +238,8 @@ impl Lexer {
                         "return" => Token::Return,
                         "if" => Token::If,
                         "else" => Token::Else,
+                        "true" => Token::True,
+                        "false" => Token::False,
                         _ => Token::Identifier(ident),
                     }
                 }
