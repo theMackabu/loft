@@ -343,11 +343,41 @@ impl Lexer {
 
                 '!' => {
                     self.advance();
-                    if self.peek() == Some('=') {
+                    if self.current_char == Some('=') {
                         self.advance();
                         Token::NotEquals
                     } else {
                         Token::Not
+                    }
+                }
+
+                '&' => {
+                    self.advance();
+                    match self.current_char {
+                        Some('&') => {
+                            self.advance();
+                            Token::And
+                        }
+                        Some('=') => {
+                            self.advance();
+                            Token::BitAndAssign
+                        }
+                        _ => Token::BitAnd,
+                    }
+                }
+
+                '|' => {
+                    self.advance();
+                    match self.current_char {
+                        Some('|') => {
+                            self.advance();
+                            Token::Or
+                        }
+                        Some('=') => {
+                            self.advance();
+                            Token::BitOrAssign
+                        }
+                        _ => Token::BitOr,
                     }
                 }
 
@@ -358,21 +388,6 @@ impl Lexer {
                         Token::RemAssign
                     } else {
                         Token::Rem
-                    }
-                }
-
-                '&' => {
-                    self.advance();
-                    match self.peek() {
-                        Some('&') => {
-                            self.advance();
-                            Token::And
-                        }
-                        Some('=') => {
-                            self.advance();
-                            Token::BitAndAssign
-                        }
-                        _ => Token::BitAnd,
                     }
                 }
 
@@ -423,21 +438,6 @@ impl Lexer {
                             Token::GreaterEquals
                         }
                         _ => Token::RightAngle,
-                    }
-                }
-
-                '|' => {
-                    self.advance();
-                    match self.peek() {
-                        Some('|') => {
-                            self.advance();
-                            Token::Or
-                        }
-                        Some('=') => {
-                            self.advance();
-                            Token::BitOrAssign
-                        }
-                        _ => Token::BitOr,
                     }
                 }
 

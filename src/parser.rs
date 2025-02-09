@@ -655,7 +655,11 @@ impl Parser {
             | Token::LessEquals
             | Token::GreaterEquals
             | Token::And
-            | Token::Or => {
+            | Token::Or
+            | Token::BitAnd
+            | Token::BitOr
+            | Token::BitXor
+            | Token::Rem => {
                 let operator = self.current.token.clone();
                 let precedence = self.get_precedence(&operator);
                 self.advance();
@@ -777,10 +781,11 @@ impl Parser {
             Token::LeftParen => PRECEDENCE_CALL,
             Token::Equals | Token::NotEquals => PRECEDENCE_EQUALS,
             Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => PRECEDENCE_COMPARE,
-            Token::Or => PRECEDENCE_OR,
-            Token::And => PRECEDENCE_AND,
+            Token::Or | Token::BitOr => PRECEDENCE_OR,
+            Token::And | Token::BitAnd => PRECEDENCE_AND,
             Token::Plus | Token::Minus => PRECEDENCE_SUM,
-            Token::Star | Token::Slash => PRECEDENCE_PRODUCT,
+            Token::Star | Token::Slash | Token::Rem => PRECEDENCE_PRODUCT,
+            Token::BitXor => PRECEDENCE_OR,
             _ => PRECEDENCE_LOWEST,
         }
     }
