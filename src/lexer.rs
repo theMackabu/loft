@@ -33,6 +33,7 @@ pub enum Token {
     EOF,
 }
 
+#[derive(Clone)]
 pub struct Lexer {
     input: Vec<char>,
     position: usize,

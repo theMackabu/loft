@@ -46,6 +46,7 @@ impl Parser {
             Token::Let => self.parse_let_statement(),
             Token::Fn => self.parse_function_statement(),
             Token::Return => self.parse_return_statement(),
+
             _ => {
                 let expr = self.parse_expression(0)?;
                 self.expect(Token::Semicolon)?;
@@ -173,16 +174,20 @@ impl Parser {
 
     fn parse_expression(&mut self, precedence: i32) -> Result<Expr, ParseError> {
         let mut left = match &self.current_token {
+            Token::If => self.parse_if_expression(),
+
             Token::Integer(n) => {
                 let n = *n;
                 self.advance();
                 Ok(Expr::Integer(n))
             }
+
             Token::String(s) => {
                 let s = s.clone();
                 self.advance();
                 Ok(Expr::String(s))
             }
+
             Token::Identifier(name) => {
                 let name = name.clone();
                 self.advance();
@@ -209,6 +214,50 @@ impl Parser {
 
         Ok(left)
     }
+
+    fn parse_if_expression(&mut self) -> Result<Expr, ParseError> {
+        self.advance();
+
+        let condition = Box::new(self.parse_expression(0)?);
+
+        self.expect(Token::LeftBrace)?;
+        let then_branch = Box::new(self.parse_block_expression()?);
+
+        let else_branch = if self.current_token == Token::Else {
+            self.advance();
+
+            if self.current_token == Token::If {
+                Some(Box::new(self.parse_if_expression()?))
+            } else {
+                self.expect(Token::LeftBrace)?;
+                Some(Box::new(self.parse_block_expression()?))
+            }
+        } else {
+            None
+        };
+
+        Ok(Expr::If { condition, then_branch, else_branch })
+    }
+
+    fn parse_block_expression(&mut self) -> Result<Expr, ParseError> {
+        let mut statements = Vec::new();
+        let mut value = None;
+
+        while self.current_token != Token::RightBrace {
+            if self.peek_token() == Token::RightBrace && self.current_token != Token::Semicolon {
+                value = Some(Box::new(self.parse_expression(0)?));
+                break;
+            }
+
+            statements.push(self.parse_statement()?);
+        }
+
+        self.expect(Token::RightBrace)?;
+
+        Ok(Expr::Block { statements, value })
+    }
+
+    fn peek_token(&self) -> Token { self.lexer.to_owned().next_token() }
 
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {
