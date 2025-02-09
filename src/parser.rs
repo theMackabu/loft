@@ -1663,25 +1663,53 @@ impl Parser {
     fn parse_if_expression(&mut self) -> Result<Expr, ParseError> {
         self.advance();
 
-        let condition = Box::new(self.parse_expression(0)?);
-
-        self.expect(Token::LeftBrace)?;
-        let then_branch = Box::new(self.parse_block_expression()?);
-
-        let else_branch = if self.current.token == Token::Else {
+        if self.current.token == Token::Let {
             self.advance();
+            let pattern = self.parse_pattern()?;
 
-            if self.current.token == Token::If {
-                Some(Box::new(self.parse_if_expression()?))
+            self.expect(Token::Assign)?;
+            let value = Box::new(self.parse_expression(0)?);
+
+            self.expect(Token::LeftBrace)?;
+            let then_branch = Box::new(self.parse_block_expression()?);
+
+            let else_branch = if self.current.token == Token::Else {
+                self.advance();
+                if self.current.token == Token::If {
+                    Some(Box::new(self.parse_if_expression()?))
+                } else {
+                    self.expect(Token::LeftBrace)?;
+                    Some(Box::new(self.parse_block_expression()?))
+                }
             } else {
-                self.expect(Token::LeftBrace)?;
-                Some(Box::new(self.parse_block_expression()?))
-            }
-        } else {
-            None
-        };
+                None
+            };
 
-        Ok(Expr::If { condition, then_branch, else_branch })
+            return Ok(Expr::IfLet {
+                pattern,
+                value,
+                then_branch,
+                else_branch,
+            });
+        } else {
+            let condition = Box::new(self.parse_expression(0)?);
+            self.expect(Token::LeftBrace)?;
+            let then_branch = Box::new(self.parse_block_expression()?);
+
+            let else_branch = if self.current.token == Token::Else {
+                self.advance();
+                if self.current.token == Token::If {
+                    Some(Box::new(self.parse_if_expression()?))
+                } else {
+                    self.expect(Token::LeftBrace)?;
+                    Some(Box::new(self.parse_block_expression()?))
+                }
+            } else {
+                None
+            };
+
+            Ok(Expr::If { condition, then_branch, else_branch })
+        }
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
@@ -1797,14 +1825,14 @@ impl Parser {
                 let n = *n;
                 let t = t.clone();
                 self.advance();
-                Ok(Pattern::Literal(Expr::Integer(n, t)))
+                Ok(Pattern::Literal(Box::new(Expr::Integer(n, t))))
             }
 
             Token::Float(n, t) => {
                 let n = *n;
                 let t = t.clone();
                 self.advance();
-                Ok(Pattern::Literal(Expr::Float(n, t)))
+                Ok(Pattern::Literal(Box::new(Expr::Float(n, t))))
             }
 
             Token::Minus => {
@@ -1814,13 +1842,13 @@ impl Parser {
                         let n = -n;
                         let t = t.clone();
                         self.advance();
-                        Ok(Pattern::Literal(Expr::Integer(n, t)))
+                        Ok(Pattern::Literal(Box::new(Expr::Integer(n, t))))
                     }
                     Token::Float(n, t) => {
                         let n = -n;
                         let t = t.clone();
                         self.advance();
-                        Ok(Pattern::Literal(Expr::Float(n, t)))
+                        Ok(Pattern::Literal(Box::new(Expr::Float(n, t))))
                     }
                     _ => Err(ParseError::ExpectedExpression {
                         location: self.current.location.clone(),
@@ -1831,17 +1859,17 @@ impl Parser {
             Token::String(s) => {
                 let s = s.clone();
                 self.advance();
-                Ok(Pattern::Literal(Expr::String(s)))
+                Ok(Pattern::Literal(Box::new(Expr::String(s))))
             }
 
             Token::True => {
                 self.advance();
-                Ok(Pattern::Literal(Expr::Boolean(true)))
+                Ok(Pattern::Literal(Box::new(Expr::Boolean(true))))
             }
 
             Token::False => {
                 self.advance();
-                Ok(Pattern::Literal(Expr::Boolean(false)))
+                Ok(Pattern::Literal(Box::new(Expr::Boolean(false))))
             }
 
             Token::BitOr => {

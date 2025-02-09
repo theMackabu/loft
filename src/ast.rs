@@ -23,9 +23,9 @@ pub enum Pattern {
     Identifier { name: String, mutable: bool },
     Reference { mutable: bool, pattern: Box<Pattern> },
 
-    Path(Path),
-    Literal(Expr),
     Wildcard,
+    Path(Path),
+    Literal(Box<Expr>),
     Or(Vec<Pattern>),
     Tuple(Vec<Pattern>),
 
@@ -192,6 +192,13 @@ pub enum Expr {
 
     If {
         condition: Box<Expr>,
+        then_branch: Box<Expr>,
+        else_branch: Option<Box<Expr>>,
+    },
+
+    IfLet {
+        pattern: Pattern,
+        value: Box<Expr>,
         then_branch: Box<Expr>,
         else_branch: Option<Box<Expr>>,
     },
