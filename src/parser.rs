@@ -1117,6 +1117,7 @@ impl Parser {
             Token::BitXor => PRECEDENCE_OR,
             Token::Not => PRECEDENCE_PREFIX,
             Token::LeftBracket => PRECEDENCE_INDEX,
+            Token::As => PRECEDENCE_CALL,
             _ => PRECEDENCE_LOWEST,
         }
     }
