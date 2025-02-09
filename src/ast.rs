@@ -31,6 +31,7 @@ pub enum Type {
     Slice { element_type: Box<Type> },
     Array { element_type: Box<Type>, size: usize },
     Generic { path: Path, type_params: Vec<Type> },
+    Function { params: Vec<Type>, return_type: Box<Type> },
 }
 
 #[derive(Debug)]
@@ -188,6 +189,7 @@ pub enum Stmt {
         name: String,
         visibility: bool,
         is_async: bool,
+        type_params: Vec<String>,
         params: Vec<(String, bool, Type)>,
         return_type: Option<Type>,
         body: Vec<Stmt>,

@@ -297,6 +297,28 @@ impl Parser {
 
         let name = self.expect_identifier()?;
 
+        // Parse generic type parameters
+        let type_params = if self.current.token == Token::LeftAngle {
+            self.advance(); // consume '<'
+            let mut params = Vec::new();
+
+            while self.current.token != Token::RightAngle {
+                if !params.is_empty() {
+                    self.expect(Token::Comma)?;
+
+                    if self.current.token == Token::RightAngle {
+                        break;
+                    }
+                }
+                params.push(self.expect_identifier()?);
+            }
+
+            self.expect(Token::RightAngle)?;
+            params
+        } else {
+            Vec::new()
+        };
+
         self.expect(Token::LeftParen)?;
 
         let mut params = Vec::new();
@@ -345,6 +367,7 @@ impl Parser {
             name,
             visibility,
             is_async,
+            type_params,
             params,
             return_type,
             body,
@@ -477,6 +500,29 @@ impl Parser {
                     message: "Unexpected token after '('".to_string(),
                     location: self.current.location.clone(),
                 });
+            }
+
+            Token::Fn => {
+                self.advance(); // consume 'fn'
+                self.expect(Token::LeftParen)?;
+
+                let mut params = Vec::new();
+                while self.current.token != Token::RightParen {
+                    if !params.is_empty() {
+                        self.expect(Token::Comma)?;
+
+                        if self.current.token == Token::RightParen {
+                            break;
+                        }
+                    }
+                    params.push(self.parse_type()?);
+                }
+
+                self.expect(Token::RightParen)?;
+                self.expect(Token::Arrow)?;
+                let return_type = Box::new(self.parse_type()?);
+
+                Ok(Type::Function { params, return_type })
             }
 
             Token::Identifier(_) => {
