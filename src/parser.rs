@@ -79,8 +79,20 @@ impl Parser {
 
             _ => {
                 let expr = self.parse_expression(0)?;
-                self.expect(Token::Semicolon)?;
-                Ok(Stmt::Expression(expr))
+
+                match self.current.token {
+                    Token::RightBrace => Ok(Stmt::ExpressionValue(expr)),
+
+                    Token::Semicolon => {
+                        self.advance();
+                        Ok(Stmt::ExpressionStmt(expr))
+                    }
+
+                    _ => Err(ParseError::UnexpectedToken {
+                        found: self.current.clone(),
+                        expected: Some("';' or '}'".to_string()),
+                    }),
+                }
             }
         }
     }
@@ -313,22 +325,18 @@ impl Parser {
     // { block }
     fn parse_block_expression(&mut self) -> Result<Expr, ParseError> {
         let mut statements = Vec::new();
-        let mut value = None;
 
         while self.current.token != Token::RightBrace {
-            if self.peek_token() == Token::RightBrace && self.current.token != Token::Semicolon {
-                value = Some(Box::new(self.parse_expression(0)?));
-                break;
-            }
-
             statements.push(self.parse_statement()?);
         }
 
-        self.expect(Token::RightBrace)?;
+        let value = if let Some(Stmt::ExpressionValue(expr)) = statements.pop() { Some(Box::new(expr)) } else { None };
 
+        self.expect(Token::RightBrace)?;
         Ok(Expr::Block { statements, value })
     }
 
+    // use for later
     fn peek_token(&self) -> Token { self.lexer.to_owned().next_token().token }
 
     fn get_precedence(&self, token: &Token) -> i32 {

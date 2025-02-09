@@ -32,7 +32,8 @@ pub enum Expr {
 #[derive(Debug)]
 pub enum Stmt {
     Return(Option<Expr>),
-    Expression(Expr),
+    ExpressionStmt(Expr),
+    ExpressionValue(Expr),
 
     Let {
         name: String,
