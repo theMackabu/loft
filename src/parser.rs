@@ -432,34 +432,62 @@ impl Parser {
         Ok((pattern, Some(param_type)))
     }
 
+    fn parse_generic_arguments(&mut self) -> Result<Vec<Type>, ParseError> {
+        self.expect(Token::LeftAngle)?;
+        let mut generics = Vec::new();
+        while self.current.token != Token::RightAngle {
+            if !generics.is_empty() {
+                self.expect(Token::Comma)?;
+            }
+            generics.push(self.parse_type()?);
+        }
+        self.expect(Token::RightAngle)?;
+        Ok(generics)
+    }
+
+    fn parse_path_segment(&mut self) -> Result<PathSegment, ParseError> {
+        let ident = self.expect_identifier()?;
+        let generics = if self.current.token == Token::LeftAngle { self.parse_generic_arguments()? } else { Vec::new() };
+
+        Ok(PathSegment { ident, generics })
+    }
+
+    fn parse_path_starting_with(&mut self, first: String) -> Result<Path, ParseError> {
+        let mut segments = Vec::new();
+        segments.push(PathSegment { ident: first, generics: Vec::new() });
+
+        while self.current.token == Token::DoubleColon {
+            self.advance(); // consume '::'
+            if self.current.token == Token::LeftAngle {
+                let generics = self.parse_generic_arguments()?;
+                segments.last_mut().unwrap().generics = generics;
+            } else {
+                let ident = self.expect_identifier()?;
+                let mut segment = PathSegment { ident, generics: Vec::new() };
+                if self.current.token == Token::LeftAngle {
+                    segment.generics = self.parse_generic_arguments()?;
+                }
+                segments.push(segment);
+            }
+        }
+        Ok(Path { segments })
+    }
+
     fn parse_path(&mut self) -> Result<Path, ParseError> {
         let mut segments = Vec::new();
         segments.push(self.parse_path_segment()?);
 
         while self.current.token == Token::DoubleColon {
             self.advance(); // consume '::'
-            segments.push(self.parse_path_segment()?);
+            if self.current.token == Token::LeftAngle {
+                let generics = self.parse_generic_arguments()?;
+                segments.last_mut().unwrap().generics = generics;
+            } else {
+                segments.push(self.parse_path_segment()?);
+            }
         }
 
         Ok(Path { segments })
-    }
-
-    fn parse_path_segment(&mut self) -> Result<PathSegment, ParseError> {
-        let ident = self.expect_identifier()?;
-        let mut generics = Vec::new();
-
-        if self.current.token == Token::LeftAngle {
-            self.advance(); // consume '<'
-            while self.current.token != Token::RightAngle {
-                if !generics.is_empty() {
-                    self.expect(Token::Comma)?;
-                }
-                generics.push(self.parse_type()?);
-            }
-            self.expect(Token::RightAngle)?;
-        }
-
-        Ok(PathSegment { ident, generics })
     }
 
     fn parse_use_statement(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
@@ -1111,90 +1139,9 @@ impl Parser {
             }
 
             Token::Identifier(name) => {
-                let first_segment = name.clone();
+                let ident = name.clone();
                 self.advance();
-
-                if self.current.token == Token::LeftBrace && self.is_struct_type(&first_segment) {
-                    self.advance(); // consume {
-                    let fields = self.parse_struct_init_fields()?;
-                    self.expect(Token::RightBrace)?;
-                    return Ok(Expr::StructInit { struct_name: first_segment, fields });
-                }
-
-                match first_segment.as_str() {
-                    "Ok" => {
-                        self.expect(Token::LeftParen)?;
-                        let expr = if self.current.token == Token::RightParen { Expr::Unit } else { self.parse_expression(0)? };
-                        self.expect(Token::RightParen)?;
-                        Ok(Expr::Ok(Box::new(expr)))
-                    }
-
-                    "Err" => {
-                        self.expect(Token::LeftParen)?;
-                        let expr = if self.current.token == Token::RightParen { Expr::Unit } else { self.parse_expression(0)? };
-                        self.expect(Token::RightParen)?;
-                        Ok(Expr::Err(Box::new(expr)))
-                    }
-
-                    "Some" => {
-                        self.expect(Token::LeftParen)?;
-                        let expr = self.parse_expression(0)?;
-                        self.expect(Token::RightParen)?;
-                        Ok(Expr::Some(Box::new(expr)))
-                    }
-
-                    "None" => {
-                        if self.current.token == Token::LeftParen {
-                            self.expect(Token::LeftParen)?;
-                            self.expect(Token::RightParen)?;
-                        }
-                        Ok(Expr::None)
-                    }
-                    _ => {
-                        if self.current.token == Token::DoubleColon {
-                            self.advance(); // consume '::'
-
-                            let mut segments = vec![PathSegment {
-                                ident: first_segment,
-                                generics: Vec::new(),
-                            }];
-
-                            loop {
-                                let ident = self.expect_identifier()?;
-                                segments.push(PathSegment { ident, generics: Vec::new() });
-
-                                if self.current.token != Token::DoubleColon {
-                                    break;
-                                }
-                                self.advance(); // consume '::'
-                            }
-
-                            let path = Path { segments };
-
-                            if self.current.token == Token::LeftParen {
-                                self.advance(); // consume '('
-                                let mut arguments = Vec::new();
-
-                                while self.current.token != Token::RightParen {
-                                    if !arguments.is_empty() {
-                                        self.expect(Token::Comma)?;
-                                    }
-                                    arguments.push(self.parse_expression(0)?);
-                                }
-
-                                self.expect(Token::RightParen)?;
-                                Ok(Expr::Call {
-                                    function: Box::new(Expr::Path(path)),
-                                    arguments,
-                                })
-                            } else {
-                                Ok(Expr::Path(path))
-                            }
-                        } else {
-                            self.parse_identifier_expression(first_segment)
-                        }
-                    }
-                }
+                return self.parse_identifier_expression(ident);
             }
 
             _ => {
@@ -1287,6 +1234,35 @@ impl Parser {
     }
 
     fn parse_identifier_expression(&mut self, name: String) -> Result<Expr, ParseError> {
+        match name.as_str() {
+            "Ok" => {
+                self.expect(Token::LeftParen)?;
+                let expr = if self.current.token == Token::RightParen { Expr::Unit } else { self.parse_expression(0)? };
+                self.expect(Token::RightParen)?;
+                return Ok(Expr::Ok(Box::new(expr)));
+            }
+            "Err" => {
+                self.expect(Token::LeftParen)?;
+                let expr = if self.current.token == Token::RightParen { Expr::Unit } else { self.parse_expression(0)? };
+                self.expect(Token::RightParen)?;
+                return Ok(Expr::Err(Box::new(expr)));
+            }
+            "Some" => {
+                self.expect(Token::LeftParen)?;
+                let expr = self.parse_expression(0)?;
+                self.expect(Token::RightParen)?;
+                return Ok(Expr::Some(Box::new(expr)));
+            }
+            "None" => {
+                if self.current.token == Token::LeftParen {
+                    self.expect(Token::LeftParen)?;
+                    self.expect(Token::RightParen)?;
+                }
+                return Ok(Expr::None);
+            }
+            _ => {}
+        }
+
         if self.current.token == Token::Not {
             return self.parse_macro_invocation(name);
         }
@@ -1315,34 +1291,7 @@ impl Parser {
         }
 
         if self.current.token == Token::DoubleColon {
-            self.advance(); // consume '::'
-            let mut segments = vec![PathSegment { ident: name, generics: Vec::new() }];
-            let ident = self.expect_identifier()?;
-            segments.push(PathSegment { ident, generics: Vec::new() });
-
-            while self.current.token == Token::DoubleColon {
-                self.advance(); // consume '::'
-                let ident = self.expect_identifier()?;
-                segments.push(PathSegment { ident, generics: Vec::new() });
-            }
-
-            if self.current.token == Token::LeftAngle {
-                self.advance(); // consume '<'
-                let mut generics = Vec::new();
-                while self.current.token != Token::RightAngle {
-                    if !generics.is_empty() {
-                        self.expect(Token::Comma)?;
-                    }
-                    generics.push(self.parse_type()?);
-                }
-                self.expect(Token::RightAngle)?;
-                if let Some(last_segment) = segments.last_mut() {
-                    last_segment.generics = generics;
-                }
-            }
-
-            let path = Path { segments };
-
+            let path = self.parse_path_starting_with(name)?;
             if self.current.token == Token::LeftParen {
                 self.advance(); // consume '('
                 let mut arguments = Vec::new();
@@ -1357,9 +1306,8 @@ impl Parser {
                     function: Box::new(Expr::Path(path)),
                     arguments,
                 });
-            } else {
-                return Ok(Expr::Path(path));
             }
+            return Ok(Expr::Path(path));
         }
 
         match self.current.token {
