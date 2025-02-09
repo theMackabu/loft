@@ -474,20 +474,25 @@ impl Parser {
                 if self.current.token == Token::LeftAngle {
                     self.advance();
                     let mut type_params = Vec::new();
-
                     while self.current.token != Token::RightAngle {
                         if !type_params.is_empty() {
                             self.expect(Token::Comma)?;
                         }
-                        type_params.push(self.parse_type()?);
+                        match &self.current.token {
+                            Token::Identifier(name) => {
+                                let name = name.clone();
+                                self.advance();
+                                if self.current.token == Token::DoubleColon {
+                                    type_params.push(self.parse_type()?);
+                                } else {
+                                    type_params.push(Type::TypeParam(name));
+                                }
+                            }
+                            _ => type_params.push(self.parse_type()?),
+                        }
                     }
-
                     self.expect(Token::RightAngle)?;
-
-                    Ok(Type::Generic {
-                        name: path.segments.join("::"),
-                        type_params,
-                    })
+                    Ok(Type::Generic { path, type_params })
                 } else {
                     Ok(Type::Path(path))
                 }
@@ -708,17 +713,17 @@ impl Parser {
             }
 
             Token::Identifier(name) => {
-                let name = name.clone();
+                let first_segment = name.clone();
                 self.advance();
 
-                if self.current.token == Token::LeftBrace && self.is_struct_type(&name) {
+                if self.current.token == Token::LeftBrace && self.is_struct_type(&first_segment) {
                     self.advance(); // consume {
                     let fields = self.parse_struct_init_fields()?;
                     self.expect(Token::RightBrace)?;
-                    return Ok(Expr::StructInit { struct_name: name, fields });
+                    return Ok(Expr::StructInit { struct_name: first_segment, fields });
                 }
 
-                match name.as_str() {
+                match first_segment.as_str() {
                     "Ok" => {
                         self.expect(Token::LeftParen)?;
                         let expr = if self.current.token == Token::RightParen { Expr::Unit } else { self.parse_expression(0)? };
@@ -747,8 +752,45 @@ impl Parser {
                         }
                         Ok(Expr::None)
                     }
+                    _ => {
+                        if self.current.token == Token::DoubleColon {
+                            self.advance(); // consume '::'
+                            let mut segments = vec![first_segment];
 
-                    _ => self.parse_identifier_expression(name),
+                            loop {
+                                segments.push(self.expect_identifier()?);
+
+                                if self.current.token != Token::DoubleColon {
+                                    break;
+                                }
+                                self.advance(); // consume '::'
+                            }
+
+                            let path = Path { segments };
+
+                            if self.current.token == Token::LeftParen {
+                                self.advance(); // consume '('
+                                let mut arguments = Vec::new();
+
+                                while self.current.token != Token::RightParen {
+                                    if !arguments.is_empty() {
+                                        self.expect(Token::Comma)?;
+                                    }
+                                    arguments.push(self.parse_expression(0)?);
+                                }
+
+                                self.expect(Token::RightParen)?;
+                                Ok(Expr::Call {
+                                    function: Box::new(Expr::Path(path)),
+                                    arguments,
+                                })
+                            } else {
+                                Ok(Expr::Path(path))
+                            }
+                        } else {
+                            self.parse_identifier_expression(first_segment)
+                        }
+                    }
                 }
             }
 
@@ -762,14 +804,62 @@ impl Parser {
 
     fn parse_identifier_expression(&mut self, name: String) -> Result<Expr, ParseError> {
         match self.current.token {
+            Token::LeftAngle | Token::DoubleColon => {
+                let mut segments = vec![name];
+
+                if self.current.token == Token::LeftAngle {
+                    self.advance();
+                    let mut type_params = Vec::new();
+                    while self.current.token != Token::RightAngle {
+                        if !type_params.is_empty() {
+                            self.expect(Token::Comma)?;
+                        }
+                        type_params.push(self.parse_type()?);
+                    }
+                    self.expect(Token::RightAngle)?;
+                }
+
+                if self.current.token == Token::DoubleColon {
+                    self.advance();
+                    loop {
+                        segments.push(self.expect_identifier()?);
+
+                        if self.current.token != Token::DoubleColon {
+                            break;
+                        }
+                        self.advance();
+                    }
+                }
+
+                if self.current.token == Token::LeftParen {
+                    self.advance();
+                    let mut arguments = Vec::new();
+
+                    while self.current.token != Token::RightParen {
+                        if !arguments.is_empty() {
+                            self.expect(Token::Comma)?;
+                        }
+                        arguments.push(self.parse_expression(0)?);
+                    }
+
+                    self.expect(Token::RightParen)?;
+                    Ok(Expr::Call {
+                        function: Box::new(Expr::Path(Path { segments })),
+                        arguments,
+                    })
+                } else {
+                    Ok(Expr::Path(Path { segments }))
+                }
+            }
+
             Token::Assign => {
-                self.advance(); // consume '='
+                self.advance();
                 let value = Box::new(self.parse_expression(0)?);
                 Ok(Expr::Assignment { target: name, value })
             }
 
             Token::LeftParen => {
-                self.advance(); // consume (
+                self.advance();
                 let mut arguments = Vec::new();
 
                 while self.current.token != Token::RightParen {

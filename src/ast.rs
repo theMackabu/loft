@@ -12,7 +12,7 @@ pub enum Type {
     Simple(String),
     TypeParam(String),
 
-    Generic { name: String, type_params: Vec<Type> },
+    Generic { path: Path, type_params: Vec<Type> },
     Array { element_type: Box<Type>, size: usize },
 }
 

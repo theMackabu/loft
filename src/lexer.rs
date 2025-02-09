@@ -457,19 +457,19 @@ impl Lexer {
 
                 '>' => {
                     self.advance();
-                    match self.peek() {
+                    match self.current_char {
+                        Some('=') => {
+                            self.advance();
+                            Token::GreaterEquals
+                        }
                         Some('>') => {
                             self.advance();
-                            if self.peek() == Some('=') {
+                            if self.current_char == Some('=') {
                                 self.advance();
                                 Token::ShrAssign
                             } else {
                                 Token::Shr
                             }
-                        }
-                        Some('=') => {
-                            self.advance();
-                            Token::GreaterEquals
                         }
                         _ => Token::RightAngle,
                     }
