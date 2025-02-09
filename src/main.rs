@@ -16,7 +16,7 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
 
     match parser.parse_program() {
         Ok(ast) => println!("{:#?}", ast),
-        Err(e) => println!("Parse error: {:?}", e),
+        Err(err) => println!("Parse error: {err}"),
     }
 
     Ok(ExitCode::SUCCESS)
