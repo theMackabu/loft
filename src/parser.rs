@@ -317,17 +317,17 @@ impl Parser {
     fn parse_impl_block(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'impl'
 
-        let trait_path = {
-            let path = self.parse_path()?;
-            if self.current.token == Token::For {
-                self.advance(); // consume 'for'
-                Some(path)
-            } else {
-                None
-            }
+        let first_path = self.parse_path()?;
+
+        let (trait_path, target) = if self.current.token == Token::For {
+            self.advance(); // consume 'for'
+            let trait_path = first_path;
+            let target = self.parse_path()?;
+            (Some(trait_path), target)
+        } else {
+            (None, first_path)
         };
 
-        let target = self.parse_path()?;
         self.expect(Token::LeftBrace)?;
         self.current_impl_target = Some(target.segments.last().unwrap().ident.clone());
 
@@ -337,7 +337,7 @@ impl Parser {
             let method_attributes = self.parse_attributes()?;
 
             let visibility = if self.current.token == Token::Pub {
-                self.advance();
+                self.advance(); // consume 'pub'
                 true
             } else {
                 false
