@@ -192,6 +192,13 @@ pub enum Stmt {
         initializer: Box<Expr>,
     },
 
+    Static {
+        name: String,
+        visibility: bool,
+        type_annotation: Option<Type>,
+        initializer: Box<Expr>,
+    },
+
     Function {
         name: String,
         visibility: bool,

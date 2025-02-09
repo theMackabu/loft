@@ -3,6 +3,11 @@ use crate::lexer::*;
 
 use std::collections::HashSet;
 
+enum DeclarationKind {
+    Const,
+    Static,
+}
+
 const MAX_RECURSION_DEPTH: i32 = 500;
 const PRECEDENCE_LOWEST: i32 = 0;
 const PRECEDENCE_EQUALS: i32 = 1;
@@ -131,11 +136,13 @@ impl Parser {
 
             Token::Use => self.parse_use_statement(visibility),
             Token::Type => self.parse_type_alias(visibility),
-            Token::Const => self.parse_const_statement(visibility),
             Token::Enum => self.parse_enum_declaration(visibility),
             Token::Module => self.parse_module_statement(visibility),
             Token::Struct => self.parse_struct_declaration(visibility),
             Token::Fn => self.parse_function_statement(visibility),
+
+            Token::Const => self.parse_const_static_statement(DeclarationKind::Const, visibility),
+            Token::Static => self.parse_const_static_statement(DeclarationKind::Static, visibility),
 
             Token::LeftBrace => {
                 self.advance();
@@ -696,8 +703,8 @@ impl Parser {
         })
     }
 
-    fn parse_const_statement(&mut self, visibility: bool) -> Result<Stmt, ParseError> {
-        self.advance(); // consume 'const'
+    fn parse_const_static_statement(&mut self, kind: DeclarationKind, visibility: bool) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'const' or 'static'
 
         let name = match &self.current.token {
             Token::Identifier(name) => {
@@ -712,23 +719,33 @@ impl Parser {
             }
         };
 
-        let type_annotation = if self.current.token == Token::Colon {
-            self.advance();
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
+        if self.current.token != Token::Colon {
+            return Err(ParseError::UnexpectedToken {
+                found: self.current.clone(),
+                expected: Some("':'".to_string()),
+            });
+        }
+        self.advance(); // consume ':'
+        let type_annotation = Some(self.parse_type()?);
 
         self.expect(Token::Assign)?;
         let initializer = Box::new(self.parse_expression(0)?);
         self.expect(Token::Semicolon)?;
 
-        Ok(Stmt::Const {
-            name,
-            visibility,
-            type_annotation,
-            initializer,
-        })
+        match kind {
+            DeclarationKind::Const => Ok(Stmt::Const {
+                name,
+                visibility,
+                type_annotation,
+                initializer,
+            }),
+            DeclarationKind::Static => Ok(Stmt::Static {
+                name,
+                visibility,
+                type_annotation,
+                initializer,
+            }),
+        }
     }
 
     fn parse_expression(&mut self, precedence: i32) -> Result<Expr, ParseError> {
