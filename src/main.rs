@@ -2,6 +2,7 @@ mod ast;
 mod lexer;
 mod parser;
 mod traits;
+mod util;
 
 use lexer::Lexer;
 use parser::Parser;

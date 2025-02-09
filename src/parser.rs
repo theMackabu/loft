@@ -1,6 +1,4 @@
-use crate::ast::*;
-use crate::lexer::*;
-
+use crate::{ast::*, lexer::*, util};
 use std::collections::HashSet;
 
 enum DeclarationKind {
@@ -62,9 +60,12 @@ pub struct Parser {
     lexer: Lexer,
     peek: TokenInfo,
     current: TokenInfo,
+
     recursion_depth: i32,
     struct_types: HashSet<String>,
+
     current_impl_target: Option<String>,
+    current_trait_target: Option<String>,
 }
 
 impl Parser {
@@ -76,9 +77,12 @@ impl Parser {
             lexer,
             current,
             peek,
+
             recursion_depth: 0,
             struct_types: HashSet::new(),
+
             current_impl_target: None,
+            current_trait_target: None,
         }
     }
 
@@ -161,7 +165,8 @@ impl Parser {
             Token::Enum => self.parse_enum_declaration(visibility, attributes),
             Token::Module => self.parse_module_statement(visibility, attributes),
             Token::Struct => self.parse_struct_declaration(visibility, attributes),
-            Token::Fn => self.parse_function_statement(visibility, attributes),
+            Token::Trait => self.parse_trait_declaration(visibility, attributes),
+            Token::Fn => self.parse_function_statement(visibility, attributes, false),
             Token::MacroRules => self.parse_macro_definition(attributes, visibility),
 
             Token::Loop => Ok(Stmt::ExpressionStmt(self.parse_loop_expression(label)?)),
@@ -184,7 +189,7 @@ impl Parser {
 
             Token::Async => {
                 if self.peek.token == Token::Fn {
-                    self.parse_function_statement(visibility, attributes)
+                    self.parse_function_statement(visibility, attributes, false)
                 } else {
                     let expr = self.parse_expression(0)?;
                     match self.current.token {
@@ -278,10 +283,51 @@ impl Parser {
         })
     }
 
+    fn parse_trait_declaration(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'trait'
+        let name = self.expect_identifier()?;
+
+        self.current_trait_target = Some(name.clone());
+        self.expect(Token::LeftBrace)?;
+
+        let mut items = Vec::new();
+
+        while self.current.token != Token::RightBrace {
+            let method_attributes = self.parse_attributes()?;
+            if self.current.token != Token::Fn && self.current.token != Token::Async {
+                return Err(ParseError::UnexpectedToken {
+                    found: self.current.clone(),
+                    expected: Some("function prototype in trait declaration".to_string()),
+                });
+            }
+
+            let method = self.parse_function_statement(false, method_attributes, true)?;
+            if self.current.token == Token::Semicolon {
+                self.advance();
+            }
+            items.push(method);
+        }
+
+        self.expect(Token::RightBrace)?;
+        self.current_trait_target = None;
+
+        Ok(Stmt::Trait { name, items, visibility, attributes })
+    }
+
     fn parse_impl_block(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'impl'
-        let target = self.parse_path()?;
 
+        let trait_path = {
+            let path = self.parse_path()?;
+            if self.current.token == Token::For {
+                self.advance(); // consume 'for'
+                Some(path)
+            } else {
+                None
+            }
+        };
+
+        let target = self.parse_path()?;
         self.expect(Token::LeftBrace)?;
         self.current_impl_target = Some(target.segments.last().unwrap().ident.clone());
 
@@ -291,7 +337,7 @@ impl Parser {
             let method_attributes = self.parse_attributes()?;
 
             let visibility = if self.current.token == Token::Pub {
-                self.advance(); // consume 'pub'
+                self.advance();
                 true
             } else {
                 false
@@ -304,14 +350,23 @@ impl Parser {
                 });
             }
 
-            let method = self.parse_function_statement(visibility, method_attributes)?;
+            let method = self.parse_function_statement(visibility, method_attributes, false)?;
             items.push(method);
         }
 
         self.expect(Token::RightBrace)?;
         self.current_impl_target = None;
 
-        Ok(Stmt::Impl { target, items, attributes })
+        if let Some(trait_path) = trait_path {
+            Ok(Stmt::TraitImpl {
+                trait_path,
+                target,
+                items,
+                attributes,
+            })
+        } else {
+            Ok(Stmt::Impl { target, items, attributes })
+        }
     }
 
     fn parse_function_parameters(&mut self) -> Result<Vec<(Pattern, Type)>, ParseError> {
@@ -326,11 +381,25 @@ impl Parser {
             let ty = match opt_type {
                 Some(t) => t,
                 None => {
-                    if let Some(target) = &self.current_impl_target {
-                        Type::Simple(target.clone())
+                    if util::is_self_parameter(&pattern) {
+                        if let Some(target) = &self.current_impl_target {
+                            Type::Simple(target.clone())
+                        } else if let Some(trait_target) = &self.current_trait_target {
+                            Type::Path(Path {
+                                segments: vec![PathSegment {
+                                    ident: trait_target.clone(),
+                                    generics: Vec::new(),
+                                }],
+                            })
+                        } else {
+                            return Err(ParseError::Custom {
+                                message: "Self parameter outside of impl or trait".to_string(),
+                                location: self.current.location.clone(),
+                            });
+                        }
                     } else {
                         return Err(ParseError::Custom {
-                            message: "Self parameter outside of impl block".to_string(),
+                            message: "Missing type annotation".to_string(),
                             location: self.current.location.clone(),
                         });
                     }
@@ -338,6 +407,7 @@ impl Parser {
             };
             params.push((pattern, ty));
         }
+
         self.expect(Token::RightParen)?;
         Ok(params)
     }
@@ -562,7 +632,7 @@ impl Parser {
         Ok(Stmt::Module { name, visibility, body, attributes })
     }
 
-    fn parse_function_statement(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
+    fn parse_function_statement(&mut self, visibility: bool, attributes: Vec<Attribute>, is_trait: bool) -> Result<Stmt, ParseError> {
         let is_async = if self.current.token == Token::Async {
             self.advance(); // consume 'async'
             true
@@ -571,7 +641,6 @@ impl Parser {
         };
 
         self.expect(Token::Fn)?; // consume 'fn'
-
         let name = self.expect_identifier()?;
 
         let type_params = if self.current.token == Token::LeftAngle {
@@ -581,7 +650,6 @@ impl Parser {
             while self.current.token != Token::RightAngle {
                 if !params.is_empty() {
                     self.expect(Token::Comma)?;
-
                     if self.current.token == Token::RightAngle {
                         break;
                     }
@@ -604,14 +672,26 @@ impl Parser {
             None
         };
 
-        self.expect(Token::LeftBrace)?;
+        if is_trait && self.current.token == Token::Semicolon {
+            self.advance();
+            return Ok(Stmt::Function {
+                name,
+                visibility,
+                is_async,
+                type_params,
+                params,
+                return_type,
+                body: Vec::new(),
+                attributes,
+            });
+        }
 
+        self.expect(Token::LeftBrace)?; // consume '{'
         let mut body = Vec::new();
         while self.current.token != Token::RightBrace {
             body.push(self.parse_statement()?);
         }
-
-        self.expect(Token::RightBrace)?;
+        self.expect(Token::RightBrace)?; // consume '}'
 
         Ok(Stmt::Function {
             name,

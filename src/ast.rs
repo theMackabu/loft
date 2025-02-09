@@ -276,7 +276,21 @@ pub enum Stmt {
         attributes: Vec<Attribute>,
     },
 
+    Trait {
+        name: String,
+        items: Vec<Stmt>,
+        visibility: bool,
+        attributes: Vec<Attribute>,
+    },
+
     Impl {
+        target: Path,
+        items: Vec<Stmt>,
+        attributes: Vec<Attribute>,
+    },
+
+    TraitImpl {
+        trait_path: Path,
         target: Path,
         items: Vec<Stmt>,
         attributes: Vec<Attribute>,
