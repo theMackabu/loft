@@ -57,14 +57,21 @@ pub enum Stmt {
 
     Let {
         name: String,
-        type_annotation: Option<String>,
+        mutable: bool,
+        type_annotation: Option<Type>,
+        initializer: Box<Expr>,
+    },
+
+    Const {
+        name: String,
+        type_annotation: Option<Type>,
         initializer: Box<Expr>,
     },
 
     Function {
         name: String,
         params: Vec<(String, String)>, // (name, type)
-        return_type: Option<String>,
+        return_type: Option<Type>,
         body: Vec<Stmt>,
     },
 }

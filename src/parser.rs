@@ -74,6 +74,7 @@ impl Parser {
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         match self.current.token {
             Token::Let => self.parse_let_statement(),
+            Token::Const => self.parse_const_statement(),
             Token::Fn => self.parse_function_statement(),
             Token::Return => self.parse_return_statement(),
             Token::Type => self.parse_type_alias(),
@@ -163,19 +164,8 @@ impl Parser {
 
         // parse return type
         let return_type = if self.current.token == Token::Arrow {
-            self.advance();
-            match &self.current.token {
-                Token::Identifier(typ) => {
-                    let typ = typ.clone();
-                    self.advance();
-                    Some(typ)
-                }
-                _ => {
-                    return Err(ParseError::ExpectedIdentifier {
-                        location: self.current.location.to_owned(),
-                    })
-                }
-            }
+            self.advance(); // consume ->
+            Some(self.parse_type()?)
         } else {
             None
         };
@@ -280,6 +270,13 @@ impl Parser {
     fn parse_let_statement(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'let'
 
+        let mutable = if self.current.token == Token::Mut {
+            self.advance(); // consume 'mut'
+            true
+        } else {
+            false
+        };
+
         let name = match &self.current.token {
             Token::Identifier(name) => {
                 let name = name.clone();
@@ -295,18 +292,7 @@ impl Parser {
 
         let type_annotation = if self.current.token == Token::Colon {
             self.advance();
-            match &self.current.token {
-                Token::Identifier(typ) => {
-                    let typ = typ.clone();
-                    self.advance();
-                    Some(typ)
-                }
-                _ => {
-                    return Err(ParseError::ExpectedIdentifier {
-                        location: self.current.location.to_owned(),
-                    })
-                }
-            }
+            Some(self.parse_type()?)
         } else {
             None
         };
@@ -315,7 +301,42 @@ impl Parser {
         let initializer = Box::new(self.parse_expression(0)?);
         self.expect(Token::Semicolon)?;
 
-        Ok(Stmt::Let { name, type_annotation, initializer })
+        Ok(Stmt::Let {
+            name,
+            mutable,
+            type_annotation,
+            initializer,
+        })
+    }
+
+    fn parse_const_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'const'
+
+        let name = match &self.current.token {
+            Token::Identifier(name) => {
+                let name = name.clone();
+                self.advance();
+                name
+            }
+            _ => {
+                return Err(ParseError::ExpectedIdentifier {
+                    location: self.current.location.to_owned(),
+                })
+            }
+        };
+
+        let type_annotation = if self.current.token == Token::Colon {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        self.expect(Token::Assign)?;
+        let initializer = Box::new(self.parse_expression(0)?);
+        self.expect(Token::Semicolon)?;
+
+        Ok(Stmt::Const { name, type_annotation, initializer })
     }
 
     fn parse_expression(&mut self, precedence: i32) -> Result<Expr, ParseError> {
@@ -399,7 +420,7 @@ impl Parser {
 
         while precedence < self.get_precedence(&self.current.token) {
             left = match &self.current.token {
-                Token::Plus | Token::Minus | Token::Star | Token::Slash => {
+                Token::Plus | Token::Minus | Token::Star | Token::Slash | Token::Equals | Token::NotEquals | Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => {
                     let operator = self.current.token.clone();
                     self.advance();
                     let right = self.parse_expression(self.get_precedence(&operator))?;
@@ -481,8 +502,9 @@ impl Parser {
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {
             Token::Assign => 0,
-            Token::Plus | Token::Minus => 1,
-            Token::Star | Token::Slash => 2,
+            Token::Equals | Token::NotEquals | Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => 1,
+            Token::Plus | Token::Minus => 2,
+            Token::Star | Token::Slash => 3,
             _ => 0,
         }
     }

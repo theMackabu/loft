@@ -2,6 +2,8 @@
 pub enum Token {
     // keywords
     Let,    // let
+    Mut,    // mut
+    Const,  // const
     Fn,     // fn
     Return, // return
     If,     // if
@@ -239,15 +241,18 @@ impl Lexer {
                 }
 
                 '-' => {
+                    let next = self.peek();
                     self.advance();
-                    if self.peek() == Some('=') {
-                        self.advance();
-                        Token::MinusEquals
-                    } else if self.peek() == Some('>') {
-                        self.advance();
-                        Token::Arrow
-                    } else {
-                        Token::Minus
+                    match next {
+                        Some('=') => {
+                            self.advance();
+                            Token::MinusEquals
+                        }
+                        Some('>') => {
+                            self.advance();
+                            Token::Arrow
+                        }
+                        _ => Token::Minus,
                     }
                 }
 
@@ -391,6 +396,8 @@ impl Lexer {
                     let ident = self.read_identifier();
                     match ident.as_str() {
                         "let" => Token::Let,
+                        "mut" => Token::Mut,
+                        "const" => Token::Const,
                         "fn" => Token::Fn,
                         "return" => Token::Return,
                         "if" => Token::If,
