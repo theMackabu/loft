@@ -77,6 +77,11 @@ pub enum Expr {
         target_type: Type,
     },
 
+    Closure {
+        params: Vec<(String, Option<Type>)>,
+        body: Box<Expr>,
+    },
+
     MethodCall {
         object: Box<Expr>,
         method: String,

@@ -189,6 +189,13 @@ impl Lexer {
     fn read_identifier(&mut self) -> String {
         let mut identifier = String::new();
 
+        if let Some(c) = self.current_char {
+            if c == '_' || c.is_alphabetic() {
+                identifier.push(c);
+                self.advance();
+            }
+        }
+
         while let Some(c) = self.current_char {
             if c.is_alphanumeric() || c == '_' {
                 identifier.push(c);
@@ -204,7 +211,6 @@ impl Lexer {
     fn read_number(&mut self) -> Token {
         let mut number = String::new();
         let mut is_float = false;
-        let start_position = self.position;
 
         while let Some(c) = self.current_char {
             if c.is_digit(10) {
@@ -322,7 +328,7 @@ impl Lexer {
 
     fn read_string(&mut self) -> Result<String, &'static str> {
         let mut string = String::new();
-        self.advance(); // Skip the opening quote
+        self.advance(); // consume '"'
 
         while let Some(c) = self.current_char {
             match c {
@@ -348,8 +354,27 @@ impl Lexer {
                 }
             }
         }
-
         Err("Unterminated string literal")
+    }
+
+    fn read_raw_string(&mut self) -> Result<String, &'static str> {
+        if self.current_char != Some('"') {
+            return Err("Expected opening quote in raw string literal");
+        }
+
+        self.advance(); // consume '"'
+
+        let mut string = String::new();
+        while let Some(c) = self.current_char {
+            if c == '"' {
+                self.advance();
+                return Ok(string);
+            } else {
+                string.push(c);
+                self.advance();
+            }
+        }
+        Err("Unterminated raw string literal")
     }
 
     pub fn next_token(&mut self) -> TokenInfo {
@@ -483,6 +508,15 @@ impl Lexer {
                     Err(_) => Token::EOF, // implement better error handling
                 },
 
+                'r' if self.peek() == Some('"') => {
+                    self.advance();
+
+                    match self.read_raw_string() {
+                        Ok(s) => Token::String(s),
+                        Err(_) => Token::EOF, // implement better error handling
+                    }
+                }
+
                 '!' => {
                     self.advance();
                     if self.current_char == Some('=') {
@@ -510,16 +544,11 @@ impl Lexer {
 
                 '|' => {
                     self.advance();
-                    match self.current_char {
-                        Some('|') => {
-                            self.advance();
-                            Token::Or
-                        }
-                        Some('=') => {
-                            self.advance();
-                            Token::BitOrAssign
-                        }
-                        _ => Token::BitOr,
+                    if let Some('=') = self.current_char {
+                        self.advance();
+                        Token::BitOrAssign
+                    } else {
+                        Token::BitOr
                     }
                 }
 
@@ -583,8 +612,9 @@ impl Lexer {
                     }
                 }
 
-                c if c.is_alphabetic() => {
+                c if c == '_' || c.is_alphabetic() => {
                     let ident = self.read_identifier();
+
                     match ident.as_str() {
                         "let" => Token::Let,
                         "mut" => Token::Mut,

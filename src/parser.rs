@@ -54,6 +54,7 @@ impl std::fmt::Display for ParseError {
 
 pub struct Parser {
     lexer: Lexer,
+    peek: TokenInfo,
     current: TokenInfo,
     recursion_depth: i32,
     struct_types: HashSet<String>,
@@ -62,10 +63,12 @@ pub struct Parser {
 impl Parser {
     pub fn new(mut lexer: Lexer) -> Self {
         let current = lexer.next_token();
+        let peek = lexer.next_token();
 
         Self {
             lexer,
             current,
+            peek,
             recursion_depth: 0,
             struct_types: HashSet::new(),
         }
@@ -75,7 +78,7 @@ impl Parser {
 
     fn is_struct_type(&self, name: &str) -> bool { self.struct_types.contains(name) }
 
-    fn advance(&mut self) { self.current = self.lexer.next_token(); }
+    fn advance(&mut self) { self.current = std::mem::replace(&mut self.peek, self.lexer.next_token()); }
 
     fn exit_recursion(&mut self) { self.recursion_depth -= 1; }
 
@@ -791,6 +794,48 @@ impl Parser {
                 Ok(expr)
             }
 
+            Token::BitOr => {
+                self.advance(); // consume first |
+
+                let mut params = Vec::new();
+
+                if self.current.token == Token::BitOr {
+                    self.advance(); // consume second |
+                } else {
+                    while self.current.token != Token::BitOr {
+                        if !params.is_empty() {
+                            self.expect(Token::Comma)?;
+
+                            if self.current.token == Token::BitOr {
+                                break;
+                            }
+                        }
+
+                        let param_name = self.expect_identifier()?;
+
+                        let param_type = if self.current.token == Token::Colon {
+                            self.advance(); // consume :
+                            Some(self.parse_type()?)
+                        } else {
+                            None
+                        };
+
+                        params.push((param_name, param_type));
+                    }
+                    self.expect(Token::BitOr)?;
+                }
+
+                let body = if self.current.token == Token::LeftBrace {
+                    self.advance();
+                    let block = self.parse_block_expression()?;
+                    Box::new(block)
+                } else {
+                    Box::new(self.parse_expression(0)?)
+                };
+
+                Ok(Expr::Closure { params, body })
+            }
+
             Token::Identifier(name) => {
                 let first_segment = name.clone();
                 self.advance();
@@ -1015,6 +1060,32 @@ impl Parser {
                 Ok(Expr::Try(Box::new(left)))
             }
 
+            Token::BitOr => {
+                if self.peek.token == Token::BitOr {
+                    self.advance(); // consume the first '|'
+                    self.advance(); // consume the second '|'
+
+                    let operator = Token::Or;
+                    let precedence = self.get_precedence(&operator);
+                    let right = self.parse_expression(precedence)?;
+                    Ok(Expr::Binary {
+                        left: Box::new(left),
+                        operator,
+                        right: Box::new(right),
+                    })
+                } else {
+                    let operator = self.current.token.clone();
+                    let precedence = self.get_precedence(&operator);
+                    self.advance();
+                    let right = self.parse_expression(precedence)?;
+                    Ok(Expr::Binary {
+                        left: Box::new(left),
+                        operator,
+                        right: Box::new(right),
+                    })
+                }
+            }
+
             Token::Plus
             | Token::Minus
             | Token::Star
@@ -1028,7 +1099,6 @@ impl Parser {
             | Token::And
             | Token::Or
             | Token::BitAnd
-            | Token::BitOr
             | Token::BitXor
             | Token::Rem => {
                 let operator = self.current.token.clone();
