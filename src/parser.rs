@@ -266,14 +266,21 @@ impl Parser {
         while self.current.token != Token::RightBrace {
             let method_attributes = self.parse_attributes()?;
 
-            if self.current.token != Token::Fn && self.current.token != Token::Pub {
+            let visibility = if self.current.token == Token::Pub {
+                self.advance(); // consume 'pub'
+                true
+            } else {
+                false
+            };
+
+            if self.current.token != Token::Fn && self.current.token != Token::Async {
                 return Err(ParseError::UnexpectedToken {
                     found: self.current.clone(),
                     expected: Some("function definition in impl block".to_string()),
                 });
             }
 
-            let method = self.parse_function_statement(false, method_attributes)?;
+            let method = self.parse_function_statement(visibility, method_attributes)?;
             items.push(method);
         }
 
