@@ -127,6 +127,11 @@ pub enum Expr {
         index: Box<Expr>,
     },
 
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+    },
+
     Cast {
         expr: Box<Expr>,
         target_type: Type,

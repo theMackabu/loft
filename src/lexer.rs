@@ -41,6 +41,7 @@ pub enum Token {
 
     // symbols
     Dot,          // .
+    Range,        // ..
     LeftParen,    //(
     RightParen,   //)
     LeftBracket,  // [
@@ -417,11 +418,6 @@ impl Lexer {
                     Token::Dollar
                 }
 
-                '.' => {
-                    self.advance();
-                    Token::Dot
-                }
-
                 '(' => {
                     self.advance();
                     Token::LeftParen
@@ -460,6 +456,16 @@ impl Lexer {
                 ',' => {
                     self.advance();
                     Token::Comma
+                }
+
+                '.' => {
+                    self.advance();
+                    if self.current_char == Some('.') {
+                        self.advance();
+                        Token::Range
+                    } else {
+                        Token::Dot
+                    }
                 }
 
                 '+' => {

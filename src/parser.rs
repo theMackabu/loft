@@ -10,6 +10,7 @@ enum DeclarationKind {
 
 const MAX_RECURSION_DEPTH: i32 = 500;
 const PRECEDENCE_LOWEST: i32 = 0;
+const PRECEDENCE_RANGE: i32 = 1;
 const PRECEDENCE_EQUALS: i32 = 1;
 const PRECEDENCE_COMPARE: i32 = 2;
 const PRECEDENCE_OR: i32 = 3;
@@ -1401,6 +1402,18 @@ impl Parser {
                 Ok(Expr::Call { function: Box::new(left), arguments })
             }
 
+            Token::Range => {
+                let operator = self.current.token.clone();
+                let precedence = self.get_precedence(&operator);
+
+                self.advance(); // consume ..
+                let right = self.parse_expression(precedence)?;
+                Ok(Expr::Range {
+                    start: Box::new(left),
+                    end: Box::new(right),
+                })
+            }
+
             Token::Dot => {
                 self.advance(); // consume .
 
@@ -2051,6 +2064,7 @@ impl Parser {
 
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {
+            Token::Range => PRECEDENCE_RANGE,
             Token::Dot => PRECEDENCE_MEMBER,
             Token::LeftParen => PRECEDENCE_CALL,
             Token::Question => PRECEDENCE_QUESTION,
