@@ -1,16 +1,18 @@
 use crate::ast::{EnumVariant, Expr, Stmt, Type};
 use crate::lexer::{Lexer, Location, Token, TokenInfo};
 
+const MAX_RECURSION_DEPTH: i32 = 500;
+
 const PRECEDENCE_LOWEST: i32 = 0;
-const PRECEDENCE_EQUALS: i32 = 1; // ==, !=
-const PRECEDENCE_COMPARE: i32 = 2; // >, >=, <, <=
-const PRECEDENCE_OR: i32 = 3; // ||
-const PRECEDENCE_AND: i32 = 4; // &&
-const PRECEDENCE_SUM: i32 = 5; // +, -
-const PRECEDENCE_PRODUCT: i32 = 6; // *, /
-const PRECEDENCE_PREFIX: i32 = 7; // -X, !X
-const PRECEDENCE_CALL: i32 = 8; // function(X)
-const PRECEDENCE_MEMBER: i32 = 9; // member.area
+const PRECEDENCE_EQUALS: i32 = 1;
+const PRECEDENCE_COMPARE: i32 = 2;
+const PRECEDENCE_OR: i32 = 3;
+const PRECEDENCE_AND: i32 = 4;
+const PRECEDENCE_SUM: i32 = 5;
+const PRECEDENCE_PRODUCT: i32 = 6;
+const PRECEDENCE_PREFIX: i32 = 7;
+const PRECEDENCE_CALL: i32 = 8;
+const PRECEDENCE_MEMBER: i32 = 9;
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -50,15 +52,14 @@ impl std::fmt::Display for ParseError {
 pub struct Parser {
     lexer: Lexer,
     current: TokenInfo,
+    recursion_depth: i32,
 }
 
 impl Parser {
     pub fn new(mut lexer: Lexer) -> Self {
         let current = lexer.next_token();
-        Self { lexer, current }
+        Self { lexer, current, recursion_depth: 0 }
     }
-
-    fn advance(&mut self) { self.current = self.lexer.next_token(); }
 
     fn expect(&mut self, token: Token) -> Result<(), ParseError> {
         if self.current.token == token {
@@ -72,6 +73,21 @@ impl Parser {
         }
     }
 
+    fn enter_recursion(&mut self) -> Result<(), ParseError> {
+        self.recursion_depth += 1;
+        if self.recursion_depth > MAX_RECURSION_DEPTH {
+            return Err(ParseError::Custom {
+                message: "Maximum recursion depth exceeded".to_string(),
+                location: self.current.location.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    fn advance(&mut self) { self.current = self.lexer.next_token(); }
+
+    fn exit_recursion(&mut self) { self.recursion_depth -= 1; }
+
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut statements = Vec::new();
 
@@ -83,13 +99,21 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
-        match self.current.token {
+        self.enter_recursion()?;
+
+        let result = match self.current.token {
             Token::Let => self.parse_let_statement(),
             Token::Const => self.parse_const_statement(),
             Token::Fn => self.parse_function_statement(),
             Token::Return => self.parse_return_statement(),
             Token::Type => self.parse_type_alias(),
             Token::Enum => self.parse_enum_declaration(),
+
+            Token::LeftBrace => {
+                self.advance();
+                let block = self.parse_block_expression()?;
+                Ok(Stmt::ExpressionStmt(block))
+            }
 
             Token::If => {
                 let expr = self.parse_if_expression()?;
@@ -113,7 +137,10 @@ impl Parser {
                     }),
                 }
             }
-        }
+        };
+
+        self.exit_recursion();
+        return result;
     }
 
     fn parse_function_statement(&mut self) -> Result<Stmt, ParseError> {
@@ -458,13 +485,17 @@ impl Parser {
     }
 
     fn parse_expression(&mut self, precedence: i32) -> Result<Expr, ParseError> {
-        let mut left = self.parse_prefix()?;
+        self.enter_recursion()?;
+        let result = {
+            let mut left = self.parse_prefix()?;
+            while precedence < self.get_precedence(&self.current.token) {
+                left = self.parse_infix(left)?;
+            }
+            Ok(left)
+        };
 
-        while precedence < self.get_precedence(&self.current.token) {
-            left = self.parse_infix(left)?;
-        }
-
-        Ok(left)
+        self.exit_recursion();
+        return result;
     }
 
     fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
@@ -702,37 +733,42 @@ impl Parser {
 
     // { block }
     fn parse_block_expression(&mut self) -> Result<Expr, ParseError> {
-        let mut statements = Vec::new();
-        let mut returns = false;
+        self.enter_recursion()?;
+        let result = {
+            let mut statements = Vec::new();
+            let mut returns = false;
+            while self.current.token != Token::RightBrace {
+                let stmt = self.parse_statement()?;
 
-        while self.current.token != Token::RightBrace {
-            let stmt = self.parse_statement()?;
+                if matches!(stmt, Stmt::Return(_)) {
+                    returns = true;
+                }
 
-            if matches!(stmt, Stmt::Return(_)) {
-                returns = true;
+                statements.push(stmt);
+
+                if returns {
+                    // warn about unreachable code
+                    break;
+                }
             }
 
-            statements.push(stmt);
-
-            if returns {
-                // warn about unreachable code
-                break;
-            }
-        }
-
-        let value = if !returns && !statements.is_empty() {
-            if let Some(Stmt::ExpressionValue(expr)) = statements.pop() {
-                Some(Box::new(expr))
+            let value = if !returns && !statements.is_empty() {
+                if let Some(Stmt::ExpressionValue(expr)) = statements.pop() {
+                    Some(Box::new(expr))
+                } else {
+                    None
+                }
             } else {
                 None
-            }
-        } else {
-            None
+            };
+
+            self.expect(Token::RightBrace)?;
+
+            Ok(Expr::Block { statements, value, returns })
         };
 
-        self.expect(Token::RightBrace)?;
-
-        Ok(Expr::Block { statements, value, returns })
+        self.exit_recursion();
+        return result;
     }
 
     fn get_precedence(&self, token: &Token) -> i32 {
