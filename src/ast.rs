@@ -36,11 +36,24 @@ pub enum Expr {
     },
 }
 
+#[derive(Debug, Clone)]
+pub enum Type {
+    Simple(String),
+    Generic { name: String, type_params: Vec<Type> },
+    TypeParam(String),
+}
+
 #[derive(Debug)]
 pub enum Stmt {
     Return(Option<Expr>),
     ExpressionStmt(Expr),
     ExpressionValue(Expr),
+
+    TypeAlias {
+        name: String,
+        type_params: Vec<String>,
+        ty: Type,
+    },
 
     Let {
         name: String,

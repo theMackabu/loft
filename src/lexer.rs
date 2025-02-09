@@ -8,6 +8,7 @@ pub enum Token {
     Else,   // else
     True,   // true
     False,  // false
+    Type,   // type
 
     // symbols
     LeftParen,  //(
@@ -18,6 +19,8 @@ pub enum Token {
     Colon,      // :
     Comma,      // ,
     Arrow,      // ->
+    LeftAngle,  // <
+    RightAngle, // >
 
     // operators
     Plus,   // +
@@ -41,9 +44,7 @@ pub enum Token {
     SlashEquals,   // /=
     Shl,           // <<
     ShlAssign,     // <<=
-    LessThan,      // <
     LessEquals,    // <=
-    GreaterThan,   // >
     GreaterEquals, // >=
     Shr,           // >>
     ShrAssign,     // >>=
@@ -347,7 +348,7 @@ impl Lexer {
                             self.advance();
                             Token::LessEquals
                         }
-                        _ => Token::LessThan,
+                        _ => Token::LeftAngle,
                     }
                 }
 
@@ -367,7 +368,7 @@ impl Lexer {
                             self.advance();
                             Token::GreaterEquals
                         }
-                        _ => Token::GreaterThan,
+                        _ => Token::RightAngle,
                     }
                 }
 
@@ -396,6 +397,7 @@ impl Lexer {
                         "else" => Token::Else,
                         "true" => Token::True,
                         "false" => Token::False,
+                        "type" => Token::Type,
                         _ => Token::Identifier(ident),
                     }
                 }

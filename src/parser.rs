@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt};
+use crate::ast::{Expr, Stmt, Type};
 use crate::lexer::{Lexer, Location, Token, TokenInfo};
 
 #[derive(Debug)]
@@ -76,6 +76,7 @@ impl Parser {
             Token::Let => self.parse_let_statement(),
             Token::Fn => self.parse_function_statement(),
             Token::Return => self.parse_return_statement(),
+            Token::Type => self.parse_type_alias(),
 
             Token::If => {
                 let expr = self.parse_if_expression()?;
@@ -190,6 +191,80 @@ impl Parser {
         self.expect(Token::RightBrace)?;
 
         Ok(Stmt::Function { name, params, return_type, body })
+    }
+
+    fn parse_type_alias(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'type'
+
+        let name = self.expect_identifier()?;
+
+        let type_params = if self.current.token == Token::LeftAngle {
+            self.advance();
+            let params = self.parse_type_params()?;
+            self.expect(Token::RightAngle)?;
+            params
+        } else {
+            Vec::new()
+        };
+
+        self.expect(Token::Assign)?;
+
+        let ty = self.parse_type()?;
+        self.expect(Token::Semicolon)?;
+
+        Ok(Stmt::TypeAlias { name, type_params, ty })
+    }
+
+    fn parse_type(&mut self) -> Result<Type, ParseError> {
+        let name = self.expect_identifier()?;
+
+        if self.current.token == Token::LeftAngle {
+            self.advance();
+            let mut type_params = Vec::new();
+
+            while self.current.token != Token::RightAngle {
+                if !type_params.is_empty() {
+                    self.expect(Token::Comma)?;
+                }
+                type_params.push(self.parse_type()?);
+            }
+
+            self.expect(Token::RightAngle)?;
+
+            Ok(Type::Generic { name, type_params })
+        } else {
+            Ok(Type::Simple(name))
+        }
+    }
+
+    fn parse_type_params(&mut self) -> Result<Vec<String>, ParseError> {
+        let mut params = Vec::new();
+
+        while self.current.token != Token::RightAngle {
+            if !params.is_empty() {
+                self.expect(Token::Comma)?;
+            }
+            params.push(self.expect_identifier()?);
+        }
+
+        Ok(params)
+    }
+
+    fn expect_identifier(&mut self) -> Result<String, ParseError> {
+        match &self.current.token {
+            Token::Identifier(name) => {
+                let name = name.clone();
+                self.advance();
+                Ok(name)
+            }
+            Token::Type => {
+                self.advance();
+                Ok("type".to_string())
+            }
+            _ => Err(ParseError::ExpectedIdentifier {
+                location: self.current.location.to_owned(),
+            }),
+        }
     }
 
     fn parse_return_statement(&mut self) -> Result<Stmt, ParseError> {
