@@ -277,6 +277,8 @@ impl Parser {
             items.push(method);
         }
 
+        self.expect(Token::RightBrace)?;
+
         Ok(Stmt::Impl { target, items, attributes })
     }
 
