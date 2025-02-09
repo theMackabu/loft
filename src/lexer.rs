@@ -8,24 +8,26 @@ pub enum Token {
     MacroRules, // macro_rules!
 
     // keywords
-    Let,    // let
-    Mut,    // mut
-    Const,  // const
-    Static, // static,
-    Struct, // struct
-    Impl,   // impl
-    Enum,   // enum
-    Fn,     // fn
-    Return, // return
-    If,     // if
-    Else,   // else
-    True,   // true
-    False,  // false
-    Type,   // type
-    Pub,    // pub
-    Async,  // async
-    Await,  // await
-    Match,  // match
+    Let,      // let
+    Mut,      // mut
+    Const,    // const
+    Static,   // static,
+    Struct,   // struct
+    Impl,     // impl
+    Enum,     // enum
+    Fn,       // fn
+    Return,   // return
+    Continue, // continue
+    Break,    // break
+    If,       // if
+    Else,     // else
+    True,     // true
+    False,    // false
+    Type,     // type
+    Pub,      // pub
+    Async,    // async
+    Await,    // await
+    Match,    // match
 
     // project
     Use,         // use
@@ -83,9 +85,11 @@ pub enum Token {
     Or,            // ||
 
     // literals
-    Identifier(String), // ident
-    String(String),     // ""
+    Identifier(String),
+    String(String),
+    Lifetime(String),
 
+    // numbers
     Integer(i64, Option<NumericType>),
     Float(f64, Option<NumericType>),
 
@@ -526,6 +530,20 @@ impl Lexer {
                     }
                 }
 
+                '\'' => {
+                    self.advance();
+                    let mut lifetime = String::from("'");
+                    while let Some(c) = self.current_char {
+                        if c.is_alphanumeric() || c == '_' {
+                            lifetime.push(c);
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    Token::Lifetime(lifetime)
+                }
+
                 '"' => match self.read_string() {
                     Ok(s) => Token::String(s),
                     Err(_) => Token::EOF, // implement better error handling
@@ -648,6 +666,8 @@ impl Lexer {
                         "enum" => Token::Enum,
                         "fn" => Token::Fn,
                         "return" => Token::Return,
+                        "continue" => Token::Continue,
+                        "break" => Token::Break,
                         "if" => Token::If,
                         "else" => Token::Else,
                         "true" => Token::True,

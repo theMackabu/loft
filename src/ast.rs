@@ -219,6 +219,9 @@ pub enum Expr {
 #[derive(Clone, Debug)]
 pub enum Stmt {
     Return(Option<Expr>),
+    Continue(Option<String>),
+    Break(Option<String>, Option<Expr>),
+
     ExpressionStmt(Expr),
     ExpressionValue(Expr),
 

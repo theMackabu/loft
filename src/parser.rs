@@ -135,7 +135,10 @@ impl Parser {
         };
 
         let result = match self.current.token {
+            Token::Break => self.parse_break_statement(),
             Token::Return => self.parse_return_statement(),
+            Token::Continue => self.parse_continue_statement(),
+
             Token::Let => self.parse_let_statement(attributes),
             Token::Impl => self.parse_impl_block(attributes),
 
@@ -912,6 +915,36 @@ impl Parser {
         Ok(Stmt::Return(value))
     }
 
+    fn parse_continue_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'continue'
+        let label = if let Token::Lifetime(lbl) = &self.current.token {
+            let l = lbl.clone();
+            self.advance();
+            Some(l)
+        } else {
+            None
+        };
+        self.expect(Token::Semicolon)?;
+        Ok(Stmt::Continue(label))
+    }
+
+    fn parse_break_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'break'
+
+        let label = if let Token::Lifetime(lbl) = &self.current.token {
+            let l = lbl.clone();
+            self.advance();
+            Some(l)
+        } else {
+            None
+        };
+
+        let value = if self.current.token != Token::Semicolon { Some(self.parse_expression(0)?) } else { None };
+
+        self.expect(Token::Semicolon)?;
+        Ok(Stmt::Break(label, value))
+    }
+
     fn parse_let_statement(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'let'
 
@@ -1181,8 +1214,12 @@ impl Parser {
         }
 
         let value = if !returns && !statements.is_empty() {
-            if let Some(Stmt::ExpressionValue(expr)) = statements.pop() {
-                Some(Box::new(expr))
+            if let Stmt::ExpressionValue(_) = statements.last().unwrap() {
+                if let Stmt::ExpressionValue(expr) = statements.pop().unwrap() {
+                    Some(Box::new(expr))
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -1190,7 +1227,7 @@ impl Parser {
             None
         };
 
-        self.expect(Token::RightBrace)?; // consume '}'
+        self.expect(Token::RightBrace)?;
         self.exit_recursion();
         Ok(Expr::Block { statements, value, returns, is_async })
     }
