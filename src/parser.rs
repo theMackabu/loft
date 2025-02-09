@@ -63,6 +63,7 @@ pub struct Parser {
     current: TokenInfo,
     recursion_depth: i32,
     struct_types: HashSet<String>,
+    current_impl_target: Option<String>,
 }
 
 impl Parser {
@@ -76,6 +77,7 @@ impl Parser {
             peek,
             recursion_depth: 0,
             struct_types: HashSet::new(),
+            current_impl_target: None,
         }
     }
 
@@ -257,9 +259,10 @@ impl Parser {
 
     fn parse_impl_block(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'impl'
-
         let target = self.parse_path()?;
+
         self.expect(Token::LeftBrace)?;
+        self.current_impl_target = Some(target.segments.last().unwrap().clone());
 
         let mut items = Vec::new();
 
@@ -285,6 +288,7 @@ impl Parser {
         }
 
         self.expect(Token::RightBrace)?;
+        self.current_impl_target = None;
 
         Ok(Stmt::Impl { target, items, attributes })
     }
@@ -300,7 +304,16 @@ impl Parser {
             let (pattern, opt_type) = self.parse_parameter()?;
             let ty = match opt_type {
                 Some(t) => t,
-                None => Type::Path(Path { segments: vec!["Self".into()] }),
+                None => {
+                    if let Some(target) = &self.current_impl_target {
+                        Type::Simple(target.clone())
+                    } else {
+                        return Err(ParseError::Custom {
+                            message: "Self parameter outside of impl block".to_string(),
+                            location: self.current.location.clone(),
+                        });
+                    }
+                }
             };
             params.push((pattern, ty));
         }
@@ -678,6 +691,17 @@ impl Parser {
 
             Token::Identifier(_) => {
                 let path = self.parse_path()?;
+
+                if path.segments.len() == 1 && path.segments[0] == "Self" {
+                    if let Some(target) = &self.current_impl_target {
+                        return Ok(Type::Simple(target.clone()));
+                    } else {
+                        return Err(ParseError::Custom {
+                            message: "Cannot use Self type outside of an impl block".to_string(),
+                            location: self.current.location.clone(),
+                        });
+                    }
+                }
 
                 if self.current.token == Token::LeftAngle {
                     self.advance();
@@ -1152,6 +1176,29 @@ impl Parser {
     fn parse_identifier_expression(&mut self, name: String) -> Result<Expr, ParseError> {
         if self.current.token == Token::Not {
             return self.parse_macro_invocation(name);
+        }
+
+        if self.current.token == Token::LeftBrace {
+            let struct_name = if name == "Self" {
+                match &self.current_impl_target {
+                    Some(target) => target.clone(),
+                    None => {
+                        return Err(ParseError::Custom {
+                            message: "Cannot use Self outside of an impl block".to_string(),
+                            location: self.current.location.clone(),
+                        })
+                    }
+                }
+            } else {
+                name.clone()
+            };
+
+            if self.is_struct_type(&struct_name) {
+                self.advance(); // consume {
+                let fields = self.parse_struct_init_fields()?;
+                self.expect(Token::RightBrace)?;
+                return Ok(Expr::StructInit { struct_name, fields });
+            }
         }
 
         match self.current.token {
