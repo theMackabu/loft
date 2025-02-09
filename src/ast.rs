@@ -48,9 +48,14 @@ pub struct Attribute {
 }
 
 #[derive(Clone, Debug)]
+pub struct PathSegment {
+    pub ident: String,
+    pub generics: Vec<Type>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Path {
-    pub segments: Vec<String>,
-    pub type_params: Vec<Type>,
+    pub segments: Vec<PathSegment>,
 }
 
 #[derive(Clone, Debug)]

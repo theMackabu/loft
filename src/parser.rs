@@ -262,7 +262,7 @@ impl Parser {
         let target = self.parse_path()?;
 
         self.expect(Token::LeftBrace)?;
-        self.current_impl_target = Some(target.segments.last().unwrap().clone());
+        self.current_impl_target = Some(target.segments.last().unwrap().ident.clone());
 
         let mut items = Vec::new();
 
@@ -434,15 +434,32 @@ impl Parser {
 
     fn parse_path(&mut self) -> Result<Path, ParseError> {
         let mut segments = Vec::new();
-
-        segments.push(self.expect_identifier()?);
+        segments.push(self.parse_path_segment()?);
 
         while self.current.token == Token::DoubleColon {
             self.advance(); // consume '::'
-            segments.push(self.expect_identifier()?);
+            segments.push(self.parse_path_segment()?);
         }
 
-        Ok(Path { segments, type_params: Vec::new() })
+        Ok(Path { segments })
+    }
+
+    fn parse_path_segment(&mut self) -> Result<PathSegment, ParseError> {
+        let ident = self.expect_identifier()?;
+        let mut generics = Vec::new();
+
+        if self.current.token == Token::LeftAngle {
+            self.advance(); // consume '<'
+            while self.current.token != Token::RightAngle {
+                if !generics.is_empty() {
+                    self.expect(Token::Comma)?;
+                }
+                generics.push(self.parse_type()?);
+            }
+            self.expect(Token::RightAngle)?;
+        }
+
+        Ok(PathSegment { ident, generics })
     }
 
     fn parse_use_statement(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
@@ -757,7 +774,7 @@ impl Parser {
             Token::Identifier(_) => {
                 let path = self.parse_path()?;
 
-                if path.segments.len() == 1 && path.segments[0] == "Self" {
+                if path.segments.len() == 1 && path.segments[0].ident == "Self" {
                     if let Some(target) = &self.current_impl_target {
                         return Ok(Type::Simple(target.clone()));
                     } else {
@@ -1136,10 +1153,15 @@ impl Parser {
                     _ => {
                         if self.current.token == Token::DoubleColon {
                             self.advance(); // consume '::'
-                            let mut segments = vec![first_segment];
+
+                            let mut segments = vec![PathSegment {
+                                ident: first_segment,
+                                generics: Vec::new(),
+                            }];
 
                             loop {
-                                segments.push(self.expect_identifier()?);
+                                let ident = self.expect_identifier()?;
+                                segments.push(PathSegment { ident, generics: Vec::new() });
 
                                 if self.current.token != Token::DoubleColon {
                                     break;
@@ -1294,27 +1316,32 @@ impl Parser {
 
         if self.current.token == Token::DoubleColon {
             self.advance(); // consume '::'
-            let mut segments = vec![name];
-            segments.push(self.expect_identifier()?);
+            let mut segments = vec![PathSegment { ident: name, generics: Vec::new() }];
+            let ident = self.expect_identifier()?;
+            segments.push(PathSegment { ident, generics: Vec::new() });
 
             while self.current.token == Token::DoubleColon {
                 self.advance(); // consume '::'
-                segments.push(self.expect_identifier()?);
+                let ident = self.expect_identifier()?;
+                segments.push(PathSegment { ident, generics: Vec::new() });
             }
 
-            let mut generic_args = Vec::new();
             if self.current.token == Token::LeftAngle {
                 self.advance(); // consume '<'
+                let mut generics = Vec::new();
                 while self.current.token != Token::RightAngle {
-                    if !generic_args.is_empty() {
+                    if !generics.is_empty() {
                         self.expect(Token::Comma)?;
                     }
-                    generic_args.push(self.parse_type()?);
+                    generics.push(self.parse_type()?);
                 }
                 self.expect(Token::RightAngle)?;
+                if let Some(last_segment) = segments.last_mut() {
+                    last_segment.generics = generics;
+                }
             }
 
-            let path = Path { segments, type_params: generic_args };
+            let path = Path { segments };
 
             if self.current.token == Token::LeftParen {
                 self.advance(); // consume '('
@@ -1725,7 +1752,10 @@ impl Parser {
                             self.advance(); // consume (
                             let inner = self.parse_pattern()?;
                             self.expect(Token::RightParen)?;
-                            let path = Path { segments: vec![name] };
+                            let path = Path {
+                                segments: vec![PathSegment { ident: name, generics: Vec::new() }],
+                            };
+
                             return Ok(Pattern::TupleStruct { path, elements: vec![inner] });
                         }
                     }
@@ -1734,17 +1764,26 @@ impl Parser {
                             self.advance(); // consume (
                             self.expect(Token::RightParen)?;
                         }
-                        let path = Path { segments: vec![name] };
+
+                        let path = Path {
+                            segments: vec![PathSegment { ident: name, generics: Vec::new() }],
+                        };
+
                         return Ok(Pattern::Path(path));
                     }
                     _ => {}
                 }
 
                 if self.current.token == Token::DoubleColon {
-                    let mut segments = vec![name];
+                    let mut segments = vec![PathSegment { ident: name, generics: Vec::new() }];
+
                     while self.current.token == Token::DoubleColon {
                         self.advance();
-                        segments.push(self.expect_identifier()?);
+                        let next_ident = self.expect_identifier()?;
+                        segments.push(PathSegment {
+                            ident: next_ident,
+                            generics: Vec::new(),
+                        });
                     }
 
                     let path = Path { segments };
