@@ -1,5 +1,6 @@
 use crate::ast::{EnumVariant, Expr, Stmt, Type};
 use crate::lexer::{Lexer, Location, Token, TokenInfo};
+use std::collections::HashSet;
 
 const MAX_RECURSION_DEPTH: i32 = 500;
 
@@ -54,13 +55,28 @@ pub struct Parser {
     lexer: Lexer,
     current: TokenInfo,
     recursion_depth: i32,
+    struct_types: HashSet<String>,
 }
 
 impl Parser {
     pub fn new(mut lexer: Lexer) -> Self {
         let current = lexer.next_token();
-        Self { lexer, current, recursion_depth: 0 }
+
+        Self {
+            lexer,
+            current,
+            recursion_depth: 0,
+            struct_types: HashSet::new(),
+        }
     }
+
+    fn register_struct(&mut self, name: String) { self.struct_types.insert(name); }
+
+    fn is_struct_type(&self, name: &str) -> bool { self.struct_types.contains(name) }
+
+    fn advance(&mut self) { self.current = self.lexer.next_token(); }
+
+    fn exit_recursion(&mut self) { self.recursion_depth -= 1; }
 
     fn expect(&mut self, token: Token) -> Result<(), ParseError> {
         if self.current.token == token {
@@ -84,10 +100,6 @@ impl Parser {
         }
         Ok(())
     }
-
-    fn advance(&mut self) { self.current = self.lexer.next_token(); }
-
-    fn exit_recursion(&mut self) { self.recursion_depth -= 1; }
 
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut statements = Vec::new();
@@ -158,7 +170,8 @@ impl Parser {
 
         let name = self.expect_identifier()?;
 
-        // Parse generic type parameters
+        self.register_struct(name.clone());
+
         let type_params = if self.current.token == Token::LeftAngle {
             self.advance();
             let params = self.parse_type_params()?;
@@ -595,6 +608,13 @@ impl Parser {
                 let name = name.clone();
                 self.advance();
 
+                if self.current.token == Token::LeftBrace && self.is_struct_type(&name) {
+                    self.advance(); // consume {
+                    let fields = self.parse_struct_init_fields()?;
+                    self.expect(Token::RightBrace)?;
+                    return Ok(Expr::StructInit { struct_name: name, fields });
+                }
+
                 match name.as_str() {
                     "Ok" => {
                         self.expect(Token::LeftParen)?;
@@ -737,6 +757,34 @@ impl Parser {
         }
     }
 
+    fn parse_struct_init_fields(&mut self) -> Result<Vec<(String, Expr, bool)>, ParseError> {
+        let mut fields = Vec::new();
+
+        while self.current.token != Token::RightBrace {
+            if !fields.is_empty() {
+                self.expect(Token::Comma)?;
+
+                if self.current.token == Token::RightBrace {
+                    break;
+                }
+            }
+
+            let field_name = self.expect_identifier()?;
+
+            let (field_value, is_shorthand) = if self.current.token == Token::Colon {
+                self.advance(); // consume :
+                (self.parse_expression(0)?, false)
+            } else {
+                // shorthand case
+                (Expr::Identifier(field_name.clone()), true)
+            };
+
+            fields.push((field_name, field_value, is_shorthand));
+        }
+
+        Ok(fields)
+    }
+
     fn parse_member_access(&mut self, object: Expr, member: String) -> Result<Expr, ParseError> {
         match self.current.token {
             Token::Assign => {
@@ -849,6 +897,7 @@ impl Parser {
             Token::Plus | Token::Minus => PRECEDENCE_SUM,
             Token::Star | Token::Slash | Token::Rem => PRECEDENCE_PRODUCT,
             Token::BitXor => PRECEDENCE_OR,
+            Token::Not => PRECEDENCE_PREFIX,
             _ => PRECEDENCE_LOWEST,
         }
     }

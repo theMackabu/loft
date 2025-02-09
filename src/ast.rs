@@ -65,6 +65,11 @@ pub enum Expr {
         value: Option<Box<Expr>>,
         returns: bool,
     },
+
+    StructInit {
+        struct_name: String,
+        fields: Vec<(String, Expr, bool)>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -92,7 +97,7 @@ pub enum Stmt {
         name: String,
         visibility: bool,
         type_params: Vec<String>,
-        fields: Vec<(String, bool, Type)>,
+        fields: Vec<(String, bool, Type)>, // field_name, expr, is_shorthand
     },
 
     TypeAlias {
