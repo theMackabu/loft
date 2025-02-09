@@ -7,6 +7,17 @@ pub enum Expr {
     String(String),
     Identifier(String),
 
+    MemberAccess {
+        object: Box<Expr>,
+        member: String,
+    },
+
+    MemberAssignment {
+        object: Box<Expr>,
+        member: String,
+        value: Box<Expr>,
+    },
+
     Assignment {
         target: String,
         value: Box<Expr>,

@@ -10,6 +10,7 @@ const PRECEDENCE_SUM: i32 = 5; // +, -
 const PRECEDENCE_PRODUCT: i32 = 6; // *, /
 const PRECEDENCE_PREFIX: i32 = 7; // -X, !X
 const PRECEDENCE_CALL: i32 = 8; // function(X)
+const PRECEDENCE_MEMBER: i32 = 9; // member.area
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -464,6 +465,53 @@ impl Parser {
                 Ok(Expr::Call { function: Box::new(left), arguments })
             }
 
+            Token::Dot => {
+                self.advance(); // consume .
+
+                match &self.current.token {
+                    Token::Identifier(member) => {
+                        let member = member.clone();
+                        self.advance();
+
+                        match self.current.token {
+                            Token::Assign => {
+                                self.advance(); // consume =
+                                let value = Box::new(self.parse_expression(0)?);
+                                Ok(Expr::MemberAssignment {
+                                    object: Box::new(left),
+                                    member,
+                                    value,
+                                })
+                            }
+
+                            Token::LeftParen => {
+                                self.advance(); // consume (
+                                let mut arguments = Vec::new();
+
+                                while self.current.token != Token::RightParen {
+                                    if !arguments.is_empty() {
+                                        self.expect(Token::Comma)?;
+                                    }
+                                    arguments.push(self.parse_expression(0)?);
+                                }
+
+                                self.expect(Token::RightParen)?;
+
+                                Ok(Expr::Call {
+                                    function: Box::new(Expr::MemberAccess { object: Box::new(left), member }),
+                                    arguments,
+                                })
+                            }
+
+                            _ => Ok(Expr::MemberAccess { object: Box::new(left), member }),
+                        }
+                    }
+                    _ => Err(ParseError::ExpectedIdentifier {
+                        location: self.current.location.to_owned(),
+                    }),
+                }
+            }
+
             Token::Plus
             | Token::Minus
             | Token::Star
@@ -552,6 +600,7 @@ impl Parser {
 
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {
+            Token::Dot => PRECEDENCE_MEMBER,
             Token::LeftParen => PRECEDENCE_CALL,
             Token::Equals | Token::NotEquals => PRECEDENCE_EQUALS,
             Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => PRECEDENCE_COMPARE,

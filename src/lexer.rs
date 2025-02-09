@@ -13,6 +13,7 @@ pub enum Token {
     Type,   // type
 
     // symbols
+    Dot,        // .
     LeftParen,  //(
     RightParen, //)
     LeftBrace,  // {
@@ -237,6 +238,11 @@ impl Lexer {
         let token = match self.current_char {
             None => Token::EOF,
             Some(c) => match c {
+                '.' => {
+                    self.advance();
+                    Token::Dot
+                }
+
                 '(' => {
                     self.advance();
                     Token::LeftParen
