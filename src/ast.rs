@@ -22,6 +22,15 @@ pub enum NumericType {
 pub enum Pattern {
     Identifier { name: String, mutable: bool },
     Reference { mutable: bool, pattern: Box<Pattern> },
+
+    Path(Path),
+    Literal(Expr),
+    Wildcard,
+    Or(Vec<Pattern>),
+    Tuple(Vec<Pattern>),
+
+    TupleStruct { path: Path, elements: Vec<Pattern> },
+    Struct { path: Path, fields: Vec<(String, Pattern)>, rest: bool },
 }
 
 #[derive(Clone, Debug)]
@@ -31,19 +40,19 @@ pub enum MacroDelimiter {
     Brace,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Attribute {
     pub is_inner: bool,
     pub name: String,
     pub tokens: Vec<TokenInfo>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Path {
     pub segments: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Type {
     Unit,
     Path(Path),
@@ -60,20 +69,27 @@ pub enum Type {
     Pointer { inner: Box<Type> },
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum EnumVariant {
     Simple(String),
     Tuple(String, Vec<Type>),
     Struct(String, Vec<(String, Type)>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum UsePath {
     Simple(String),
     Nested(Vec<String>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub guard: Option<Expr>,
+    pub body: Expr,
+}
+
+#[derive(Clone, Debug)]
 pub enum Expr {
     Path(Path),
     Boolean(bool),
@@ -102,6 +118,11 @@ pub enum Expr {
     Cast {
         expr: Box<Expr>,
         target_type: Type,
+    },
+
+    Match {
+        value: Box<Expr>,
+        arms: Vec<MatchArm>,
     },
 
     Closure {
@@ -182,7 +203,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Stmt {
     Return(Option<Expr>),
     ExpressionStmt(Expr),

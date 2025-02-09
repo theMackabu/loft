@@ -25,6 +25,7 @@ pub enum Token {
     Pub,    // pub
     Async,  // async
     Await,  // await
+    Match,  // match
 
     // project
     Use,         // use
@@ -47,6 +48,7 @@ pub enum Token {
     LeftAngle,    // <
     RightAngle,   // >
     Question,     // ?
+    Fat,          // =>
 
     // operators
     Plus,   // +
@@ -510,13 +512,17 @@ impl Lexer {
                 }
 
                 '=' => {
-                    if self.peek() == Some('=') {
-                        self.advance();
-                        self.advance();
-                        Token::Equals
-                    } else {
-                        self.advance();
-                        Token::Assign
+                    self.advance();
+                    match self.current_char {
+                        Some('=') => {
+                            self.advance();
+                            Token::Equals
+                        }
+                        Some('>') => {
+                            self.advance();
+                            Token::Fat
+                        }
+                        _ => Token::Assign,
                     }
                 }
 
@@ -653,6 +659,7 @@ impl Lexer {
                         "use" => Token::Use,
                         "mod" => Token::Module,
                         "as" => Token::As,
+                        "match" => Token::Match,
                         "macro_rules" => Token::MacroRules,
                         _ => Token::Identifier(ident),
                     }

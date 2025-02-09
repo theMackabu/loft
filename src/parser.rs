@@ -156,8 +156,8 @@ impl Parser {
                 Ok(Stmt::ExpressionStmt(block))
             }
 
-            Token::If => {
-                let expr = self.parse_if_expression()?;
+            Token::Match | Token::If => {
+                let expr = self.parse_expression(0)?;
                 Ok(Stmt::ExpressionValue(expr))
             }
 
@@ -319,6 +319,52 @@ impl Parser {
         }
         self.expect(Token::RightParen)?;
         Ok(params)
+    }
+
+    fn parse_match_expression(&mut self) -> Result<Expr, ParseError> {
+        self.advance(); // consume 'match'
+        let value = Box::new(self.parse_expression(0)?);
+
+        self.expect(Token::LeftBrace)?;
+        let mut arms = Vec::new();
+
+        while self.current.token != Token::RightBrace {
+            arms.push(self.parse_match_arm()?);
+
+            if self.current.token == Token::Comma {
+                self.advance();
+            }
+        }
+
+        self.expect(Token::RightBrace)?;
+        Ok(Expr::Match { value, arms })
+    }
+
+    fn parse_match_arm(&mut self) -> Result<MatchArm, ParseError> {
+        let pattern = self.parse_pattern()?;
+
+        let guard = if self.current.token == Token::If {
+            self.advance();
+            Some(self.parse_expression(0)?)
+        } else {
+            None
+        };
+
+        self.expect(Token::Fat)?; // consume '=>'
+
+        let body = if self.current.token == Token::LeftBrace {
+            self.advance();
+            let expr = self.parse_block_expression()?;
+            expr
+        } else {
+            let expr = self.parse_expression(0)?;
+            if self.current.token == Token::Comma {
+                self.advance();
+            }
+            expr
+        };
+
+        Ok(MatchArm { pattern, guard, body })
     }
 
     fn parse_parameter(&mut self) -> Result<(Pattern, Option<Type>), ParseError> {
@@ -932,6 +978,8 @@ impl Parser {
 
     fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
         match &self.current.token {
+            Token::Match => self.parse_match_expression(),
+
             Token::Async => self.parse_async_prefix(),
 
             Token::If => self.parse_if_expression(),
@@ -1664,6 +1712,132 @@ impl Parser {
         };
 
         Ok(Expr::If { condition, then_branch, else_branch })
+    }
+
+    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+        match &self.current.token {
+            Token::Identifier(name) => {
+                let name = name.clone();
+                self.advance();
+
+                if name == "_" {
+                    return Ok(Pattern::Wildcard);
+                }
+
+                if self.current.token == Token::DoubleColon {
+                    let mut segments = vec![name];
+                    while self.current.token == Token::DoubleColon {
+                        self.advance();
+                        segments.push(self.expect_identifier()?);
+                    }
+
+                    let path = Path { segments };
+
+                    match self.current.token {
+                        Token::LeftParen => {
+                            self.advance();
+                            let mut elements = Vec::new();
+
+                            while self.current.token != Token::RightParen {
+                                if !elements.is_empty() {
+                                    self.expect(Token::Comma)?;
+                                }
+                                elements.push(self.parse_pattern()?);
+                            }
+
+                            self.expect(Token::RightParen)?;
+                            Ok(Pattern::TupleStruct { path, elements })
+                        }
+
+                        Token::LeftBrace => {
+                            self.advance();
+                            let mut fields = Vec::new();
+                            let mut rest = false;
+
+                            while self.current.token != Token::RightBrace {
+                                if self.current.token == Token::Dot {
+                                    self.advance();
+                                    self.expect(Token::Dot)?;
+                                    rest = true;
+                                    break;
+                                }
+
+                                if !fields.is_empty() {
+                                    self.expect(Token::Comma)?;
+                                }
+
+                                let field_name = self.expect_identifier()?;
+                                let pattern = if self.current.token == Token::Colon {
+                                    self.advance();
+                                    self.parse_pattern()?
+                                } else {
+                                    Pattern::Identifier {
+                                        name: field_name.clone(),
+                                        mutable: false,
+                                    }
+                                };
+
+                                fields.push((field_name, pattern));
+                            }
+
+                            self.expect(Token::RightBrace)?;
+                            Ok(Pattern::Struct { path, fields, rest })
+                        }
+                        _ => Ok(Pattern::Path(path)),
+                    }
+                } else {
+                    Ok(Pattern::Identifier { name, mutable: false })
+                }
+            }
+
+            Token::Integer(n, t) => {
+                let n = *n;
+                let t = t.clone();
+                self.advance();
+                Ok(Pattern::Literal(Expr::Integer(n, t)))
+            }
+
+            Token::Float(n, t) => {
+                let n = *n;
+                let t = t.clone();
+                self.advance();
+                Ok(Pattern::Literal(Expr::Float(n, t)))
+            }
+
+            Token::String(s) => {
+                let s = s.clone();
+                self.advance();
+                Ok(Pattern::Literal(Expr::String(s)))
+            }
+
+            Token::True => {
+                self.advance();
+                Ok(Pattern::Literal(Expr::Boolean(true)))
+            }
+
+            Token::False => {
+                self.advance();
+                Ok(Pattern::Literal(Expr::Boolean(false)))
+            }
+
+            Token::BitOr => {
+                self.advance();
+                let mut patterns = Vec::new();
+                patterns.push(self.parse_pattern()?);
+
+                while self.current.token == Token::BitOr {
+                    self.advance();
+                    patterns.push(self.parse_pattern()?);
+                }
+
+                Ok(Pattern::Or(patterns))
+            }
+
+            _ => Err(ParseError::UnexpectedToken {
+                found: self.current.clone(),
+                expected: Some("pattern".to_string()),
+            }),
+        }
     }
 
     fn parse_block_expression(&mut self) -> Result<Expr, ParseError> { self.parse_block_expression_with_async(false) }
