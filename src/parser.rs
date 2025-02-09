@@ -1724,6 +1724,27 @@ impl Parser {
                     return Ok(Pattern::Wildcard);
                 }
 
+                match name.as_str() {
+                    "Ok" | "Err" | "Some" => {
+                        if self.current.token == Token::LeftParen {
+                            self.advance(); // consume (
+                            let inner = self.parse_pattern()?;
+                            self.expect(Token::RightParen)?;
+                            let path = Path { segments: vec![name] };
+                            return Ok(Pattern::TupleStruct { path, elements: vec![inner] });
+                        }
+                    }
+                    "None" => {
+                        if self.current.token == Token::LeftParen {
+                            self.advance(); // consume (
+                            self.expect(Token::RightParen)?;
+                        }
+                        let path = Path { segments: vec![name] };
+                        return Ok(Pattern::Path(path));
+                    }
+                    _ => {}
+                }
+
                 if self.current.token == Token::DoubleColon {
                     let mut segments = vec![name];
                     while self.current.token == Token::DoubleColon {
@@ -1802,6 +1823,27 @@ impl Parser {
                 let t = t.clone();
                 self.advance();
                 Ok(Pattern::Literal(Expr::Float(n, t)))
+            }
+
+            Token::Minus => {
+                self.advance(); // consume the minus
+                match &self.current.token {
+                    Token::Integer(n, t) => {
+                        let n = -n;
+                        let t = t.clone();
+                        self.advance();
+                        Ok(Pattern::Literal(Expr::Integer(n, t)))
+                    }
+                    Token::Float(n, t) => {
+                        let n = -n;
+                        let t = t.clone();
+                        self.advance();
+                        Ok(Pattern::Literal(Expr::Float(n, t)))
+                    }
+                    _ => Err(ParseError::ExpectedExpression {
+                        location: self.current.location.clone(),
+                    }),
+                }
             }
 
             Token::String(s) => {
