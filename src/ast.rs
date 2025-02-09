@@ -270,8 +270,7 @@ pub enum Stmt {
     },
 
     Let {
-        name: String,
-        mutable: bool,
+        pattern: Pattern,
         type_annotation: Option<Type>,
         initializer: Option<Box<Expr>>,
         attributes: Vec<Attribute>,

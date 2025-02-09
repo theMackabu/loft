@@ -945,52 +945,41 @@ impl Parser {
         Ok(Stmt::Break(label, value))
     }
 
-    fn parse_let_statement(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
+    pub fn parse_let_statement(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'let'
-
-        let mutable = if self.current.token == Token::Mut {
-            self.advance(); // consume 'mut'
-            true
-        } else {
-            false
-        };
-
-        let name = match &self.current.token {
-            Token::Identifier(name) => {
-                let name = name.clone();
-                self.advance();
-                name
-            }
-            _ => {
-                return Err(ParseError::ExpectedIdentifier {
-                    location: self.current.location.to_owned(),
-                })
-            }
-        };
-
+        let pattern = self.parse_pattern_binding()?;
         let type_annotation = if self.current.token == Token::Colon {
             self.advance();
             Some(self.parse_type()?)
         } else {
             None
         };
-
         let initializer = if self.current.token == Token::Assign {
-            self.advance(); // consume =
+            self.advance();
             Some(Box::new(self.parse_expression(0)?))
         } else {
             None
         };
-
         self.expect(Token::Semicolon)?;
-
         Ok(Stmt::Let {
-            name,
-            mutable,
+            pattern,
             type_annotation,
             initializer,
             attributes,
         })
+    }
+
+    fn parse_pattern_binding(&mut self) -> Result<Pattern, ParseError> {
+        if self.current.token == Token::Mut {
+            self.advance();
+            let pat = self.parse_pattern()?;
+            match pat {
+                Pattern::Identifier { name, .. } => Ok(Pattern::Identifier { name, mutable: true }),
+                _ => Ok(pat),
+            }
+        } else {
+            self.parse_pattern()
+        }
     }
 
     fn parse_const_static_statement(&mut self, kind: DeclarationKind, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
@@ -1801,20 +1790,52 @@ impl Parser {
 
                     let path = Path { segments };
 
-                    match self.current.token {
+                    match &self.current.token {
                         Token::LeftParen => {
-                            self.advance();
-                            let mut elements = Vec::new();
+                            self.advance(); // consume '('
 
-                            while self.current.token != Token::RightParen {
-                                if !elements.is_empty() {
-                                    self.expect(Token::Comma)?;
-                                }
-                                elements.push(self.parse_pattern()?);
+                            if self.current.token == Token::RightParen {
+                                self.advance(); // consume ')'
+                                return Ok(Pattern::Tuple(vec![]));
                             }
 
-                            self.expect(Token::RightParen)?;
-                            Ok(Pattern::TupleStruct { path, elements })
+                            let mut patterns = Vec::new();
+                            patterns.push(self.parse_pattern()?);
+
+                            while self.current.token == Token::Comma {
+                                self.advance(); // consume ','
+                                if self.current.token == Token::RightParen {
+                                    break;
+                                }
+                                patterns.push(self.parse_pattern()?);
+                            }
+
+                            self.expect(Token::RightParen)?; // consume ')'
+                            Ok(Pattern::Tuple(patterns))
+                        }
+
+                        Token::Mut => {
+                            self.advance(); // consume 'mut'
+                            let inner = self.parse_pattern()?;
+                            match inner {
+                                Pattern::Identifier { name, .. } => Ok(Pattern::Identifier { name, mutable: true }),
+                                _ => {
+                                    return Err(ParseError::Custom {
+                                        message: "'mut' is only allowed with identifier patterns".to_string(),
+                                        location: self.current.location.clone(),
+                                    });
+                                }
+                            }
+                        }
+
+                        Token::Identifier(name) => {
+                            let name = name.clone();
+                            self.advance();
+                            if name == "_" {
+                                Ok(Pattern::Wildcard)
+                            } else {
+                                Ok(Pattern::Identifier { name, mutable: false })
+                            }
                         }
 
                         Token::LeftBrace => {
