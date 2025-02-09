@@ -77,6 +77,11 @@ impl Parser {
             Token::Fn => self.parse_function_statement(),
             Token::Return => self.parse_return_statement(),
 
+            Token::If => {
+                let expr = self.parse_if_expression()?;
+                Ok(Stmt::ExpressionValue(expr))
+            }
+
             _ => {
                 let expr = self.parse_expression(0)?;
 
