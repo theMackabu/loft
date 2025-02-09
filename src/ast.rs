@@ -12,6 +12,11 @@ pub enum Expr {
         value: Box<Expr>,
     },
 
+    Unary {
+        operator: Token,
+        operand: Box<Expr>,
+    },
+
     Binary {
         left: Box<Expr>,
         operator: Token,

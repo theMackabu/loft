@@ -1,6 +1,16 @@
 use crate::ast::{Expr, Stmt, Type};
 use crate::lexer::{Lexer, Location, Token, TokenInfo};
 
+const PRECEDENCE_LOWEST: i32 = 0;
+const PRECEDENCE_EQUALS: i32 = 1; // ==, !=
+const PRECEDENCE_COMPARE: i32 = 2; // >, >=, <, <=
+const PRECEDENCE_OR: i32 = 3; // ||
+const PRECEDENCE_AND: i32 = 4; // &&
+const PRECEDENCE_SUM: i32 = 5; // +, -
+const PRECEDENCE_PRODUCT: i32 = 6; // *, /
+const PRECEDENCE_PREFIX: i32 = 7; // -X, !X
+const PRECEDENCE_CALL: i32 = 8; // function(X)
+
 #[derive(Debug)]
 pub enum ParseError {
     UnexpectedToken { found: TokenInfo, expected: Option<String> },
@@ -340,8 +350,25 @@ impl Parser {
     }
 
     fn parse_expression(&mut self, precedence: i32) -> Result<Expr, ParseError> {
-        let mut left = match &self.current.token {
+        let mut left = self.parse_prefix()?;
+
+        while precedence < self.get_precedence(&self.current.token) {
+            left = self.parse_infix(left)?;
+        }
+
+        Ok(left)
+    }
+
+    fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
+        match &self.current.token {
             Token::If => self.parse_if_expression(),
+
+            Token::Minus | Token::Not => {
+                let operator = self.current.token.clone();
+                self.advance();
+                let operand = Box::new(self.parse_expression(PRECEDENCE_PREFIX)?);
+                Ok(Expr::Unary { operator, operand })
+            }
 
             Token::LeftBrace => {
                 self.advance();
@@ -416,25 +443,36 @@ impl Parser {
                     location: self.current.location.to_owned(),
                 })
             }
-        }?;
-
-        while precedence < self.get_precedence(&self.current.token) {
-            left = match &self.current.token {
-                Token::Plus | Token::Minus | Token::Star | Token::Slash | Token::Equals | Token::NotEquals | Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => {
-                    let operator = self.current.token.clone();
-                    self.advance();
-                    let right = self.parse_expression(self.get_precedence(&operator))?;
-                    Ok(Expr::Binary {
-                        left: Box::new(left),
-                        operator,
-                        right: Box::new(right),
-                    })
-                }
-                _ => Ok(left),
-            }?;
         }
+    }
 
-        Ok(left)
+    fn parse_infix(&mut self, left: Expr) -> Result<Expr, ParseError> {
+        match &self.current.token {
+            Token::Plus
+            | Token::Minus
+            | Token::Star
+            | Token::Slash
+            | Token::Equals
+            | Token::NotEquals
+            | Token::LeftAngle
+            | Token::RightAngle
+            | Token::LessEquals
+            | Token::GreaterEquals
+            | Token::And
+            | Token::Or => {
+                let operator = self.current.token.clone();
+                let precedence = self.get_precedence(&operator);
+                self.advance();
+                let right = self.parse_expression(precedence)?;
+                Ok(Expr::Binary {
+                    left: Box::new(left),
+                    operator,
+                    right: Box::new(right),
+                })
+            }
+
+            _ => Ok(left),
+        }
     }
 
     fn parse_if_expression(&mut self) -> Result<Expr, ParseError> {
@@ -496,16 +534,15 @@ impl Parser {
         Ok(Expr::Block { statements, value, returns })
     }
 
-    // use for later
-    fn peek_token(&self) -> Token { self.lexer.to_owned().next_token().token }
-
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {
-            Token::Assign => 0,
-            Token::Equals | Token::NotEquals | Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => 1,
-            Token::Plus | Token::Minus => 2,
-            Token::Star | Token::Slash => 3,
-            _ => 0,
+            Token::Equals | Token::NotEquals => PRECEDENCE_EQUALS,
+            Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => PRECEDENCE_COMPARE,
+            Token::Or => PRECEDENCE_OR,
+            Token::And => PRECEDENCE_AND,
+            Token::Plus | Token::Minus => PRECEDENCE_SUM,
+            Token::Star | Token::Slash => PRECEDENCE_PRODUCT,
+            _ => PRECEDENCE_LOWEST,
         }
     }
 }
