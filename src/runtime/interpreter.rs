@@ -137,6 +137,13 @@ impl Interpreter {
 
     fn execute_statement(&mut self, stmt: &Stmt) -> Result<Value, String> {
         match stmt {
+            Stmt::Module { body, .. } => {
+                self.env.enter_scope();
+                let result = self.execute(body)?;
+                self.env.exit_scope();
+                Ok(result)
+            }
+
             Stmt::Let { pattern, initializer, .. } => {
                 let value = if let Some(init) = initializer { self.evaluate_expression(init)? } else { Value::Unit };
 
@@ -144,6 +151,11 @@ impl Interpreter {
                     self.env.scope_resolver.declare_variable(name);
                     self.env.set_variable(name, value)?;
                 }
+                Ok(Value::Unit)
+            }
+
+            Stmt::ExpressionStmt(expr) => {
+                self.evaluate_expression(expr)?;
                 Ok(Value::Unit)
             }
 
@@ -157,49 +169,38 @@ impl Interpreter {
                     }
                 }
 
-                let mut result = Value::Unit;
-
-                for stmt in &body[..body.len().saturating_sub(1)] {
-                    self.execute_statement(stmt)?;
-                }
-
-                if let Some(last_stmt) = body.last() {
+                let result = if let Some(last_stmt) = body.last() {
                     match last_stmt {
-                        Stmt::ExpressionValue(expr) => {
-                            result = self.evaluate_expression(expr)?;
-                        }
                         Stmt::Return(Some(expr)) => {
-                            result = self.evaluate_expression(expr)?;
+                            for stmt in &body[..body.len() - 1] {
+                                self.execute_statement(stmt)?;
+                            }
+                            self.evaluate_expression(expr)?
                         }
-                        Stmt::ExpressionStmt(expr) => {
-                            self.evaluate_expression(expr)?;
+                        Stmt::ExpressionValue(expr) => {
+                            for stmt in &body[..body.len() - 1] {
+                                self.execute_statement(stmt)?;
+                            }
+                            self.evaluate_expression(expr)?
                         }
                         _ => {
-                            self.execute_statement(last_stmt)?;
+                            for stmt in body {
+                                self.execute_statement(stmt)?;
+                            }
+                            Value::Unit
                         }
                     }
-                }
-
-                self.env.exit_scope();
-                Ok(result)
-            }
-
-            Stmt::Module { body, .. } => {
-                self.env.enter_scope();
-                let result = self.execute(body)?;
-                self.env.exit_scope();
-                Ok(result)
-            }
-
-            Stmt::ExpressionStmt(expr) => self.evaluate_expression(expr),
-
-            Stmt::Return(expr) => {
-                if let Some(e) = expr {
-                    self.evaluate_expression(e)
                 } else {
-                    Ok(Value::Unit)
-                }
+                    Value::Unit
+                };
+
+                self.env.exit_scope();
+                Ok(result)
             }
+
+            Stmt::Return(Some(expr)) => self.evaluate_expression(expr),
+
+            Stmt::ExpressionValue(expr) => self.evaluate_expression(expr),
 
             _ => Ok(Value::Unit),
         }
@@ -234,13 +235,34 @@ impl Interpreter {
                 Ok(result)
             }
 
+            Expr::Dereference { operand } => {
+                let value = self.evaluate_expression(operand)?;
+                // for now, just return the value directly since we're not fully implementing
+                // the reference system in the interpreter
+                Ok(value)
+            }
+
+            // same as above
+            Expr::Reference { mutable: _, operand } => self.evaluate_expression(operand),
+
             Expr::Binary { left, operator, right } => {
                 let left_val = self.evaluate_expression(left)?;
                 let right_val = self.evaluate_expression(right)?;
 
-                match (left_val, operator, right_val) {
+                match (&left_val, operator, &right_val) {
+                    (Value::Integer(l), Token::Plus, Value::Integer(r)) => Ok(Value::Integer(l + r)),
+                    (Value::Integer(l), Token::Minus, Value::Integer(r)) => Ok(Value::Integer(l - r)),
+                    (Value::Integer(l), Token::Star, Value::Integer(r)) => Ok(Value::Integer(l * r)),
+                    (Value::Integer(l), Token::Slash, Value::Integer(r)) => Ok(Value::Integer(l / r)),
+
                     (Value::Integer(l), Token::LeftAngle, Value::Integer(r)) => Ok(Value::Boolean(l < r)),
-                    _ => Err("Invalid binary operation".to_string()),
+                    (Value::Integer(l), Token::RightAngle, Value::Integer(r)) => Ok(Value::Boolean(l > r)),
+                    (Value::Integer(l), Token::LessEquals, Value::Integer(r)) => Ok(Value::Boolean(l <= r)),
+                    (Value::Integer(l), Token::GreaterEquals, Value::Integer(r)) => Ok(Value::Boolean(l >= r)),
+                    (Value::Integer(l), Token::Equals, Value::Integer(r)) => Ok(Value::Boolean(l == r)),
+                    (Value::Integer(l), Token::NotEquals, Value::Integer(r)) => Ok(Value::Boolean(l != r)),
+
+                    _ => Err(format!("Invalid binary operation: {:?} {:?} {:?}", left_val, operator, right_val)),
                 }
             }
 
@@ -260,38 +282,58 @@ impl Interpreter {
                 }
             }
 
+            // !MODULE SYSTEM!
+            // TEMPORARY
             Expr::Call { function, arguments } => {
-                let func_name = if let Expr::Identifier(name) = &**function {
-                    name
-                } else {
-                    return Err("Only direct function calls supported".to_string());
-                };
-
-                let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
-                let arg_values = evaluated_args?;
-
-                let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.find_function(func_name) {
-                    (params.clone(), body.clone())
-                } else {
-                    return Err(format!("Function '{}' not found", func_name));
-                };
-
-                let outer_scope = self.env.scopes.clone();
-                self.env.enter_scope();
-
-                for ((param, _), value) in params.iter().zip(arg_values) {
-                    if let Pattern::Identifier { name, .. } = param {
-                        self.env.scope_resolver.declare_variable(name);
-                        self.env.set_variable(name, value.clone())?;
+                match &**function {
+                    Expr::Path(path) => {
+                        // handle path-based calls (like io::println)
+                        // TEMPORARY
+                        if path.segments.len() == 2 && path.segments[0].ident == "io" && path.segments[1].ident == "println" {
+                            if let Some(arg) = arguments.first() {
+                                let value = self.evaluate_expression(arg)?;
+                                if let Value::Str(s) = value {
+                                    println!("{}", s); // TEMPORARY
+                                    return Ok(Value::Unit);
+                                } else {
+                                    return Err("io::println requires a string argument".to_string());
+                                }
+                            } else {
+                                return Err("io::println requires an argument".to_string());
+                            }
+                        }
+                        return Err(format!("Unknown path function: {:?}", path));
                     }
+                    Expr::Identifier(name) => {
+                        // Regular function calls
+                        let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
+                        let arg_values = evaluated_args?;
+
+                        let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.find_function(name) {
+                            (params.clone(), body.clone())
+                        } else {
+                            return Err(format!("Function '{}' not found", name));
+                        };
+
+                        let outer_scope = self.env.scopes.clone();
+                        self.env.enter_scope();
+
+                        for ((param, _), value) in params.iter().zip(arg_values) {
+                            if let Pattern::Identifier { name, .. } = param {
+                                self.env.scope_resolver.declare_variable(name);
+                                self.env.set_variable(name, value.clone())?;
+                            }
+                        }
+
+                        let result = self.execute(&body);
+
+                        self.env.exit_scope();
+                        self.env.scopes = outer_scope;
+
+                        result
+                    }
+                    _ => Err(format!("Unsupported function call type: {:?}", function)),
                 }
-
-                let result = self.execute(&body);
-
-                self.env.exit_scope();
-                self.env.scopes = outer_scope;
-
-                result
             }
 
             _ => Ok(Value::Unit),
