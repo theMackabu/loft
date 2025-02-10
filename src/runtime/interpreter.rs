@@ -287,23 +287,21 @@ impl Interpreter {
             Expr::Call { function, arguments } => {
                 match &**function {
                     Expr::Path(path) => {
-                        // handle path-based calls (like io::println)
+                        // handle import calls (like use std::io, io::println)
+                        // handle path-based calls (like std::io::println)
                         // TEMPORARY
                         if path.segments.len() == 2 && path.segments[0].ident == "io" && path.segments[1].ident == "println" {
                             if let Some(arg) = arguments.first() {
                                 let value = self.evaluate_expression(arg)?;
-                                if let Value::Str(s) = value {
-                                    println!("{}", s); // TEMPORARY
-                                    return Ok(Value::Unit);
-                                } else {
-                                    return Err("io::println requires a string argument".to_string());
-                                }
+                                println!("io::println {value:?}"); // TEMPORARY - add display and args
+                                return Ok(Value::Unit);
                             } else {
                                 return Err("io::println requires an argument".to_string());
                             }
                         }
                         return Err(format!("Unknown path function: {:?}", path));
                     }
+
                     Expr::Identifier(name) => {
                         // Regular function calls
                         let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();

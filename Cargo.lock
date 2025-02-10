@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "loft"
-version = "0.0.1-alpha.1"
+version = "0.0.1-alpha.2"
 dependencies = [
  "macros-rs",
 ]

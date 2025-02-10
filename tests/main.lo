@@ -1,0 +1,78 @@
+pub mod std {
+    pub mod io {
+        use core::io::stdout;
+        
+        pub fn print(value: &str) {
+            io::stdout().write(value);
+        }
+        
+        pub fn println(value: &str) {
+            io::stdout().write(value);
+            io::stdout().write("\n");
+        }
+    }
+}
+
+// update lexer to support
+// pub mod util;
+
+use std::io;
+
+// defaults to other.lo or other/mod.lo
+use other::something;
+use testing::util;
+
+#[path="other/another.lo"]
+use another;
+
+const MAX_VALUE: i32 = 100;
+static GREETING: &str = "Hello";
+
+// Type error: TypeMismatch { expected: "&str", found: "i32", location: "in function main" }
+// even though its here
+// when changing return type "location"
+fn get_message(input: &str) -> &str {
+    // io::println(input);
+    
+    GREETING
+}
+
+// parse enums
+pub enum Result<T, E> {
+   Ok(T),
+   Err(E),
+}
+
+// allow enum Results
+pub enum Option<T> {
+    None,
+    Some(T),
+}
+
+// allow no arguments
+// allow async fn main -> Result
+fn main() -> &str {
+    let x: i32 = 42;
+    let mut a = 0;
+    
+    let y = &x;  // reference
+    let z = *y;  // dereference
+    
+    if z < MAX_VALUE {
+        io::println(GREETING);
+    } else {
+        return "failed!";
+    }
+    
+    // only allow i32, ExitCode, and Unit
+    
+    // allow this
+    // Ok(get_message("testing!"))
+    
+    // allow this syntax wise
+    // a += 10;
+    
+    // io::println(a);
+    
+    get_message("testing!")
+}
