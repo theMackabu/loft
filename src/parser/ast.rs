@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::lexer::{Token, TokenInfo};
+use super::lexer::{Token, TokenInfo};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum NumericType {

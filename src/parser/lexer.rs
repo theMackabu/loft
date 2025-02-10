@@ -1,4 +1,4 @@
-use crate::ast::NumericType;
+use super::ast::NumericType;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {

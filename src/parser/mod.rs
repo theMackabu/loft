@@ -1,4 +1,10 @@
-use crate::{ast::*, lexer::*, util};
+pub mod ast;
+pub mod lexer;
+
+use ast::*;
+use lexer::*;
+
+use crate::util;
 use std::collections::HashSet;
 
 enum DeclarationKind {

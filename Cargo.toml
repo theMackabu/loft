@@ -7,4 +7,12 @@ license = "MIT"
 description = "..."
 repository = "https://github.com/themackabu/loft"
 
+[lib]
+name = "loft"
+path = "src/loft/lib.rs"
+
+[[bin]]
+name = "loft"
+path = "src/loft.rs"
+
 [dependencies]

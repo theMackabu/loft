@@ -1,11 +1,4 @@
-mod ast;
-mod lexer;
-mod parser;
-mod util;
-
-use lexer::Lexer;
-use parser::Parser;
-
+use loft::parser::{lexer::Lexer, Parser};
 use std::process::ExitCode;
 use std::{error::Error, fs};
 

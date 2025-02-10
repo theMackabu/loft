@@ -1,4 +1,4 @@
-use crate::ast::Pattern;
+use crate::parser::ast::Pattern;
 
 pub fn is_self_parameter(pat: &Pattern) -> bool {
     match pat {
