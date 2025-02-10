@@ -36,15 +36,20 @@ pub enum Primitive {
 }
 
 pub struct TypeChecker {
-    ast: Vec<Stmt>,
+    stmt: Vec<Stmt>,
     variables: HashMap<String, Primitive>,
 }
 
 impl TypeChecker {
-    pub fn new(ast: Vec<Stmt>) -> Self { Self { variables: HashMap::new(), ast } }
+    pub fn new(ast: &Vec<Stmt>) -> Self {
+        Self {
+            stmt: ast.to_owned(),
+            variables: HashMap::new(),
+        }
+    }
 
     pub fn check(&mut self) -> Result<(), TypeError> {
-        let statements = self.ast.to_owned();
+        let statements = self.stmt.to_owned();
 
         for stmt in &statements {
             self.check_statement(stmt)?;
@@ -52,8 +57,6 @@ impl TypeChecker {
 
         Ok(())
     }
-
-    pub fn strip(&self) -> Vec<Stmt> { Vec::new() }
 
     fn check_expr(&mut self, expr: &Expr) -> Result<Primitive, TypeError> {
         use Primitive::*;
