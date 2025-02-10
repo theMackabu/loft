@@ -71,17 +71,24 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new(ast: &Vec<Stmt>) -> Result<Self, String> {
-        super::scope::resolve_program(ast)?;
-
         let mut interpreter = Self {
             env: Environment::new(),
             ast: ast.clone(),
         };
 
+        interpreter.env.scope_resolver.resolve_program(ast)?;
         interpreter.declare_globals(ast)?;
 
         Ok(interpreter)
     }
+
+    pub fn start_main(&mut self) -> Result<Value, String> {
+        match self.find_function("main") {
+            Some(main) => self.execute_statement(&main.to_owned()),
+            None => Err("No main function found".to_string()),
+        }
+    }
+
     pub fn execute(&mut self, statements: &[Stmt]) -> Result<Value, String> {
         let mut last_value = Value::Unit;
 
@@ -163,6 +170,7 @@ impl Interpreter {
                 self.env.scope_resolver.declare_function(name)?;
                 self.env.enter_scope();
 
+                // add type checking _ty
                 for (pat, _) in params {
                     if let Pattern::Identifier { name, .. } = pat {
                         self.env.scope_resolver.declare_variable(name);
@@ -208,6 +216,7 @@ impl Interpreter {
 
     fn evaluate_expression(&mut self, expr: &Expr) -> Result<Value, String> {
         match expr {
+            // add type checking
             Expr::Integer(value, _) => Ok(Value::Integer(*value)),
 
             Expr::String(value) => Ok(Value::Str(Box::leak(value.to_owned().into_boxed_str()))),

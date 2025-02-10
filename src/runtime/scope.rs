@@ -26,6 +26,16 @@ impl Environment {
 
     pub fn exit_scope(&mut self) { self.scopes.pop(); }
 
+    pub fn resolve_program(&self, statements: &[Stmt]) -> Result<(), String> {
+        let mut env = Self::new();
+
+        for stmt in statements {
+            resolve_stmt(stmt, &mut env)?;
+        }
+
+        Ok(())
+    }
+
     pub fn declare_variable(&mut self, name: &str) {
         if let Some(current) = self.scopes.last_mut() {
             current.insert(
@@ -86,14 +96,6 @@ impl Environment {
     }
 }
 
-pub fn resolve_program(statements: &[Stmt]) -> Result<(), String> {
-    let mut env = Environment::new();
-    for stmt in statements {
-        resolve_stmt(stmt, &mut env)?;
-    }
-    Ok(())
-}
-
 fn resolve_stmt(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
     use crate::parser::ast::Stmt::*;
 
@@ -112,6 +114,7 @@ fn resolve_stmt(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
             env.declare_function(name)?;
             env.enter_scope();
 
+            // add type checking _ty
             for (pat, _ty) in params {
                 if let Some(param_name) = extract_identifier(pat) {
                     env.declare_variable(&param_name);
@@ -180,6 +183,7 @@ fn resolve_expr(expr: &Expr, env: &mut Environment) -> Result<(), String> {
 
 fn extract_identifier(pattern: &Pattern) -> Option<String> {
     match pattern {
+        // check mutability
         Pattern::Identifier { name, .. } => Some(name.clone()),
         Pattern::Reference { pattern, .. } => extract_identifier(pattern),
         _ => None,

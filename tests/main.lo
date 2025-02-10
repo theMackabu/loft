@@ -76,3 +76,8 @@ fn main() -> &str {
     
     get_message("testing!")
 }
+
+// only checks type if not implicit return
+// fn tester() -> i32 {
+//    get_message("testing!")
+// }

@@ -24,9 +24,9 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
                 return Ok(ExitCode::FAILURE);
             }
 
-            match runtime.execute(&ast) {
+            match runtime.start_main() {
                 Ok(value) => println!("Evaluated with {value:?}"),
-                Err(err) => println!("Runtime error {err:?}"),
+                Err(err) => println!("Runtime error: {err}"),
             }
         }
         Err(err) => println!("Parse error: {err}"),
