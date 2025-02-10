@@ -16,7 +16,7 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
 
     match parser.parse_program() {
         Ok(ast) => {
-            let types = TypeChecker::new(ast);
+            let mut types = TypeChecker::new(ast);
 
             if let Err(err) = types.check() {
                 println!("Type error: {err:?}");
