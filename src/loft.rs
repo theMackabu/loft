@@ -1,4 +1,9 @@
-use loft::parser::{lexer::Lexer, Parser};
+use loft::{
+    parser::{lexer::Lexer, Parser},
+    runtime::interpreter::Interpreter,
+    types::checker::TypeChecker,
+};
+
 use std::process::ExitCode;
 use std::{error::Error, fs};
 
@@ -10,7 +15,23 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
     let mut parser = Parser::new(lexer);
 
     match parser.parse_program() {
-        Ok(ast) => println!("{ast:#?}"),
+        Ok(ast) => {
+            let types = TypeChecker::new(ast);
+
+            if let Err(err) = types.check() {
+                println!("Type error: {err:?}");
+                return Ok(ExitCode::FAILURE);
+            }
+
+            let ast = types.strip();
+            println!("{ast:#?}");
+
+            let runtime = Interpreter::new(ast);
+
+            if let Err(err) = runtime.execute() {
+                println!("Runtime error {err:?}")
+            }
+        }
         Err(err) => println!("Parse error: {err}"),
     }
 
