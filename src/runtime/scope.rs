@@ -5,6 +5,7 @@ use std::collections::HashMap;
 pub enum DeclKind {
     Variable,
     Function,
+    Module,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +50,24 @@ impl Environment {
                 SymbolInfo {
                     name: name.to_owned(),
                     kind: DeclKind::Function,
+                },
+            );
+            Ok(())
+        } else {
+            Err("No active scope found".to_owned())
+        }
+    }
+
+    pub fn declare_module(&mut self, name: &str) -> Result<(), String> {
+        if let Some(current) = self.scopes.last_mut() {
+            if current.contains_key(name) {
+                return Err(format!("Module `{}` is already declared in this scope", name));
+            }
+            current.insert(
+                name.to_owned(),
+                SymbolInfo {
+                    name: name.to_owned(),
+                    kind: DeclKind::Module,
                 },
             );
             Ok(())

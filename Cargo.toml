@@ -16,3 +16,4 @@ name = "loft"
 path = "src/loft.rs"
 
 [dependencies]
+macros-rs = "1.4.1"

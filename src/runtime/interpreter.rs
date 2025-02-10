@@ -11,6 +11,7 @@ pub enum Value {
     Boolean(bool),
 
     Unit,
+    Tuple(Vec<Value>),
 }
 
 struct Environment {
@@ -65,13 +66,17 @@ impl Environment {
 
 pub struct Interpreter {
     env: Environment,
+    ast: Vec<Stmt>,
 }
 
 impl Interpreter {
     pub fn new(ast: &Vec<Stmt>) -> Result<Self, String> {
         super::scope::resolve_program(ast)?;
 
-        let mut interpreter = Self { env: Environment::new() };
+        let mut interpreter = Self {
+            env: Environment::new(),
+            ast: ast.clone(),
+        };
 
         interpreter.declare_globals(ast)?;
 
@@ -87,11 +92,23 @@ impl Interpreter {
         Ok(last_value)
     }
 
+    fn find_function(&self, name: &str) -> Option<&Stmt> {
+        for stmt in &self.ast {
+            if let Stmt::Function { name: func_name, .. } = stmt {
+                if func_name == name {
+                    return Some(stmt);
+                }
+            }
+        }
+        None
+    }
+
     fn declare_globals(&mut self, statements: &[Stmt]) -> Result<(), String> {
         for stmt in statements {
             match stmt {
                 Stmt::Const { name, initializer, .. } => {
                     let value = self.evaluate_expression(initializer)?;
+                    self.env.scope_resolver.declare_variable(name);
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
@@ -99,12 +116,14 @@ impl Interpreter {
 
                 Stmt::Static { name, initializer, .. } => {
                     let value = self.evaluate_expression(initializer)?;
+                    self.env.scope_resolver.declare_variable(name);
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
                 }
 
                 Stmt::Module { name, body, .. } => {
+                    self.env.scope_resolver.declare_module(name)?;
                     self.env.enter_scope();
                     self.declare_globals(body)?;
                     self.env.exit_scope();
@@ -132,14 +151,35 @@ impl Interpreter {
                 self.env.scope_resolver.declare_function(name)?;
                 self.env.enter_scope();
 
-                // Declare parameters in new scope
                 for (pat, _) in params {
                     if let Pattern::Identifier { name, .. } = pat {
                         self.env.scope_resolver.declare_variable(name);
                     }
                 }
 
-                let result = self.execute(body)?;
+                let mut result = Value::Unit;
+
+                for stmt in &body[..body.len().saturating_sub(1)] {
+                    self.execute_statement(stmt)?;
+                }
+
+                if let Some(last_stmt) = body.last() {
+                    match last_stmt {
+                        Stmt::ExpressionValue(expr) => {
+                            result = self.evaluate_expression(expr)?;
+                        }
+                        Stmt::Return(Some(expr)) => {
+                            result = self.evaluate_expression(expr)?;
+                        }
+                        Stmt::ExpressionStmt(expr) => {
+                            self.evaluate_expression(expr)?;
+                        }
+                        _ => {
+                            self.execute_statement(last_stmt)?;
+                        }
+                    }
+                }
+
                 self.env.exit_scope();
                 Ok(result)
             }
@@ -172,6 +212,14 @@ impl Interpreter {
             Expr::String(value) => Ok(Value::Str(Box::leak(value.to_owned().into_boxed_str()))),
 
             Expr::Identifier(name) => self.env.get_variable(name).cloned().ok_or_else(|| format!("Undefined variable: {}", name)),
+
+            Expr::Tuple(expressions) => {
+                let mut values = Vec::new();
+                for expr in expressions {
+                    values.push(self.evaluate_expression(expr)?);
+                }
+                Ok(Value::Tuple(values))
+            }
 
             Expr::Block { statements, value, .. } => {
                 self.env.enter_scope();
@@ -210,6 +258,40 @@ impl Interpreter {
                     }
                     _ => Err("Condition must be boolean".to_string()),
                 }
+            }
+
+            Expr::Call { function, arguments } => {
+                let func_name = if let Expr::Identifier(name) = &**function {
+                    name
+                } else {
+                    return Err("Only direct function calls supported".to_string());
+                };
+
+                let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
+                let arg_values = evaluated_args?;
+
+                let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.find_function(func_name) {
+                    (params.clone(), body.clone())
+                } else {
+                    return Err(format!("Function '{}' not found", func_name));
+                };
+
+                let outer_scope = self.env.scopes.clone();
+                self.env.enter_scope();
+
+                for ((param, _), value) in params.iter().zip(arg_values) {
+                    if let Pattern::Identifier { name, .. } = param {
+                        self.env.scope_resolver.declare_variable(name);
+                        self.env.set_variable(name, value.clone())?;
+                    }
+                }
+
+                let result = self.execute(&body);
+
+                self.env.exit_scope();
+                self.env.scopes = outer_scope;
+
+                result
             }
 
             _ => Ok(Value::Unit),

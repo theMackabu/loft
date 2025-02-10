@@ -12,6 +12,18 @@ pub enum TypeError {
     TypeMismatch { expected: String, found: String, location: String },
 }
 
+#[derive(Clone, Debug)]
+struct FunctionType {
+    params: Vec<(Pattern, Type)>,
+    return_type: Primitive,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Pointer {
+    Reference { mutable: bool },
+    RawPointer,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Primitive {
     I8,
@@ -20,24 +32,35 @@ pub enum Primitive {
     I64,
     I128,
     ISize,
+
     U8,
     U16,
     U32,
     U64,
     U128,
     USize,
+
     F32,
     F64,
+
     Bool,
     Char,
     Str,
+
     Unit,
     Unknown,
+
+    Array(Box<Primitive>, usize),
+    Slice(Box<Primitive>),
+    Tuple(Vec<Primitive>),
+    Pointer(Box<Primitive>, Pointer),
 }
 
 pub struct TypeChecker {
     stmt: Vec<Stmt>,
     variables: HashMap<String, Primitive>,
+    globals: HashMap<String, Primitive>,
+    functions: HashMap<String, FunctionType>,
 }
 
 impl TypeChecker {
@@ -45,11 +68,17 @@ impl TypeChecker {
         Self {
             stmt: ast.to_owned(),
             variables: HashMap::new(),
+            globals: HashMap::new(),
+            functions: HashMap::new(),
         }
     }
 
     pub fn check(&mut self) -> Result<(), TypeError> {
         let statements = self.stmt.to_owned();
+
+        for stmt in &statements {
+            self.collect_globals(stmt)?;
+        }
 
         for stmt in &statements {
             self.check_statement(stmt)?;
@@ -65,8 +94,37 @@ impl TypeChecker {
             Expr::Unit => Ok(Unit),
 
             Expr::Boolean(_) => Ok(Bool),
-            Expr::String(_) => Ok(Str),
 
+            Expr::String(_) => Ok(Primitive::Pointer(Box::new(Primitive::Str), self::Pointer::Reference { mutable: false })),
+
+            Expr::Tuple(elements) => {
+                let mut types = Vec::new();
+                for elem in elements {
+                    types.push(self.check_expr(elem)?);
+                }
+                Ok(Tuple(types))
+            }
+
+            //             Expr::Array(elements) => {
+            //                 if elements.is_empty() {
+            //                     return Ok(Array(Box::new(Unknown)));
+            //                 }
+            //
+            //                 let first_type = self.check_expr(&elements[0])?;
+            //
+            //                 for elem in elements.iter().skip(1) {
+            //                     let elem_type = self.check_expr(elem)?;
+            //                     if elem_type != first_type {
+            //                         return Err(TypeError::TypeMismatch {
+            //                             expected: first_type.type_name(),
+            //                             found: elem_type.type_name(),
+            //                             location: "array element".to_string(),
+            //                         });
+            //                     }
+            //                 }
+            //
+            //                 Ok(Array(Box::new(first_type)))
+            //             }
             Expr::Integer(_, suffix) => match suffix {
                 Some(NumericType::I8) => Ok(I8),
                 Some(NumericType::I16) => Ok(I16),
@@ -91,10 +149,40 @@ impl TypeChecker {
 
             Expr::Binary { left, operator, right } => self.check_binary_operation(left, operator, right),
 
-            Expr::Identifier(name) => self.variables.get(name).cloned().ok_or(TypeError::UndefinedVariable {
-                name: name.clone(),
-                location: "".to_string(), // add proper location tracking
-            }),
+            Expr::Reference { mutable, operand } => {
+                let inner_type = self.check_expr(operand)?;
+                Ok(Primitive::Pointer(Box::new(inner_type), self::Pointer::Reference { mutable: *mutable }))
+            }
+
+            Expr::Dereference { operand } => {
+                let operand_type = self.check_expr(operand)?;
+                match operand_type {
+                    Primitive::Pointer(inner_type, _) => Ok(*inner_type),
+                    _ => Err(TypeError::InvalidOperation {
+                        message: "Cannot dereference non-pointer type".to_string(),
+                        location: "".to_string(),
+                    }),
+                }
+            }
+
+            Expr::Call { function, arguments } => {
+                if let Expr::Identifier(name) = &**function {
+                    // Look up function in scope
+                    if let Some(func_type) = self.functions.get(name) {
+                        // Check argument types match parameters
+                        // For now, just return the function's return type
+                        return Ok(func_type.return_type.clone());
+                    }
+                }
+                self.check_expr(function)
+            }
+
+            Expr::Identifier(name) => {
+                self.variables.get(name).or_else(|| self.globals.get(name)).cloned().ok_or(TypeError::UndefinedVariable {
+                    name: name.clone(),
+                    location: "".to_string(), // add proper location tracking
+                })
+            }
 
             _ => Ok(Unknown),
         }
@@ -126,10 +214,78 @@ impl TypeChecker {
 
     fn check_statement(&mut self, stmt: &Stmt) -> Result<(), TypeError> {
         match stmt {
-            Stmt::Function { body, .. } => {
+            Stmt::Const {
+                name, type_annotation, initializer, ..
+            } => {
+                let expr_type = self.check_expr(initializer)?;
+                if let Some(annotation) = type_annotation {
+                    let annotated_type = convert_type_annotation(annotation)?;
+                    if annotated_type != expr_type {
+                        return Err(TypeError::TypeMismatch {
+                            expected: annotated_type.type_name(),
+                            found: expr_type.type_name(),
+                            location: format!("in const declaration {}", name),
+                        });
+                    }
+                }
+                self.globals.insert(name.clone(), expr_type);
+                Ok(())
+            }
+
+            Stmt::Static {
+                name, type_annotation, initializer, ..
+            } => {
+                let expr_type = self.check_expr(initializer)?;
+                if let Some(annotation) = type_annotation {
+                    let annotated_type = convert_type_annotation(annotation)?;
+                    if annotated_type != expr_type {
+                        return Err(TypeError::TypeMismatch {
+                            expected: annotated_type.type_name(),
+                            found: expr_type.type_name(),
+                            location: format!("in static declaration {}", name),
+                        });
+                    }
+                }
+                self.globals.insert(name.clone(), expr_type);
+                Ok(())
+            }
+
+            Stmt::Function { name, params, return_type, body, .. } => {
+                let return_type = if let Some(ty) = return_type { convert_type_annotation(ty)? } else { Primitive::Unit };
+
+                self.functions.insert(
+                    name.clone(),
+                    FunctionType {
+                        params: params.clone(),
+                        return_type: return_type.clone(),
+                    },
+                );
+
+                let outer_scope = self.variables.clone();
+                self.variables.clear();
+
+                for (param_pattern, param_type) in params {
+                    if let Pattern::Identifier { name: param_name, .. } = param_pattern {
+                        let param_type = convert_type_annotation(param_type)?;
+                        self.variables.insert(param_name.clone(), param_type);
+                    }
+                }
+
                 for stmt in body {
+                    if let Stmt::Return(Some(expr)) = stmt {
+                        let actual_return_type = self.check_expr(expr)?;
+                        if actual_return_type != return_type {
+                            return Err(TypeError::TypeMismatch {
+                                expected: return_type.type_name(),
+                                found: actual_return_type.type_name(),
+                                location: format!("in function {}", name),
+                            });
+                        }
+                    }
                     self.check_statement(stmt)?;
                 }
+
+                self.variables = outer_scope;
                 Ok(())
             }
 
@@ -162,6 +318,40 @@ impl TypeChecker {
             }
 
             // skip all other top-level declarations for now
+            _ => Ok(()),
+        }
+    }
+
+    fn collect_globals(&mut self, stmt: &Stmt) -> Result<(), TypeError> {
+        match stmt {
+            Stmt::Const {
+                name,
+                type_annotation,
+                initializer,
+                ..  // handle visibility and attributes
+            } => {
+                let const_type = if let Some(ty) = type_annotation {
+                    convert_type_annotation(ty)?
+                } else {
+                    self.check_expr(initializer)?
+                };
+                self.globals.insert(name.clone(), const_type);
+                Ok(())
+            }
+            Stmt::Static {
+                name,
+                type_annotation,
+                initializer,
+                ..  // handle visibility and attributes
+            } => {
+                let static_type = if let Some(ty) = type_annotation {
+                    convert_type_annotation(ty)?
+                } else {
+                    self.check_expr(initializer)?
+                };
+                self.globals.insert(name.clone(), static_type);
+                Ok(())
+            }
             _ => Ok(()),
         }
     }

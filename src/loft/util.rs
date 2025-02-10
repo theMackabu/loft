@@ -1,7 +1,9 @@
 use crate::{
     parser::ast::{Pattern, Type},
-    types::checker::{Primitive, TypeError},
+    types::checker::{Pointer, Primitive, TypeError},
 };
+
+use macros_rs::fmt::fmtstr;
 
 pub fn is_self_parameter(pat: &Pattern) -> bool {
     match pat {
@@ -27,6 +29,27 @@ pub fn convert_type_annotation(ty: &Type) -> Result<Primitive, TypeError> {
             })?;
 
             convert_type_name(&last_segment.ident)
+        }
+
+        Type::Array { element_type, size } => Ok(Primitive::Array(Box::new(convert_type_annotation(element_type)?), *size)),
+
+        Type::Slice { element_type } => Ok(Primitive::Slice(Box::new(convert_type_annotation(element_type)?))),
+
+        Type::Tuple(types) => {
+            let mut tuple_types = Vec::new();
+            for ty in types {
+                tuple_types.push(convert_type_annotation(ty)?);
+            }
+            Ok(Primitive::Tuple(tuple_types))
+        }
+
+        Type::Reference { mutable, inner } => {
+            let inner_type = convert_type_annotation(inner)?;
+            Ok(Primitive::Pointer(Box::new(inner_type), Pointer::Reference { mutable: *mutable }))
+        }
+        Type::Pointer { inner } => {
+            let inner_type = convert_type_annotation(inner)?;
+            Ok(Primitive::Pointer(Box::new(inner_type), Pointer::RawPointer))
         }
 
         Type::Unit => Ok(Primitive::Unit),
@@ -91,6 +114,29 @@ impl Primitive {
             Primitive::Bool => "bool",
             Primitive::Char => "char",
             Primitive::Str => "str",
+
+            Primitive::Array(elem_type, size) => fmtstr!("[{}; {}]", elem_type.type_name(), size),
+            Primitive::Slice(elem_type) => fmtstr!("[{}]", elem_type.type_name()),
+
+            Primitive::Tuple(types) => {
+                if types.is_empty() {
+                    "()"
+                } else {
+                    let types_str: Vec<String> = types.iter().map(|t| t.type_name()).collect();
+                    fmtstr!("({})", types_str.join(", "))
+                }
+            }
+
+            Primitive::Pointer(inner_type, pointer_type) => match pointer_type {
+                Pointer::Reference { mutable } => {
+                    if *mutable {
+                        fmtstr!("&mut {}", inner_type.type_name())
+                    } else {
+                        fmtstr!("&{}", inner_type.type_name())
+                    }
+                }
+                Pointer::RawPointer => fmtstr!("*{}", inner_type.type_name()),
+            },
 
             Primitive::Unit => "()",
             Primitive::Unknown => "<unknown>",
