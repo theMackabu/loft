@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::{error::Error, fs};
 
 fn main() -> Result<ExitCode, Box<dyn Error>> {
-    let input = fs::read_to_string("test.rt")?;
+    let input = fs::read_to_string("tests/main.rt")?;
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
 
