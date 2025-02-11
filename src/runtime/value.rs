@@ -25,7 +25,7 @@ pub enum Value {
     Tuple(Vec<Value>),
     Return(Box<Value>),
 
-    Enum { variant: String, data: Option<Box<Value>> },
+    Enum { enum_type: String, variant: String, data: Option<Box<Value>> },
 
     Unit,
 }
@@ -64,9 +64,10 @@ impl fmt::Display for Value {
                 write!(f, ")")
             }
 
-            Value::Enum { variant, data } => {
-                write!(f, "{}", variant)?;
+            Value::Enum { enum_type, variant, data } => {
+                write!(f, "{}::{}", enum_type, variant)?;
                 if let Some(value) = data {
+                    // if data has strings, quote
                     write!(f, "({})", value)
                 } else {
                     Ok(())

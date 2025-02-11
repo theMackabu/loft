@@ -211,8 +211,13 @@ impl Interpreter {
         match expr {
             Expr::Path(path) => {
                 if path.segments.len() == 2 {
+                    let enum_type = &path.segments[0].ident;
                     let variant = &path.segments[1].ident;
-                    Ok(Value::Enum { variant: variant.clone(), data: None })
+                    Ok(Value::Enum {
+                        enum_type: enum_type.clone(),
+                        variant: variant.clone(),
+                        data: None,
+                    })
                 } else {
                     Err(format!("Invalid path expression: {:?}", path))
                 }
@@ -383,10 +388,12 @@ impl Interpreter {
                             }
                         }
 
+                        let enum_type = &path.segments[0].ident;
                         let variant = &path.segments[1].ident;
                         if arguments.len() == 1 {
                             let value = self.evaluate_expression(&arguments[0])?;
                             Ok(Value::Enum {
+                                enum_type: enum_type.clone(),
                                 variant: variant.clone(),
                                 data: Some(Box::new(value)),
                             })
@@ -446,16 +453,16 @@ impl Interpreter {
                 Ok(&pattern_value == value)
             }
 
-            (Pattern::Path(path), Value::Enum { variant, data }) => {
+            (Pattern::Path(path), Value::Enum { variant, data, enum_type }) => {
                 if path.segments.len() == 2 {
-                    Ok(path.segments[1].ident == *variant && data.is_none())
+                    Ok(path.segments[0].ident == *enum_type && path.segments[1].ident == *variant && data.is_none())
                 } else {
                     Ok(false)
                 }
             }
 
-            (Pattern::TupleStruct { path, elements }, Value::Enum { variant, data }) => {
-                if path.segments.len() == 2 && path.segments[1].ident == *variant {
+            (Pattern::TupleStruct { path, elements }, Value::Enum { variant, data, enum_type }) => {
+                if path.segments.len() == 2 && path.segments[0].ident == *enum_type && path.segments[1].ident == *variant {
                     match (elements.len(), data) {
                         (1, Some(inner_value)) => self.pattern_matches(&elements[0], inner_value),
                         (0, None) => Ok(true),
