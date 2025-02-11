@@ -623,19 +623,37 @@ impl Parser {
 
     fn parse_module_statement(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'module'
-
         let name = self.expect_identifier()?;
 
-        self.expect(Token::LeftBrace)?;
+        let (body, is_external) = match self.current.token {
+            Token::LeftBrace => {
+                self.advance(); // consume '{'
+                let mut statements = Vec::new();
+                while self.current.token != Token::RightBrace {
+                    statements.push(self.parse_statement()?);
+                }
+                self.expect(Token::RightBrace)?;
+                (statements, false)
+            }
+            Token::Semicolon => {
+                self.advance(); // consume ';'
+                (Vec::new(), true)
+            }
+            _ => {
+                return Err(ParseError::UnexpectedToken {
+                    found: self.current.clone(),
+                    expected: Some("'{' or ';'".to_string()),
+                });
+            }
+        };
 
-        let mut body = Vec::new();
-        while self.current.token != Token::RightBrace {
-            body.push(self.parse_statement()?);
-        }
-
-        self.expect(Token::RightBrace)?;
-
-        Ok(Stmt::Module { name, visibility, body, attributes })
+        Ok(Stmt::Module {
+            name,
+            visibility,
+            body,
+            attributes,
+            is_external,
+        })
     }
 
     fn parse_function_statement(&mut self, visibility: bool, attributes: Vec<Attribute>, is_trait: bool) -> Result<Stmt, ParseError> {

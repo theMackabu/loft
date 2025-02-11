@@ -13,9 +13,6 @@ pub mod std {
    }
 }
 
-// update lexer to support
-// pub mod util;
-
 use std::io;
 
 // defaults to other.lo or other/mod.lo
@@ -48,7 +45,7 @@ pub enum Option<T> {
    Some(T),
 }
 
-fn test_enums() {
+fn test_patterns() {
    let success = Result::Ok(42);
    let failure = Result::Err("error message");
    let maybe = Option::Some(123);
@@ -81,9 +78,26 @@ fn test_enums() {
    io::println(default);    // should print 999
 }
 
+pub enum Shape {
+   Circle(f64),
+   Rectangle(f64, f64),
+   Triangle { base: f64, height: f64 },
+}
+
+fn test_enums() {
+   let circle = Shape::Circle(5.0);
+   // let rect = Shape::Rectangle(4.0, 6.0); // Runtime error: Enum variant with data must have exactly one argument
+   // let triangle = Shape::Triangle { base: 3.0, height: 4.0 }; // add support for this
+
+   io::println(circle);
+   // io::println(rect);
+   // io::println(triangle);
+}
+
 // allow async fn main -> Result
 fn main() -> i32 {
    test_enums();
+   test_patterns();
    
    // let x = 42.0 as f32; // implement as
    // let x: f32 = 42.0; // allow this to cast f32

@@ -268,6 +268,7 @@ pub enum Stmt {
     Module {
         name: String,
         visibility: bool,
+        is_external: bool,
         body: Vec<Stmt>,
         attributes: Vec<Attribute>,
     },
