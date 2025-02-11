@@ -336,6 +336,12 @@ impl Interpreter {
                     (Value::U32(l), Token::Star, Value::U32(r)) => Ok(Value::U32(l * r)),
                     (Value::U32(l), Token::Slash, Value::U32(r)) => Ok(Value::U32(l / r)),
 
+                    // f32
+                    (Value::F32(l), Token::Plus, Value::F32(r)) => Ok(Value::F32(l + r)),
+                    (Value::F32(l), Token::Minus, Value::F32(r)) => Ok(Value::F32(l - r)),
+                    (Value::F32(l), Token::Star, Value::F32(r)) => Ok(Value::F32(l * r)),
+                    (Value::F32(l), Token::Slash, Value::F32(r)) => Ok(Value::F32(l / r)),
+
                     // i64
                     (Value::I64(l), Token::Plus, Value::I64(r)) => Ok(Value::I64(l + r)),
                     (Value::I64(l), Token::Minus, Value::I64(r)) => Ok(Value::I64(l - r)),
@@ -347,6 +353,12 @@ impl Interpreter {
                     (Value::U64(l), Token::Minus, Value::U64(r)) => Ok(Value::U64(l - r)),
                     (Value::U64(l), Token::Star, Value::U64(r)) => Ok(Value::U64(l * r)),
                     (Value::U64(l), Token::Slash, Value::U64(r)) => Ok(Value::U64(l / r)),
+
+                    // f64
+                    (Value::F64(l), Token::Plus, Value::F64(r)) => Ok(Value::F64(l + r)),
+                    (Value::F64(l), Token::Minus, Value::F64(r)) => Ok(Value::F64(l - r)),
+                    (Value::F64(l), Token::Star, Value::F64(r)) => Ok(Value::F64(l * r)),
+                    (Value::F64(l), Token::Slash, Value::F64(r)) => Ok(Value::F64(l / r)),
 
                     // i128
                     (Value::I128(l), Token::Plus, Value::I128(r)) => Ok(Value::I128(l + r)),
@@ -420,6 +432,14 @@ impl Interpreter {
                     (Value::U32(l), Token::Equals, Value::U32(r)) => Ok(Value::Boolean(l == r)),
                     (Value::U32(l), Token::NotEquals, Value::U32(r)) => Ok(Value::Boolean(l != r)),
 
+                    // f32
+                    (Value::F32(l), Token::LeftAngle, Value::F32(r)) => Ok(Value::Boolean(l < r)),
+                    (Value::F32(l), Token::RightAngle, Value::F32(r)) => Ok(Value::Boolean(l > r)),
+                    (Value::F32(l), Token::LessEquals, Value::F32(r)) => Ok(Value::Boolean(l <= r)),
+                    (Value::F32(l), Token::GreaterEquals, Value::F32(r)) => Ok(Value::Boolean(l >= r)),
+                    (Value::F32(l), Token::Equals, Value::F32(r)) => Ok(Value::Boolean(l == r)),
+                    (Value::F32(l), Token::NotEquals, Value::F32(r)) => Ok(Value::Boolean(l != r)),
+
                     // i64
                     (Value::I64(l), Token::LeftAngle, Value::I64(r)) => Ok(Value::Boolean(l < r)),
                     (Value::I64(l), Token::RightAngle, Value::I64(r)) => Ok(Value::Boolean(l > r)),
@@ -435,6 +455,14 @@ impl Interpreter {
                     (Value::U64(l), Token::GreaterEquals, Value::U64(r)) => Ok(Value::Boolean(l >= r)),
                     (Value::U64(l), Token::Equals, Value::U64(r)) => Ok(Value::Boolean(l == r)),
                     (Value::U64(l), Token::NotEquals, Value::U64(r)) => Ok(Value::Boolean(l != r)),
+
+                    // f64
+                    (Value::F64(l), Token::LeftAngle, Value::F64(r)) => Ok(Value::Boolean(l < r)),
+                    (Value::F64(l), Token::RightAngle, Value::F64(r)) => Ok(Value::Boolean(l > r)),
+                    (Value::F64(l), Token::LessEquals, Value::F64(r)) => Ok(Value::Boolean(l <= r)),
+                    (Value::F64(l), Token::GreaterEquals, Value::F64(r)) => Ok(Value::Boolean(l >= r)),
+                    (Value::F64(l), Token::Equals, Value::F64(r)) => Ok(Value::Boolean(l == r)),
+                    (Value::F64(l), Token::NotEquals, Value::F64(r)) => Ok(Value::Boolean(l != r)),
 
                     // i128
                     (Value::I128(l), Token::LeftAngle, Value::I128(r)) => Ok(Value::Boolean(l < r)),
