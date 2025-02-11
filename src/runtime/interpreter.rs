@@ -25,8 +25,10 @@ pub enum Value {
     Str(&'static str),
     Boolean(bool),
 
-    Unit,
     Tuple(Vec<Value>),
+    Return(Box<Value>),
+
+    Unit,
 }
 
 struct Environment {
@@ -108,7 +110,11 @@ impl Interpreter {
         let mut last_value = Value::Unit;
 
         for stmt in statements {
-            last_value = self.execute_statement(stmt)?;
+            let result = self.execute_statement(stmt)?;
+            if let Value::Return(val) = result {
+                return Ok(*val);
+            }
+            last_value = result;
         }
 
         Ok(last_value)
@@ -159,6 +165,21 @@ impl Interpreter {
 
     fn execute_statement(&mut self, stmt: &Stmt) -> Result<Value, String> {
         match stmt {
+            Stmt::ExpressionValue(expr) => self.evaluate_expression(expr),
+
+            Stmt::ExpressionStmt(expr) => {
+                self.evaluate_expression(expr)?;
+                Ok(Value::Unit)
+            }
+
+            Stmt::Return(expr) => match expr {
+                Some(e) => {
+                    let val = self.evaluate_expression(e)?;
+                    Ok(Value::Return(Box::new(val)))
+                }
+                None => Ok(Value::Return(Box::new(Value::Unit))),
+            },
+
             Stmt::Module { body, .. } => {
                 self.env.enter_scope();
                 let result = self.execute(body)?;
@@ -176,54 +197,24 @@ impl Interpreter {
                 Ok(Value::Unit)
             }
 
-            Stmt::ExpressionStmt(expr) => {
-                self.evaluate_expression(expr)?;
-                Ok(Value::Unit)
-            }
-
             Stmt::Function { name, params, body, .. } => {
                 self.env.scope_resolver.declare_function(name)?;
                 self.env.enter_scope();
 
-                // add type checking _ty
                 for (pat, _) in params {
                     if let Pattern::Identifier { name, .. } = pat {
                         self.env.scope_resolver.declare_variable(name);
                     }
                 }
 
-                let result = if let Some(last_stmt) = body.last() {
-                    match last_stmt {
-                        Stmt::Return(Some(expr)) => {
-                            for stmt in &body[..body.len() - 1] {
-                                self.execute_statement(stmt)?;
-                            }
-                            self.evaluate_expression(expr)?
-                        }
-                        Stmt::ExpressionValue(expr) => {
-                            for stmt in &body[..body.len() - 1] {
-                                self.execute_statement(stmt)?;
-                            }
-                            self.evaluate_expression(expr)?
-                        }
-                        _ => {
-                            for stmt in body {
-                                self.execute_statement(stmt)?;
-                            }
-                            Value::Unit
-                        }
-                    }
-                } else {
-                    Value::Unit
+                let result = match self.execute(body)? {
+                    Value::Return(val) => *val,
+                    other => other,
                 };
 
                 self.env.exit_scope();
                 Ok(result)
             }
-
-            Stmt::Return(Some(expr)) => self.evaluate_expression(expr),
-
-            Stmt::ExpressionValue(expr) => self.evaluate_expression(expr),
 
             _ => Ok(Value::Unit),
         }
@@ -277,7 +268,11 @@ impl Interpreter {
                 self.env.enter_scope();
 
                 for stmt in statements {
-                    self.execute_statement(stmt)?;
+                    let result = self.execute_statement(stmt)?;
+                    if let Value::Return(_) = result {
+                        self.env.exit_scope();
+                        return Ok(result);
+                    }
                 }
 
                 let result = if let Some(expr) = value { self.evaluate_expression(expr)? } else { Value::Unit };

@@ -1,7 +1,7 @@
 use loft::{
     parser::{lexer::Lexer, Parser},
     runtime::interpreter::Interpreter,
-    types::checker::TypeChecker,
+    // types::checker::TypeChecker,
 };
 
 use std::process::ExitCode;
@@ -16,13 +16,13 @@ fn main() -> Result<ExitCode, Box<dyn Error>> {
 
     match parser.parse_program() {
         Ok(ast) => {
-            let mut types = TypeChecker::new(&ast);
+            // let mut types = TypeChecker::new(&ast);
             let mut runtime = Interpreter::new(&ast)?;
 
-            if let Err(err) = types.check() {
-                println!("Type error: {err:?}");
-                return Ok(ExitCode::FAILURE);
-            }
+            // if let Err(err) = types.check() {
+            //     println!("Type error: {err:?}");
+            //     return Ok(ExitCode::FAILURE);
+            // }
 
             match runtime.start_main() {
                 Ok(value) => println!("Evaluated with {value:?}"),
