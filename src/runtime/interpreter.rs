@@ -1,35 +1,7 @@
-use super::scope::Environment as ScopeEnv;
+use super::{scope::Environment as ScopeEnv, value::Value};
 use crate::parser::{ast::*, lexer::*};
 use crate::{impl_binary_ops, impl_promote_to_type};
 use std::collections::HashMap;
-
-#[derive(Clone, Debug)]
-pub enum Value {
-    I8(i8),
-    I16(i16),
-    I32(i32),
-    I64(i64),
-    I128(i128),
-    ISize(isize),
-
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-    U128(u128),
-    USize(usize),
-
-    F32(f32),
-    F64(f64),
-
-    Str(&'static str),
-    Boolean(bool),
-
-    Tuple(Vec<Value>),
-    Return(Box<Value>),
-
-    Unit,
-}
 
 struct Environment {
     scopes: Vec<HashMap<String, Value>>,
@@ -204,9 +176,10 @@ impl Interpreter {
                     }
 
                     if let Some(ret_type) = return_type {
-                        if !matches!(ret_type, Type::Path(Path { segments }) if segments.len() == 1 
-                            && segments[0].ident == "i32" 
-                            && segments[0].generics.is_empty()) {
+                        if !matches! {ret_type, Type::Path(Path { segments }) if segments.len() == 1
+                        && segments[0].ident == "i32"
+                        && segments[0].generics.is_empty()}
+                        {
                             return Err("main function can only return i32 or nothing".to_string());
                         }
                     }
@@ -236,6 +209,15 @@ impl Interpreter {
 
     fn evaluate_expression(&mut self, expr: &Expr) -> Result<Value, String> {
         match expr {
+            Expr::Path(path) => {
+                if path.segments.len() == 2 {
+                    let variant = &path.segments[1].ident;
+                    Ok(Value::Enum { variant: variant.clone(), data: None })
+                } else {
+                    Err(format!("Invalid path expression: {:?}", path))
+                }
+            }
+
             // add type checking
             Expr::Integer(value, ty) => Ok(match ty.to_owned().unwrap_or(NumericType::I32) {
                 NumericType::I8 => Value::I8(*value as i8),
@@ -365,24 +347,52 @@ impl Interpreter {
                 }
             }
 
+            Expr::Match { value, arms } => {
+                let match_value = self.evaluate_expression(value)?;
+
+                for arm in arms {
+                    if self.pattern_matches(&arm.pattern, &match_value)? {
+                        if let Some(guard) = &arm.guard {
+                            if !self.evaluate_guard(guard)? {
+                                continue;
+                            }
+                        }
+                        return self.evaluate_expression(&arm.body);
+                    }
+                }
+
+                Err("No matching pattern found".to_string())
+            }
+
             // !MODULE SYSTEM!
             // TEMPORARY
             Expr::Call { function, arguments } => {
                 match &**function {
-                    Expr::Path(path) => {
+                    Expr::Path(path) if path.segments.len() == 2 => {
                         // handle import calls (like use std::io, io::println)
                         // handle path-based calls (like std::io::println)
                         // TEMPORARY
-                        if path.segments.len() == 2 && path.segments[0].ident == "io" && path.segments[1].ident == "println" {
+
+                        if path.segments[0].ident == "io" && path.segments[1].ident == "println" {
                             if let Some(arg) = arguments.first() {
                                 let value = self.evaluate_expression(arg)?;
-                                println!("io::println {value:?}"); // TEMPORARY - add display and args
+                                println!("{value}"); // TEMPORARY - add display and args
                                 return Ok(Value::Unit);
                             } else {
                                 return Err("io::println requires an argument".to_string());
                             }
                         }
-                        return Err(format!("Unknown path function: {:?}", path));
+
+                        let variant = &path.segments[1].ident;
+                        if arguments.len() == 1 {
+                            let value = self.evaluate_expression(&arguments[0])?;
+                            Ok(Value::Enum {
+                                variant: variant.clone(),
+                                data: Some(Box::new(value)),
+                            })
+                        } else {
+                            Err("Enum variant with data must have exactly one argument".to_string())
+                        }
                     }
 
                     Expr::Identifier(name) => {
@@ -426,6 +436,60 @@ impl Interpreter {
             }
 
             _ => Ok(Value::Unit),
+        }
+    }
+
+    fn pattern_matches(&mut self, pattern: &Pattern, value: &Value) -> Result<bool, String> {
+        match (pattern, value) {
+            (Pattern::Literal(expr), value) => {
+                let pattern_value = self.evaluate_expression(expr)?;
+                Ok(&pattern_value == value)
+            }
+
+            (Pattern::Path(path), Value::Enum { variant, data }) => {
+                if path.segments.len() == 2 {
+                    Ok(path.segments[1].ident == *variant && data.is_none())
+                } else {
+                    Ok(false)
+                }
+            }
+
+            (Pattern::TupleStruct { path, elements }, Value::Enum { variant, data }) => {
+                if path.segments.len() == 2 && path.segments[1].ident == *variant {
+                    match (elements.len(), data) {
+                        (1, Some(inner_value)) => self.pattern_matches(&elements[0], inner_value),
+                        (0, None) => Ok(true),
+                        _ => Ok(false),
+                    }
+                } else {
+                    Ok(false)
+                }
+            }
+
+            (Pattern::Tuple(elements), Value::Enum { data: Some(inner_value), .. }) => {
+                if elements.len() == 1 {
+                    self.pattern_matches(&elements[0], inner_value)
+                } else {
+                    Ok(false)
+                }
+            }
+
+            (Pattern::Identifier { name, .. }, value) => {
+                self.env.scope_resolver.declare_variable(name);
+                self.env.set_variable(name, value.clone())?;
+                Ok(true)
+            }
+
+            (Pattern::Wildcard, _) => Ok(true),
+
+            _ => Ok(false),
+        }
+    }
+
+    fn evaluate_guard(&mut self, guard: &Expr) -> Result<bool, String> {
+        match self.evaluate_expression(guard)? {
+            Value::Boolean(b) => Ok(b),
+            _ => Err("Guard expression must evaluate to a boolean".to_string()),
         }
     }
 }

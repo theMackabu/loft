@@ -2,7 +2,7 @@ use loft::{
     error::{Error, Result},
     // types::checker::TypeChecker,
     parser::{lexer::Lexer, Parser},
-    runtime::interpreter::{Interpreter, Value},
+    runtime::{interpreter::Interpreter, value::Value},
 };
 
 use std::{fs, process::exit};
