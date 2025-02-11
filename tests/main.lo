@@ -54,31 +54,31 @@ fn test_enums() {
    let maybe = Option::Some(123);
    let nothing = Option::None;
    
-   // let result = match success {
-   //    Result::Ok(n) => n,
-   //    Result::Err(_) => -1,
-   // };
-   // 
+   let result = match success {
+      Result::Ok(n) => n,
+      Result::Err(_) => -1,
+   };
+   
    
    let error_msg = match failure {
       Result::Ok(_) => "success",
       Result::Err(msg) => msg,
    };
    
-   // let opt_value = match maybe {
-   //    Option::Some(x) => x,
-   //    Option::None => 0,
-   //  };
-   // 
-   // let default = match nothing {
-   //    Option::Some(x) => x,
-   //    Option::None => 999,
-   // };
-   // 
-   // io::println(result);     // should print 42
+   let opt_value = match maybe {
+      Option::Some(x) => x,
+      Option::None => 0,
+    };
+   
+   let default = match nothing {
+      Option::Some(x) => x,
+      Option::None => 999,
+   };
+   
+   io::println(result);     // should print 42
    io::println(error_msg);  // should print "error message"
-   // io::println(opt_value);  // should print 123
-   // io::println(default);    // should print 999
+   io::println(opt_value);  // should print 123
+   io::println(default);    // should print 999
 }
 
 // allow async fn main -> Result
@@ -106,7 +106,7 @@ fn main() -> i32 {
    // allow this syntax wise
    // a += 10;
    
-   // io::println(a);
+   io::println(a);
    
    io::println(tester());
    get_message("testing!");

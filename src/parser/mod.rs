@@ -1390,35 +1390,6 @@ impl Parser {
     }
 
     fn parse_identifier_expression(&mut self, name: String) -> Result<Expr, ParseError> {
-        match name.as_str() {
-            "Ok" => {
-                self.expect(Token::LeftParen)?;
-                let expr = if self.current.token == Token::RightParen { Expr::Unit } else { self.parse_expression(0)? };
-                self.expect(Token::RightParen)?;
-                return Ok(Expr::Ok(Box::new(expr)));
-            }
-            "Err" => {
-                self.expect(Token::LeftParen)?;
-                let expr = if self.current.token == Token::RightParen { Expr::Unit } else { self.parse_expression(0)? };
-                self.expect(Token::RightParen)?;
-                return Ok(Expr::Err(Box::new(expr)));
-            }
-            "Some" => {
-                self.expect(Token::LeftParen)?;
-                let expr = self.parse_expression(0)?;
-                self.expect(Token::RightParen)?;
-                return Ok(Expr::Some(Box::new(expr)));
-            }
-            "None" => {
-                if self.current.token == Token::LeftParen {
-                    self.expect(Token::LeftParen)?;
-                    self.expect(Token::RightParen)?;
-                }
-                return Ok(Expr::None);
-            }
-            _ => {}
-        }
-
         if self.current.token == Token::Not {
             return self.parse_macro_invocation(name);
         }
@@ -1970,34 +1941,6 @@ impl Parser {
                     return Ok(Pattern::Wildcard);
                 }
 
-                match name.as_str() {
-                    "Ok" | "Err" | "Some" => {
-                        if self.current.token == Token::LeftParen {
-                            self.advance(); // consume (
-                            let inner = self.parse_pattern()?;
-                            self.expect(Token::RightParen)?;
-                            let path = Path {
-                                segments: vec![PathSegment { ident: name, generics: Vec::new() }],
-                            };
-
-                            return Ok(Pattern::TupleStruct { path, elements: vec![inner] });
-                        }
-                    }
-                    "None" => {
-                        if self.current.token == Token::LeftParen {
-                            self.advance(); // consume (
-                            self.expect(Token::RightParen)?;
-                        }
-
-                        let path = Path {
-                            segments: vec![PathSegment { ident: name, generics: Vec::new() }],
-                        };
-
-                        return Ok(Pattern::Path(path));
-                    }
-                    _ => {}
-                }
-
                 if self.current.token == Token::DoubleColon {
                     let mut segments = vec![PathSegment { ident: name, generics: Vec::new() }];
 
@@ -2018,7 +1961,7 @@ impl Parser {
 
                             if self.current.token == Token::RightParen {
                                 self.advance(); // consume ')'
-                                return Ok(Pattern::Tuple(vec![]));
+                                return Ok(Pattern::TupleStruct { path, elements: vec![] });
                             }
 
                             let mut patterns = Vec::new();
@@ -2033,7 +1976,7 @@ impl Parser {
                             }
 
                             self.expect(Token::RightParen)?; // consume ')'
-                            Ok(Pattern::Tuple(patterns))
+                            Ok(Pattern::TupleStruct { path, elements: patterns })
                         }
 
                         Token::Mut => {
