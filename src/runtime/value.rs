@@ -24,6 +24,7 @@ pub enum Value {
 
     Tuple(Vec<Value>),
     Return(Box<Value>),
+    Reference(Box<Value>, bool),
 
     Enum { enum_type: String, variant: String, data: Option<Box<Value>> },
 
@@ -74,6 +75,7 @@ impl fmt::Display for Value {
                 }
             }
 
+            Value::Reference(v, _) => write!(f, "&{}", v),
             Value::Return(v) => write!(f, "{}", v),
             Value::Unit => write!(f, "()"),
         }

@@ -306,13 +306,16 @@ impl Interpreter {
 
             Expr::Dereference { operand } => {
                 let value = self.evaluate_expression(operand)?;
-                // for now, just return the value directly since we're not fully implementing
-                // the reference system in the interpreter
-                Ok(value)
+                match value {
+                    Value::Reference(val, _) => Ok(*val),
+                    _ => Err("Cannot dereference a non-reference value".to_string()),
+                }
             }
 
-            // same as above
-            Expr::Reference { mutable: _, operand } => self.evaluate_expression(operand),
+            Expr::Reference { mutable, operand } => {
+                let value = self.evaluate_expression(operand)?;
+                Ok(Value::Reference(Box::new(value), *mutable))
+            }
 
             Expr::Binary { left, operator, right } => {
                 let left_val = self.evaluate_expression(left)?;

@@ -99,13 +99,10 @@ fn main() -> i32 {
    test_enums();
    test_patterns();
    
-   let big_num: i64 = 50;
+   let big_num: &i64 = 50;
    let mut a = 0;
    
-   let y = &big_num;  // reference
-   let z = *y;        // dereference
-   
-   if big_num < MAX_VALUE {
+   if *big_num < MAX_VALUE {
       io::println(big_num);
    } else {
       return "failed!";
