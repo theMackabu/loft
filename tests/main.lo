@@ -52,14 +52,17 @@ pub enum Option<T> {
 // allow no arguments
 // allow async fn main -> Result
 fn main() -> &str {
-    let x: i32 = 42;
+    // let x = 42.0 as f32; // implement as
+    // let x: f32 = 42.0; // allow this to cast f32
+
+    let x: i64 = 42i64;
     let mut a = 0;
     
     let y = &x;  // reference
     let z = *y;  // dereference
     
     if z < MAX_VALUE {
-        io::println(GREETING);
+        io::println(x);
     } else {
         return "failed!";
     }

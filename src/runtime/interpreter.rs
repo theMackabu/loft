@@ -1,5 +1,6 @@
 use super::scope::Environment as ScopeEnv;
 use crate::parser::{ast::*, lexer::*};
+use crate::{impl_binary_ops, impl_promote_to_type};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -299,206 +300,44 @@ impl Interpreter {
                 let left_val = self.evaluate_expression(left)?;
                 let right_val = self.evaluate_expression(right)?;
 
-                // convert to macro?
-                match (&left_val, operator, &right_val) {
-                    // i8
-                    (Value::I8(l), Token::Plus, Value::I8(r)) => Ok(Value::I8(l + r)),
-                    (Value::I8(l), Token::Minus, Value::I8(r)) => Ok(Value::I8(l - r)),
-                    (Value::I8(l), Token::Star, Value::I8(r)) => Ok(Value::I8(l * r)),
-                    (Value::I8(l), Token::Slash, Value::I8(r)) => Ok(Value::I8(l / r)),
-
-                    // u8
-                    (Value::U8(l), Token::Plus, Value::U8(r)) => Ok(Value::U8(l + r)),
-                    (Value::U8(l), Token::Minus, Value::U8(r)) => Ok(Value::U8(l - r)),
-                    (Value::U8(l), Token::Star, Value::U8(r)) => Ok(Value::U8(l * r)),
-                    (Value::U8(l), Token::Slash, Value::U8(r)) => Ok(Value::U8(l / r)),
-
-                    // i16
-                    (Value::I16(l), Token::Plus, Value::I16(r)) => Ok(Value::I16(l + r)),
-                    (Value::I16(l), Token::Minus, Value::I16(r)) => Ok(Value::I16(l - r)),
-                    (Value::I16(l), Token::Star, Value::I16(r)) => Ok(Value::I16(l * r)),
-                    (Value::I16(l), Token::Slash, Value::I16(r)) => Ok(Value::I16(l / r)),
-
-                    // u16
-                    (Value::U16(l), Token::Plus, Value::U16(r)) => Ok(Value::U16(l + r)),
-                    (Value::U16(l), Token::Minus, Value::U16(r)) => Ok(Value::U16(l - r)),
-                    (Value::U16(l), Token::Star, Value::U16(r)) => Ok(Value::U16(l * r)),
-                    (Value::U16(l), Token::Slash, Value::U16(r)) => Ok(Value::U16(l / r)),
-
-                    // i32
-                    (Value::I32(l), Token::Plus, Value::I32(r)) => Ok(Value::I32(l + r)),
-                    (Value::I32(l), Token::Minus, Value::I32(r)) => Ok(Value::I32(l - r)),
-                    (Value::I32(l), Token::Star, Value::I32(r)) => Ok(Value::I32(l * r)),
-                    (Value::I32(l), Token::Slash, Value::I32(r)) => Ok(Value::I32(l / r)),
-
-                    // u32
-                    (Value::U32(l), Token::Plus, Value::U32(r)) => Ok(Value::U32(l + r)),
-                    (Value::U32(l), Token::Minus, Value::U32(r)) => Ok(Value::U32(l - r)),
-                    (Value::U32(l), Token::Star, Value::U32(r)) => Ok(Value::U32(l * r)),
-                    (Value::U32(l), Token::Slash, Value::U32(r)) => Ok(Value::U32(l / r)),
-
-                    // f32
-                    (Value::F32(l), Token::Plus, Value::F32(r)) => Ok(Value::F32(l + r)),
-                    (Value::F32(l), Token::Minus, Value::F32(r)) => Ok(Value::F32(l - r)),
-                    (Value::F32(l), Token::Star, Value::F32(r)) => Ok(Value::F32(l * r)),
-                    (Value::F32(l), Token::Slash, Value::F32(r)) => Ok(Value::F32(l / r)),
-
-                    // i64
-                    (Value::I64(l), Token::Plus, Value::I64(r)) => Ok(Value::I64(l + r)),
-                    (Value::I64(l), Token::Minus, Value::I64(r)) => Ok(Value::I64(l - r)),
-                    (Value::I64(l), Token::Star, Value::I64(r)) => Ok(Value::I64(l * r)),
-                    (Value::I64(l), Token::Slash, Value::I64(r)) => Ok(Value::I64(l / r)),
-
-                    // u64
-                    (Value::U64(l), Token::Plus, Value::U64(r)) => Ok(Value::U64(l + r)),
-                    (Value::U64(l), Token::Minus, Value::U64(r)) => Ok(Value::U64(l - r)),
-                    (Value::U64(l), Token::Star, Value::U64(r)) => Ok(Value::U64(l * r)),
-                    (Value::U64(l), Token::Slash, Value::U64(r)) => Ok(Value::U64(l / r)),
-
-                    // f64
-                    (Value::F64(l), Token::Plus, Value::F64(r)) => Ok(Value::F64(l + r)),
-                    (Value::F64(l), Token::Minus, Value::F64(r)) => Ok(Value::F64(l - r)),
-                    (Value::F64(l), Token::Star, Value::F64(r)) => Ok(Value::F64(l * r)),
-                    (Value::F64(l), Token::Slash, Value::F64(r)) => Ok(Value::F64(l / r)),
-
-                    // i128
-                    (Value::I128(l), Token::Plus, Value::I128(r)) => Ok(Value::I128(l + r)),
-                    (Value::I128(l), Token::Minus, Value::I128(r)) => Ok(Value::I128(l - r)),
-                    (Value::I128(l), Token::Star, Value::I128(r)) => Ok(Value::I128(l * r)),
-                    (Value::I128(l), Token::Slash, Value::I128(r)) => Ok(Value::I128(l / r)),
-
-                    // u128
-                    (Value::U128(l), Token::Plus, Value::U128(r)) => Ok(Value::U128(l + r)),
-                    (Value::U128(l), Token::Minus, Value::U128(r)) => Ok(Value::U128(l - r)),
-                    (Value::U128(l), Token::Star, Value::U128(r)) => Ok(Value::U128(l * r)),
-                    (Value::U128(l), Token::Slash, Value::U128(r)) => Ok(Value::U128(l / r)),
-
-                    // isize
-                    (Value::ISize(l), Token::Plus, Value::ISize(r)) => Ok(Value::ISize(l + r)),
-                    (Value::ISize(l), Token::Minus, Value::ISize(r)) => Ok(Value::ISize(l - r)),
-                    (Value::ISize(l), Token::Star, Value::ISize(r)) => Ok(Value::ISize(l * r)),
-                    (Value::ISize(l), Token::Slash, Value::ISize(r)) => Ok(Value::ISize(l / r)),
-
-                    // usize
-                    (Value::USize(l), Token::Plus, Value::USize(r)) => Ok(Value::USize(l + r)),
-                    (Value::USize(l), Token::Minus, Value::USize(r)) => Ok(Value::USize(l - r)),
-                    (Value::USize(l), Token::Star, Value::USize(r)) => Ok(Value::USize(l * r)),
-                    (Value::USize(l), Token::Slash, Value::USize(r)) => Ok(Value::USize(l / r)),
-
-                    // i8
-                    (Value::I8(l), Token::LeftAngle, Value::I8(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::I8(l), Token::RightAngle, Value::I8(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::I8(l), Token::LessEquals, Value::I8(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::I8(l), Token::GreaterEquals, Value::I8(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::I8(l), Token::Equals, Value::I8(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::I8(l), Token::NotEquals, Value::I8(r)) => Ok(Value::Boolean(l != r)),
-
-                    // u8
-                    (Value::U8(l), Token::LeftAngle, Value::U8(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::U8(l), Token::RightAngle, Value::U8(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::U8(l), Token::LessEquals, Value::U8(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::U8(l), Token::GreaterEquals, Value::U8(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::U8(l), Token::Equals, Value::U8(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::U8(l), Token::NotEquals, Value::U8(r)) => Ok(Value::Boolean(l != r)),
-
-                    // i16
-                    (Value::I16(l), Token::LeftAngle, Value::I16(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::I16(l), Token::RightAngle, Value::I16(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::I16(l), Token::LessEquals, Value::I16(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::I16(l), Token::GreaterEquals, Value::I16(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::I16(l), Token::Equals, Value::I16(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::I16(l), Token::NotEquals, Value::I16(r)) => Ok(Value::Boolean(l != r)),
-
-                    // u16
-                    (Value::U16(l), Token::LeftAngle, Value::U16(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::U16(l), Token::RightAngle, Value::U16(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::U16(l), Token::LessEquals, Value::U16(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::U16(l), Token::GreaterEquals, Value::U16(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::U16(l), Token::Equals, Value::U16(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::U16(l), Token::NotEquals, Value::U16(r)) => Ok(Value::Boolean(l != r)),
-
-                    // i32
-                    (Value::I32(l), Token::LeftAngle, Value::I32(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::I32(l), Token::RightAngle, Value::I32(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::I32(l), Token::LessEquals, Value::I32(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::I32(l), Token::GreaterEquals, Value::I32(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::I32(l), Token::Equals, Value::I32(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::I32(l), Token::NotEquals, Value::I32(r)) => Ok(Value::Boolean(l != r)),
-
-                    // u32
-                    (Value::U32(l), Token::LeftAngle, Value::U32(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::U32(l), Token::RightAngle, Value::U32(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::U32(l), Token::LessEquals, Value::U32(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::U32(l), Token::GreaterEquals, Value::U32(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::U32(l), Token::Equals, Value::U32(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::U32(l), Token::NotEquals, Value::U32(r)) => Ok(Value::Boolean(l != r)),
-
-                    // f32
-                    (Value::F32(l), Token::LeftAngle, Value::F32(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::F32(l), Token::RightAngle, Value::F32(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::F32(l), Token::LessEquals, Value::F32(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::F32(l), Token::GreaterEquals, Value::F32(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::F32(l), Token::Equals, Value::F32(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::F32(l), Token::NotEquals, Value::F32(r)) => Ok(Value::Boolean(l != r)),
-
-                    // i64
-                    (Value::I64(l), Token::LeftAngle, Value::I64(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::I64(l), Token::RightAngle, Value::I64(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::I64(l), Token::LessEquals, Value::I64(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::I64(l), Token::GreaterEquals, Value::I64(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::I64(l), Token::Equals, Value::I64(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::I64(l), Token::NotEquals, Value::I64(r)) => Ok(Value::Boolean(l != r)),
-
-                    // u64
-                    (Value::U64(l), Token::LeftAngle, Value::U64(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::U64(l), Token::RightAngle, Value::U64(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::U64(l), Token::LessEquals, Value::U64(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::U64(l), Token::GreaterEquals, Value::U64(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::U64(l), Token::Equals, Value::U64(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::U64(l), Token::NotEquals, Value::U64(r)) => Ok(Value::Boolean(l != r)),
-
-                    // f64
-                    (Value::F64(l), Token::LeftAngle, Value::F64(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::F64(l), Token::RightAngle, Value::F64(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::F64(l), Token::LessEquals, Value::F64(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::F64(l), Token::GreaterEquals, Value::F64(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::F64(l), Token::Equals, Value::F64(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::F64(l), Token::NotEquals, Value::F64(r)) => Ok(Value::Boolean(l != r)),
-
-                    // i128
-                    (Value::I128(l), Token::LeftAngle, Value::I128(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::I128(l), Token::RightAngle, Value::I128(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::I128(l), Token::LessEquals, Value::I128(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::I128(l), Token::GreaterEquals, Value::I128(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::I128(l), Token::Equals, Value::I128(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::I128(l), Token::NotEquals, Value::I128(r)) => Ok(Value::Boolean(l != r)),
-
-                    // u128
-                    (Value::U128(l), Token::LeftAngle, Value::U128(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::U128(l), Token::RightAngle, Value::U128(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::U128(l), Token::LessEquals, Value::U128(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::U128(l), Token::GreaterEquals, Value::U128(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::U128(l), Token::Equals, Value::U128(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::U128(l), Token::NotEquals, Value::U128(r)) => Ok(Value::Boolean(l != r)),
-
-                    // isize
-                    (Value::ISize(l), Token::LeftAngle, Value::ISize(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::ISize(l), Token::RightAngle, Value::ISize(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::ISize(l), Token::LessEquals, Value::ISize(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::ISize(l), Token::GreaterEquals, Value::ISize(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::ISize(l), Token::Equals, Value::ISize(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::ISize(l), Token::NotEquals, Value::ISize(r)) => Ok(Value::Boolean(l != r)),
-
-                    // usize
-                    (Value::USize(l), Token::LeftAngle, Value::USize(r)) => Ok(Value::Boolean(l < r)),
-                    (Value::USize(l), Token::RightAngle, Value::USize(r)) => Ok(Value::Boolean(l > r)),
-                    (Value::USize(l), Token::LessEquals, Value::USize(r)) => Ok(Value::Boolean(l <= r)),
-                    (Value::USize(l), Token::GreaterEquals, Value::USize(r)) => Ok(Value::Boolean(l >= r)),
-                    (Value::USize(l), Token::Equals, Value::USize(r)) => Ok(Value::Boolean(l == r)),
-                    (Value::USize(l), Token::NotEquals, Value::USize(r)) => Ok(Value::Boolean(l != r)),
-
-                    _ => Err(format!("Invalid binary operation: {:?} {:?} {:?}", left_val, operator, right_val)),
+                if let Ok(promoted) = impl_promote_to_type! {
+                    (&right_val, &left_val),
+                    (I16, i16),
+                    (U16, u16),
+                    (I32, i32),
+                    (U32, u32),
+                    (I64, i64),
+                    (U64, u64),
+                    (ISize, isize),
+                    (USize, usize)
+                } {
+                    return impl_binary_ops! {
+                        (&left_val, operator, &promoted),
+                        I8, U8, I16, U16, I32, U32, F32,
+                        I64, U64, F64, I128, U128,
+                        ISize, USize
+                    };
                 }
+
+                if let Ok(promoted) = impl_promote_to_type! {
+                    (&left_val, &right_val),
+                    (I16, i16),
+                    (U16, u16),
+                    (I32, i32),
+                    (U32, u32),
+                    (I64, i64),
+                    (U64, u64),
+                    (ISize, isize),
+                    (USize, usize)
+                } {
+                    return impl_binary_ops! {
+                        (&promoted, operator, &right_val),
+                        I8, U8, I16, U16, I32, U32, F32,
+                        I64, U64, F64, I128, U128,
+                        ISize, USize
+                    };
+                }
+                Err(format!("Cannot perform operation between {:?} and {:?}", left_val, right_val))
             }
 
             Expr::If { condition, then_branch, else_branch } => {

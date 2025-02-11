@@ -7,4 +7,7 @@ pub mod parser;
 #[path = "../runtime/mod.rs"]
 pub mod runtime;
 
+#[path = "../macros.rs"]
+pub mod macros;
+
 pub(crate) mod util;
