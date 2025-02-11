@@ -80,6 +80,6 @@ fn main() -> &str {
 }
 
 // only checks type if not implicit return
-fn tester() -> i32 {
+fn tester() -> &str {
    get_message("testing!")
 }

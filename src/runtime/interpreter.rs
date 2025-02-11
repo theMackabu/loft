@@ -299,6 +299,7 @@ impl Interpreter {
                 let left_val = self.evaluate_expression(left)?;
                 let right_val = self.evaluate_expression(right)?;
 
+                // convert to macro?
                 match (&left_val, operator, &right_val) {
                     // i8
                     (Value::I8(l), Token::Plus, Value::I8(r)) => Ok(Value::I8(l + r)),

@@ -271,7 +271,7 @@ impl TypeChecker {
                     }
                 }
 
-                for stmt in body {
+                for stmt in &body[..body.len() - 1] {
                     if let Stmt::Return(Some(expr)) = stmt {
                         let actual_return_type = self.check_expr(expr)?;
                         if actual_return_type != return_type {
@@ -283,6 +283,32 @@ impl TypeChecker {
                         }
                     }
                     self.check_statement(stmt)?;
+                }
+
+                if let Some(last_stmt) = body.last() {
+                    match last_stmt {
+                        Stmt::Return(Some(expr)) => {
+                            let actual_return_type = self.check_expr(expr)?;
+                            if actual_return_type != return_type {
+                                return Err(TypeError::TypeMismatch {
+                                    expected: return_type.type_name(),
+                                    found: actual_return_type.type_name(),
+                                    location: format!("in function {}", name),
+                                });
+                            }
+                        }
+                        Stmt::ExpressionValue(expr) | Stmt::ExpressionStmt(expr) => {
+                            let actual_return_type = self.check_expr(expr)?;
+                            if actual_return_type != return_type {
+                                return Err(TypeError::TypeMismatch {
+                                    expected: return_type.type_name(),
+                                    found: actual_return_type.type_name(),
+                                    location: format!("in function {}", name),
+                                });
+                            }
+                        }
+                        _ => self.check_statement(last_stmt)?,
+                    }
                 }
 
                 self.variables = outer_scope;
