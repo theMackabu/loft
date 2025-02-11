@@ -74,10 +74,12 @@ fn main() -> &str {
     
     // io::println(a);
     
+    io::println(tester());
+    
     get_message("testing!")
 }
 
 // only checks type if not implicit return
-// fn tester() -> i32 {
-//    get_message("testing!")
-// }
+fn tester() -> i32 {
+   get_message("testing!")
+}
