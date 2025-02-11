@@ -32,7 +32,7 @@ static GREETING: &str = "Hello";
 // even though its here
 // when changing return type "location"
 fn get_message(input: &str) -> &str {
-   // io::println(input);
+   io::println(input);
     
    GREETING
 }
@@ -49,9 +49,8 @@ pub enum Option<T> {
    Some(T),
 }
 
-// allow no arguments
 // allow async fn main -> Result
-fn main() -> &str {
+fn main() -> i32 {
    // let x = 42.0 as f32; // implement as
    // let x: f32 = 42.0; // allow this to cast f32
    
@@ -78,8 +77,9 @@ fn main() -> &str {
    // io::println(a);
    
    io::println(tester());
+   get_message("testing!");
    
-   get_message("testing!")
+   return a;
 }
 
 // only checks type if not implicit return

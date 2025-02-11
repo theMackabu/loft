@@ -1,36 +1,29 @@
 use loft::{
-    parser::{lexer::Lexer, Parser},
-    runtime::interpreter::Interpreter,
+    error::{Error, Result},
     // types::checker::TypeChecker,
+    parser::{lexer::Lexer, Parser},
+    runtime::interpreter::{Interpreter, Value},
 };
 
-use std::process::ExitCode;
-use std::{error::Error, fs};
+use std::{fs, process::exit};
 
-fn main() -> Result<ExitCode, Box<dyn Error>> {
-    let args = std::env::args().collect::<Vec<String>>();
-    let input = fs::read_to_string(&args[1])?;
-    let lexer = Lexer::new(input);
+fn run() -> Result {
+    let filename = std::env::args().nth(1).ok_or(Error::MissingArgument)?;
+    let input = fs::read_to_string(&filename)?;
 
-    let mut parser = Parser::new(lexer);
+    let ast = Parser::new(Lexer::new(input)).parse_program().map_err(|err| Error::ParseError(err.to_string()))?;
+    let mut runtime = Interpreter::new(&ast).map_err(|err| Error::RuntimeError(err.to_string()))?;
 
-    match parser.parse_program() {
-        Ok(ast) => {
-            // let mut types = TypeChecker::new(&ast);
-            let mut runtime = Interpreter::new(&ast)?;
-
-            // if let Err(err) = types.check() {
-            //     println!("Type error: {err:?}");
-            //     return Ok(ExitCode::FAILURE);
-            // }
-
-            match runtime.start_main() {
-                Ok(value) => println!("Evaluated with {value:?}"),
-                Err(err) => println!("Runtime error: {err}"),
-            }
-        }
-        Err(err) => println!("Parse error: {err}"),
+    match runtime.start_main().map_err(|err| Error::RuntimeError(err.to_string()))? {
+        Value::I32(code) => exit(code),
+        Value::Unit => Ok(()),
+        _ => Err(Error::UnexpectedReturnValue),
     }
+}
 
-    Ok(ExitCode::SUCCESS)
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{}", e);
+        exit(1);
+    }
 }

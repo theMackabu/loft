@@ -10,4 +10,7 @@ pub mod runtime;
 #[path = "../macros.rs"]
 pub mod macros;
 
+#[path = "../error.rs"]
+pub mod error;
+
 pub(crate) mod util;

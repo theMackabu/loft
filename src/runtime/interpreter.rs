@@ -197,7 +197,21 @@ impl Interpreter {
                 Ok(Value::Unit)
             }
 
-            Stmt::Function { name, params, body, .. } => {
+            Stmt::Function { name, params, body, return_type, .. } => {
+                if name == "main" {
+                    if !params.is_empty() {
+                        return Err("main function cannot have parameters".to_string());
+                    }
+
+                    if let Some(ret_type) = return_type {
+                        if !matches!(ret_type, Type::Path(Path { segments }) if segments.len() == 1 
+                            && segments[0].ident == "i32" 
+                            && segments[0].generics.is_empty()) {
+                            return Err("main function can only return i32 or nothing".to_string());
+                        }
+                    }
+                }
+
                 self.env.scope_resolver.declare_function(name)?;
                 self.env.enter_scope();
 
@@ -372,7 +386,10 @@ impl Interpreter {
                     }
 
                     Expr::Identifier(name) => {
-                        // Regular function calls
+                        if name == "main" {
+                            return Err("main function cannot be called directly".to_string());
+                        }
+
                         let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
                         let arg_values = evaluated_args?;
 
@@ -382,13 +399,17 @@ impl Interpreter {
                             return Err(format!("Function '{}' not found", name));
                         };
 
+                        if arg_values.len() != params.len() {
+                            return Err(format!("Function '{}' expects {} arguments but got {}", name, params.len(), arg_values.len()));
+                        }
+
                         let outer_scope = self.env.scopes.clone();
                         self.env.enter_scope();
 
-                        for ((param, _), value) in params.iter().zip(arg_values) {
+                        for ((param, _type), value) in params.iter().zip(arg_values) {
                             if let Pattern::Identifier { name, .. } = param {
                                 self.env.scope_resolver.declare_variable(name);
-                                self.env.set_variable(name, value.clone())?;
+                                self.env.set_variable(name, value)?;
                             }
                         }
 
@@ -399,6 +420,7 @@ impl Interpreter {
 
                         result
                     }
+
                     _ => Err(format!("Unsupported function call type: {:?}", function)),
                 }
             }
