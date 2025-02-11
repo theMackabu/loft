@@ -22,7 +22,7 @@ use testing::util;
 #[path="other/another.lo"]
 use another;
 
-const MAX_VALUE: i32 = 100;
+const MAX_VALUE: i64 = 100;
 static GREETING: &str = "Hello";
 
 // Type error: TypeMismatch { expected: "&str", found: "i32", location: "in function main" }
@@ -99,10 +99,7 @@ fn main() -> i32 {
    test_enums();
    test_patterns();
    
-   // let x = 42.0 as f32; // implement as
-   // let x: f32 = 42.0; // allow this to cast f32
-   
-   let big_num: i64 = 50i64;
+   let big_num: i64 = 50;
    let mut a = 0;
    
    let y = &big_num;  // reference

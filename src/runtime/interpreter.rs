@@ -1,3 +1,5 @@
+mod cast;
+
 use super::{scope::Environment as ScopeEnv, value::Value};
 use crate::parser::{ast::*, lexer::*};
 use crate::{impl_binary_ops, impl_promote_to_type};
@@ -159,13 +161,29 @@ impl Interpreter {
                 Ok(result)
             }
 
-            Stmt::Let { pattern, initializer, .. } => {
-                let value = if let Some(init) = initializer { self.evaluate_expression(init)? } else { Value::Unit };
+            Stmt::Let {
+                pattern,
+                initializer,
+                type_annotation,
+                ..
+            } => {
+                let value = if let Some(init) = initializer {
+                    let init_value = self.evaluate_expression(init)?;
+
+                    if let Some(target_type) = type_annotation {
+                        self.perform_cast(init_value, target_type)?
+                    } else {
+                        init_value
+                    }
+                } else {
+                    Value::Unit
+                };
 
                 if let Pattern::Identifier { name, .. } = pattern {
                     self.env.scope_resolver.declare_variable(name);
                     self.env.set_variable(name, value)?;
                 }
+
                 Ok(Value::Unit)
             }
 
@@ -223,7 +241,11 @@ impl Interpreter {
                 }
             }
 
-            // add type checking
+            Expr::Cast { expr, target_type } => {
+                let value = self.evaluate_expression(expr)?;
+                self.perform_cast(value, target_type)
+            }
+
             Expr::Integer(value, ty) => Ok(match ty.to_owned().unwrap_or(NumericType::I32) {
                 NumericType::I8 => Value::I8(*value as i8),
                 NumericType::I16 => Value::I16(*value as i16),
