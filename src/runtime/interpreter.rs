@@ -74,9 +74,17 @@ impl Interpreter {
     }
 
     pub fn start_main(&mut self) -> Result<Value, String> {
-        match self.find_function("main") {
-            Some(main) => self.execute_statement(&main.to_owned()),
-            None => Err("No main function found".to_string()),
+        let main_func = self.find_function("main").ok_or("No main function found")?;
+        let result = self.execute_statement(&main_func.to_owned())?;
+
+        match result {
+            Value::Enum { enum_type, variant, data } if enum_type == "Result" => match variant.as_str() {
+                "Ok" => Ok(*data.unwrap_or_else(|| Box::new(Value::Unit))),
+                "Err" => Err(data.map(|d| *d).unwrap_or(Value::Unit).to_string()),
+                _ => Ok(Value::Enum { enum_type, variant, data }),
+            },
+
+            other => Ok(other),
         }
     }
 
@@ -190,15 +198,22 @@ impl Interpreter {
             Stmt::Function { name, params, body, return_type, .. } => {
                 if name == "main" {
                     if !params.is_empty() {
-                        return Err("main function cannot have parameters".to_string());
+                        return Err("main function cannot have parameters".into());
                     }
 
                     if let Some(ret_type) = return_type {
-                        if !matches! {ret_type, Type::Path(Path { segments }) if segments.len() == 1
-                        && segments[0].ident == "i32"
-                        && segments[0].generics.is_empty()}
-                        {
-                            return Err("main function can only return i32 or nothing".to_string());
+                        match ret_type {
+                            Type::Path(path)
+                                if matches! { path.segments.as_slice(),
+                                    [seg] if seg.ident == "i32" && seg.generics.is_empty()
+                                } => {}
+
+                            Type::Path(path)
+                                if matches! { path.segments.as_slice(),
+                                    [seg] if seg.ident == "Result" && seg.generics.len() == 2
+                                } => {}
+
+                            _ => return Err("main function can only return i32, Result<T, E>, or nothing".into()),
                         }
                     }
                 }
