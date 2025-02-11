@@ -1,16 +1,16 @@
 pub mod std {
-    pub mod io {
-        use core::io::stdout;
-        
-        pub fn print(value: &str) {
-            io::stdout().write(value);
-        }
-        
-        pub fn println(value: &str) {
-            io::stdout().write(value);
-            io::stdout().write("\n");
-        }
-    }
+   pub mod io {
+      use core::io::stdout;
+   
+      pub fn print(value: &str) {
+         io::stdout().write(value);
+      }
+   
+      pub fn println(value: &str) {
+         io::stdout().write(value);
+         io::stdout().write("\n");
+      }
+   }
 }
 
 // update lexer to support
@@ -32,9 +32,9 @@ static GREETING: &str = "Hello";
 // even though its here
 // when changing return type "location"
 fn get_message(input: &str) -> &str {
-    // io::println(input);
+   // io::println(input);
     
-    GREETING
+   GREETING
 }
 
 // parse enums
@@ -45,41 +45,41 @@ pub enum Result<T, E> {
 
 // allow enum Results
 pub enum Option<T> {
-    None,
-    Some(T),
+   None,
+   Some(T),
 }
 
 // allow no arguments
 // allow async fn main -> Result
 fn main() -> &str {
-    // let x = 42.0 as f32; // implement as
-    // let x: f32 = 42.0; // allow this to cast f32
-
-    let x: i64 = 42i64;
-    let mut a = 0;
-    
-    let y = &x;  // reference
-    let z = *y;  // dereference
-    
-    if z < MAX_VALUE {
-        io::println(x);
-    } else {
-        return "failed!";
-    }
-    
-    // only allow i32, ExitCode, and Unit
-    
-    // allow this
-    // Ok(get_message("testing!"))
-    
-    // allow this syntax wise
-    // a += 10;
-    
-    // io::println(a);
-    
-    io::println(tester());
-    
-    get_message("testing!")
+   // let x = 42.0 as f32; // implement as
+   // let x: f32 = 42.0; // allow this to cast f32
+   
+   let x: i64 = 42i64;
+   let mut a = 0;
+   
+   let y = &x;  // reference
+   let z = *y;  // dereference
+   
+   if z < MAX_VALUE {
+      io::println(x);
+   } else {
+      return "failed!";
+   }
+   
+   // only allow i32, ExitCode, and Unit
+   
+   // allow this
+   // Ok(get_message("testing!"))
+   
+   // allow this syntax wise
+   // a += 10;
+   
+   // io::println(a);
+   
+   io::println(tester());
+   
+   get_message("testing!")
 }
 
 // only checks type if not implicit return
