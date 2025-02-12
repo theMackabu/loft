@@ -118,7 +118,7 @@ impl Interpreter {
             match stmt {
                 Stmt::Const { name, initializer, .. } => {
                     let value = self.evaluate_expression(initializer)?;
-                    self.env.scope_resolver.declare_variable(name);
+                    self.env.scope_resolver.declare_variable(name, false);
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
@@ -126,7 +126,7 @@ impl Interpreter {
 
                 Stmt::Static { name, initializer, .. } => {
                     let value = self.evaluate_expression(initializer)?;
-                    self.env.scope_resolver.declare_variable(name);
+                    self.env.scope_resolver.declare_variable(name, false);
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
@@ -187,8 +187,8 @@ impl Interpreter {
                     Value::Unit
                 };
 
-                if let Pattern::Identifier { name, .. } = pattern {
-                    self.env.scope_resolver.declare_variable(name);
+                if let Pattern::Identifier { name, mutable } = pattern {
+                    self.env.scope_resolver.declare_variable(name, *mutable);
                     self.env.set_variable(name, value)?;
                 }
 
@@ -222,8 +222,8 @@ impl Interpreter {
                 self.env.enter_scope();
 
                 for (pat, _) in params {
-                    if let Pattern::Identifier { name, .. } = pat {
-                        self.env.scope_resolver.declare_variable(name);
+                    if let Pattern::Identifier { name, mutable } = pat {
+                        self.env.scope_resolver.declare_variable(name, *mutable);
                     }
                 }
 
@@ -464,8 +464,8 @@ impl Interpreter {
                         self.env.enter_scope();
 
                         for ((param, _type), value) in params.iter().zip(arg_values) {
-                            if let Pattern::Identifier { name, .. } = param {
-                                self.env.scope_resolver.declare_variable(name);
+                            if let Pattern::Identifier { name, mutable } = param {
+                                self.env.scope_resolver.declare_variable(name, *mutable);
                                 self.env.set_variable(name, value)?;
                             }
                         }
@@ -521,8 +521,8 @@ impl Interpreter {
                 }
             }
 
-            (Pattern::Identifier { name, .. }, value) => {
-                self.env.scope_resolver.declare_variable(name);
+            (Pattern::Identifier { name, mutable }, value) => {
+                self.env.scope_resolver.declare_variable(name, *mutable);
                 self.env.set_variable(name, value.clone())?;
                 Ok(true)
             }

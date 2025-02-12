@@ -1,4 +1,5 @@
-use crate::parser::ast::{Expr, Pattern, Stmt};
+use crate::parser::ast::{Expr, Stmt};
+use crate::util::extract_identifier_info;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -12,6 +13,7 @@ pub enum DeclKind {
 pub struct SymbolInfo {
     pub name: String,
     pub kind: DeclKind,
+    pub mutable: bool,
 }
 
 #[derive(Debug)]
@@ -36,13 +38,14 @@ impl Environment {
         Ok(())
     }
 
-    pub fn declare_variable(&mut self, name: &str) {
+    pub fn declare_variable(&mut self, name: &str, mutable: bool) {
         if let Some(current) = self.scopes.last_mut() {
             current.insert(
                 name.to_owned(),
                 SymbolInfo {
                     name: name.to_owned(),
                     kind: DeclKind::Variable,
+                    mutable,
                 },
             );
         }
@@ -58,6 +61,7 @@ impl Environment {
             current.insert(
                 name.to_owned(),
                 SymbolInfo {
+                    mutable: false,
                     name: name.to_owned(),
                     kind: DeclKind::Function,
                 },
@@ -76,6 +80,7 @@ impl Environment {
             current.insert(
                 name.to_owned(),
                 SymbolInfo {
+                    mutable: false,
                     name: name.to_owned(),
                     kind: DeclKind::Module,
                 },
@@ -104,8 +109,8 @@ fn resolve_stmt(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
             if let Some(init_expr) = initializer {
                 resolve_expr(init_expr, env)?;
             }
-            if let Some(name) = extract_identifier(pattern) {
-                env.declare_variable(&name);
+            if let Some((name, mutable)) = extract_identifier_info(pattern) {
+                env.declare_variable(&name, mutable);
             }
             Ok(())
         }
@@ -116,8 +121,8 @@ fn resolve_stmt(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
 
             // add type checking _ty
             for (pat, _ty) in params {
-                if let Some(param_name) = extract_identifier(pat) {
-                    env.declare_variable(&param_name);
+                if let Some((param_name, mutable)) = extract_identifier_info(pat) {
+                    env.declare_variable(&param_name, mutable);
                 }
             }
 
@@ -178,14 +183,5 @@ fn resolve_expr(expr: &Expr, env: &mut Environment) -> Result<(), String> {
         }
         //  additional expression variants
         _ => Ok(()),
-    }
-}
-
-fn extract_identifier(pattern: &Pattern) -> Option<String> {
-    match pattern {
-        // check mutability
-        Pattern::Identifier { name, .. } => Some(name.clone()),
-        Pattern::Reference { pattern, .. } => extract_identifier(pattern),
-        _ => None,
     }
 }

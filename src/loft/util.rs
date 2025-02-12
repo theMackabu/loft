@@ -14,6 +14,14 @@ pub fn is_self_parameter(pat: &Pattern) -> bool {
     }
 }
 
+pub fn extract_identifier_info(pattern: &Pattern) -> Option<(String, bool)> {
+    match pattern {
+        Pattern::Identifier { name, mutable } => Some((name.clone(), *mutable)),
+        Pattern::Reference { pattern, .. } => extract_identifier_info(pattern),
+        _ => None,
+    }
+}
+
 // pub fn convert_type_annotation(ty: &Type) -> Result<Primitive, TypeError> {
 //     match ty {
 //         Type::Simple(name) => convert_type_name(name),

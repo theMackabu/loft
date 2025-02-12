@@ -112,7 +112,7 @@ fn main() -> Result<(), ()> {
    // Ok(get_message("testing!"))
    
    // allow this syntax wise
-   a_value += 10;
+   a_value = 10;
    
    io::println(a_value);
    
