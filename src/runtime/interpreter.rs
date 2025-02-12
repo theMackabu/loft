@@ -648,7 +648,7 @@ impl Interpreter {
                                                     data: data.clone(),
                                                     source_name: source_name.clone(),
                                                     source_scope: *source_scope,
-                                                    mutable: *mutable,
+                                                    mutable: *mutable && *ref_mutable,
                                                 };
                                                 if let Some(scope) = self.env.scopes.last_mut() {
                                                     scope.insert(name.to_string(), ref_value);
