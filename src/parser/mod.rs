@@ -1460,7 +1460,11 @@ impl Parser {
             Token::Assign => {
                 self.advance();
                 let value = Box::new(self.parse_expression(0)?);
-                Ok(Expr::Assignment { target: name, value })
+
+                Ok(Expr::Assignment {
+                    target: Box::new(Expr::Identifier(name)),
+                    value,
+                })
             }
 
             Token::RemAssign

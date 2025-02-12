@@ -95,30 +95,30 @@ fn test_enums() {
 }
 
 fn test_assignment(val: &mut i32) {
-   *val = 3;
+   *val += 3;
 }
 
 // allow async fn main -> Result
 fn main() -> Result<(), ()> {
-   // test_enums();
-   // test_patterns();
-   // 
-   // let big_num: &i64 = 50;
+   test_enums();
+   test_patterns();
+   
+   let big_num: i64 = &50;
    let mut value = 5;
-   // 
-   // if *big_num < MAX_VALUE {
-   //    io::println(big_num);
-   // } else {
-   //    return "failed!";
-   // }
-   // 
+   
+   if *big_num < MAX_VALUE {
+      io::println(big_num);
+   } else {
+      return "failed!";
+   }
+   
    test_assignment(&mut value);
    io::println(value);
-// 
-//    io::println(tester());
-//    get_message("testing!");
-//       
-//    Result::Ok(())
+
+   io::println(tester());
+   get_message("testing!");
+      
+   Result::Ok(())
 }
 
 // only checks type if not implicit return

@@ -4,49 +4,70 @@ impl Interpreter {
     pub fn perform_cast(&mut self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {
             Type::Reference { mutable, inner } => match value {
-                Value::Reference { source_name, source_scope, .. } => {
-                    if let Some(scope) = self.env.scopes.get(source_scope) {
-                        if let Some(inner_value) = scope.get(&source_name) {
-                            let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
-                            self.env.update_scoped_variable(&source_name, casted_inner, source_scope)?;
+                Value::Reference { source_name, source_scope, data, .. } => {
+                    if let (Some(source_name), Some(source_scope)) = (source_name.clone(), source_scope) {
+                        if let Some(scope) = self.env.scopes.get(source_scope) {
+                            if let Some(inner_value) = scope.get(&source_name) {
+                                let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
+                                self.env.update_scoped_variable(&source_name, casted_inner, source_scope)?;
 
-                            Ok(Value::Reference {
-                                source_name,
-                                source_scope,
-                                mutable: *mutable,
-                            })
+                                Ok(Value::Reference {
+                                    source_name: Some(source_name),
+                                    source_scope: Some(source_scope),
+                                    mutable: *mutable,
+                                    data: None,
+                                })
+                            } else {
+                                Err(format!("Reference source '{}' not found", source_name))
+                            }
                         } else {
-                            Err(format!("Reference source '{}' not found", source_name))
+                            Err(format!("Reference scope {} not found", source_scope))
                         }
+                    } else if let Some(inner_value) = data {
+                        let casted_inner = self.perform_cast(*inner_value, inner)?;
+                        Ok(Value::Reference {
+                            source_name: None,
+                            source_scope: None,
+                            mutable: *mutable,
+                            data: Some(Box::new(casted_inner)),
+                        })
                     } else {
-                        Err(format!("Reference scope {} not found", source_scope))
+                        Err("Invalid reference: missing both source and data".to_string())
                     }
                 }
+
                 other => {
                     let casted = self.perform_cast(other, inner)?;
-                    let temp_name = format!("__ref_{}", self.env.scopes.len());
-                    let current_scope = self.env.scopes.len() - 1;
+                    let temp_name = self.env.generate_temp_reference_name();
+                    let current_scope = self.env.get_current_scope();
                     self.env.update_scoped_variable(&temp_name, casted, current_scope)?;
 
                     Ok(Value::Reference {
-                        source_name: temp_name,
-                        source_scope: current_scope,
+                        source_name: Some(temp_name),
+                        source_scope: Some(current_scope),
                         mutable: *mutable,
+                        data: None,
                     })
                 }
             },
 
             Type::Path(path) if path.segments.len() == 1 => {
                 let value = match value {
-                    Value::Reference { source_name, source_scope, .. } => {
-                        if let Some(scope) = self.env.scopes.get(source_scope) {
-                            if let Some(val) = scope.get(&source_name) {
-                                val.clone()
+                    Value::Reference { source_name, source_scope, data, .. } => {
+                        if let (Some(source_name), Some(source_scope)) = (source_name.clone(), source_scope) {
+                            if let Some(scope) = self.env.scopes.get(source_scope) {
+                                if let Some(val) = scope.get(&source_name) {
+                                    val.clone()
+                                } else {
+                                    return Err(format!("Reference source '{}' not found", source_name));
+                                }
                             } else {
-                                return Err(format!("Reference source '{}' not found", source_name));
+                                return Err(format!("Reference scope {} not found", source_scope));
                             }
+                        } else if let Some(inner_value) = data {
+                            *inner_value
                         } else {
-                            return Err(format!("Reference scope {} not found", source_scope));
+                            return Err("Invalid reference: missing both source and data".to_string());
                         }
                     }
                     other => other,

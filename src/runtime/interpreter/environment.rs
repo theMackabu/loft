@@ -9,6 +9,7 @@ use crate::runtime::scope::Scope;
 pub struct Environment {
     pub scopes: Vec<HashMap<String, Value>>,
     pub scope_resolver: Scope,
+    pub next_ref_id: usize,
 }
 
 impl Environment {
@@ -17,6 +18,7 @@ impl Environment {
         Self {
             scopes: vec![HashMap::new()],
             scope_resolver: Scope::new(),
+            next_ref_id: 0,
         }
     }
 
@@ -48,15 +50,19 @@ impl Environment {
     /// Searches all active scopes for the variable. Returns `None` if the variable
     /// is not found or not declared.
     pub fn get_variable(&self, name: &str) -> Option<&Value> {
-        self.get_variable_ref(name).map(|value| {
+        self.get_variable_ref(name).and_then(|value| {
             if let Value::Reference { source_name, source_scope, .. } = value {
-                if let Some(scope) = self.scopes.get(*source_scope) {
-                    scope.get(source_name).unwrap_or(value)
+                if let (Some(source_name), Some(source_scope)) = (source_name, source_scope) {
+                    if let Some(scope) = self.scopes.get(*source_scope) {
+                        scope.get(source_name).or(Some(value))
+                    } else {
+                        Some(value)
+                    }
                 } else {
-                    value
+                    Some(value)
                 }
             } else {
-                value
+                Some(value)
             }
         })
     }
@@ -84,12 +90,8 @@ impl Environment {
     /// Searches for the variable in indexed scopes and updates its value if
     /// found. Returns an error if the variable does not exist.
     pub fn update_scoped_variable(&mut self, name: &str, value: Value, scope_index: usize) -> Result<(), String> {
-        println!("Updating variable '{}' in scope {} with value {:?}", name, scope_index, value);
-        println!("Current scopes: {:?}", self.scopes);
-
         if let Some(scope) = self.scopes.get_mut(scope_index) {
             scope.insert(name.to_string(), value);
-            println!("After update, scopes: {:?}", self.scopes);
             Ok(())
         } else {
             Err(format!("Scope {} not found", scope_index))
@@ -105,4 +107,14 @@ impl Environment {
         }
         None
     }
+
+    /// Generates a unique temporary reference name.
+    pub fn generate_temp_reference_name(&mut self) -> String {
+        let name = format!("__ref_{}", self.next_ref_id);
+        self.next_ref_id += 1;
+        name
+    }
+
+    /// Returns the current scope (e.g., the index of the current scope).
+    pub fn get_current_scope(&self) -> usize { self.scopes.len() - 1 }
 }

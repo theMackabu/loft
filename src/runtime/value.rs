@@ -25,8 +25,18 @@ pub enum Value {
     Tuple(Vec<Value>),
     Return(Box<Value>),
 
-    Enum { enum_type: String, variant: String, data: Option<Box<Value>> },
-    Reference { source_name: String, source_scope: usize, mutable: bool },
+    Enum {
+        enum_type: String,
+        variant: String,
+        data: Option<Box<Value>>,
+    },
+
+    Reference {
+        mutable: bool,
+        source_name: Option<String>,
+        source_scope: Option<usize>,
+        data: Option<Box<Value>>,
+    },
 
     Unit,
 }
@@ -78,7 +88,7 @@ impl fmt::Display for Value {
             }
 
             // update to show real value
-            Value::Reference { source_name, .. } => write!(f, "ref({source_name})"),
+            Value::Reference { source_name, .. } => write!(f, "ref({})", source_name.clone().expect("HANDLE THIS")),
             Value::Return(v) => write!(f, "{}", v),
             Value::Unit => write!(f, "()"),
         }

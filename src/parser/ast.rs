@@ -176,7 +176,7 @@ pub enum Expr {
     },
 
     Assignment {
-        target: String,
+        target: Box<Expr>,
         value: Box<Expr>,
     },
 

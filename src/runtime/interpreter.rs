@@ -251,14 +251,10 @@ impl Interpreter {
 
             Expr::String(value) => Ok(Value::Str(Box::leak(value.to_owned().into_boxed_str()))),
 
-            Expr::Identifier(name) => {
-                println!("Looking up identifier: {}", name);
-                println!("{:?}", self.env.scopes);
-                match self.env.get_variable(name) {
-                    Some(value) => Ok(value.clone()),
-                    None => Err(format!("Undefined variable: {}", name)),
-                }
-            }
+            Expr::Identifier(name) => match self.env.get_variable(name) {
+                Some(value) => Ok(value.clone()),
+                None => Err(format!("Undefined variable: {}", name)),
+            },
 
             Expr::Tuple(expressions) => {
                 let mut values = Vec::new();
@@ -287,34 +283,104 @@ impl Interpreter {
 
             Expr::Dereference { operand } => match &**operand {
                 Expr::Assignment { target, value } => {
+                    let identifier = if let Expr::Identifier(ref name) = target.as_ref() {
+                        name.clone()
+                    } else {
+                        return Err("Invalid assignment target".to_string());
+                    };
+
                     let new_value = self.evaluate_expression(value)?;
 
-                    // First get reference info with immutable borrow
-                    let (source_name, source_scope, _) = if let Some(Value::Reference { source_name, source_scope, mutable }) = self.env.get_variable_ref(target) {
+                    let (source_name, source_scope, _) = if let Some(Value::Reference {
+                        source_name, source_scope, mutable, ..
+                    }) = self.env.get_variable_ref(&identifier)
+                    {
                         if !mutable {
-                            return Err(format!("Cannot assign through immutable reference '{}'", target));
+                            return Err(format!("Cannot assign through immutable reference '{}'", identifier));
                         }
                         (source_name.clone(), *source_scope, mutable)
                     } else {
-                        return Err(format!("Variable '{}' is not a reference", target));
+                        return Err(format!("Variable '{}' is not a reference", identifier));
                     };
 
-                    // Then do the mutable operation
-                    self.env.update_scoped_variable(&source_name, new_value, source_scope)?;
+                    self.env.update_scoped_variable(&source_name.expect("HANDLE THIS"), new_value, source_scope.expect("HANDLE THIS"))?;
                     Ok(Value::Unit)
                 }
+
+                Expr::CompoundAssignment { target, operator, value } => {
+                    let identifier = if let Expr::Identifier(ref name) = target.as_ref() {
+                        name.clone()
+                    } else {
+                        return Err("Invalid assignment target".to_string());
+                    };
+
+                    let right_val = self.evaluate_expression(value)?;
+
+                    let ref_info = if let Some(symbol_info) = self.env.scope_resolver.resolve(&identifier) {
+                        if let Some((scope_index, current_value)) = self.env.find_variable(&identifier) {
+                            match current_value {
+                                Value::Reference {
+                                    mutable, source_name, source_scope, ..
+                                } => {
+                                    if !mutable {
+                                        return Err(format!("Cannot assign to immutable reference '{}'", identifier));
+                                    }
+                                    if let Some(scope) = self.env.scopes.get(source_scope.expect("HANDLE THIS")) {
+                                        if let Some(inner_value) = scope.get(&source_name.clone().expect("HANDLE THIS")) {
+                                            Some(Either::Left((source_name.clone(), source_scope, inner_value.clone())))
+                                        } else {
+                                            return Err(format!("Reference source '{}' not found", source_name.clone().expect("HANDLE THIS")));
+                                        }
+                                    } else {
+                                        return Err(format!("Reference scope {} not found", source_scope.expect("HANDLE THIS")));
+                                    }
+                                }
+                                _ => {
+                                    if !symbol_info.mutable && !matches!(current_value, Value::Unit) {
+                                        return Err(format!("Cannot assign to immutable variable '{}'", identifier));
+                                    }
+                                    Some(Either::Right((scope_index, current_value.clone())))
+                                }
+                            }
+                        } else {
+                            return Err(format!("Variable '{}' not found", identifier));
+                        }
+                    } else {
+                        return Err(format!("Variable '{}' not found", identifier));
+                    };
+
+                    let result_value = match &ref_info {
+                        Some(Either::Left((_, _, left_val))) => self.evaluate_compound_assignment(left_val, operator, &right_val)?,
+                        Some(Either::Right((_, left_val))) => self.evaluate_compound_assignment(left_val, operator, &right_val)?,
+                        None => return Err("Invalid reference".to_string()),
+                    };
+
+                    match ref_info {
+                        Some(Either::Left((ref_source_name, ref_source_scope, _))) => {
+                            self.env
+                                .update_scoped_variable(&ref_source_name.expect("HANDLE THIS"), result_value, ref_source_scope.expect("HANDLE THIS"))?;
+                        }
+                        Some(Either::Right((scope_index, _))) => {
+                            self.env.update_scoped_variable(&identifier, result_value, scope_index)?;
+                        }
+                        None => return Err("Invalid reference".to_string()),
+                    }
+
+                    Ok(Value::Unit)
+                }
+
                 other => {
                     let value = self.evaluate_expression(other)?;
                     match value {
                         Value::Reference { source_name, source_scope, .. } => {
-                            if let Some(scope) = self.env.scopes.get(source_scope) {
-                                if let Some(source_value) = scope.get(&source_name) {
+                            if let Some(scope) = self.env.scopes.get(source_scope.expect("HANDLE THIS")) {
+                                if let Some(source_value) = scope.get(&source_name.clone().expect("HANDLE THIS")) {
                                     Ok(source_value.clone())
                                 } else {
-                                    Err(format!("Reference source '{}' not found", source_name))
+                                    Err(format!("Reference source '{}' not found", source_name.expect("HANDLE THIS")))
                                 }
                             } else {
-                                Err(format!("Reference scope {} not found", source_scope))
+                                Err(format!("Reference scope {} not found", source_scope.expect("HANDLE THIS")))
                             }
                         }
                         _ => Err("Cannot dereference a non-reference value".to_string()),
@@ -322,31 +388,18 @@ impl Interpreter {
                 }
             },
 
-            Expr::Reference { mutable, operand } => match &**operand {
-                Expr::Identifier(name) => {
-                    if let Some((scope_index, existing)) = self.env.find_variable(name) {
-                        match existing {
-                            Value::Reference { source_name, source_scope, .. } => Ok(Value::Reference {
-                                source_name: source_name.clone(),
-                                source_scope: *source_scope,
-                                mutable: *mutable,
-                            }),
-                            _ => {
-                                println!("Creating reference to: {:?}", existing);
-                                let reference = Value::Reference {
-                                    source_name: name.clone(),
-                                    source_scope: scope_index,
-                                    mutable: *mutable,
-                                };
-                                Ok(reference)
-                            }
-                        }
-                    } else {
-                        Err(format!("Variable '{}' not found", name))
-                    }
-                }
-                _ => Err("Can only take references to variables".to_string()),
-            },
+            Expr::Reference { mutable, operand } => {
+                let evaluated_value = self.evaluate_expression(&**operand)?;
+
+                let reference = Value::Reference {
+                    source_name: None,
+                    source_scope: None,
+                    mutable: *mutable,
+                    data: Some(Box::new(evaluated_value)),
+                };
+
+                Ok(reference)
+            }
 
             Expr::Binary { left, operator, right } => {
                 let left_val = self.evaluate_expression(left)?;
@@ -425,48 +478,22 @@ impl Interpreter {
                 Err("No matching pattern found".to_string())
             }
 
-            Expr::Assignment { target, value } => {
-                let value = self.evaluate_expression(value)?;
-
-                // First validate and extract reference info if needed
-                let ref_info = if let Some(symbol_info) = self.env.scope_resolver.resolve(target) {
-                    if let Some((scope_index, existing_value)) = self.env.find_variable(target) {
-                        match existing_value {
-                            Value::Reference { mutable, source_name, source_scope } => {
-                                if !mutable {
-                                    return Err(format!("Cannot assign to immutable reference '{}'", target));
-                                }
-                                Some(Either::Left((source_name.clone(), source_scope)))
-                            }
-                            _ => {
-                                if !symbol_info.mutable && !matches!(existing_value, Value::Unit) {
-                                    return Err(format!("Cannot assign to immutable variable '{}'", target));
-                                }
-                                Some(Either::Right(scope_index))
-                            }
+            Expr::Assignment { target, value } => match target.as_ref() {
+                Expr::Identifier(name) => {
+                    if let Some(symbol_info) = self.env.scope_resolver.resolve(name) {
+                        if !symbol_info.mutable {
+                            return Err(format!("Cannot assign to immutable variable '{}'", name));
                         }
+
+                        let right_val = self.evaluate_expression(value)?;
+                        self.env.set_variable(name, right_val)?;
+                        Ok(Value::Unit)
                     } else {
-                        return Err(format!("Variable '{}' not found", target));
+                        Err(format!("Variable '{}' not found", name))
                     }
-                } else {
-                    return Err(format!("Variable '{}' not found", target));
-                };
-
-                // Handle the assignment based on whether it's a reference or direct assignment
-                match ref_info {
-                    Some(Either::Left((source_name, source_scope))) => {
-                        // Reference assignment - update the source directly
-                        self.env.update_scoped_variable(&source_name, value, *source_scope)?;
-                    }
-                    Some(Either::Right(scope_idx)) => {
-                        // Direct variable update
-                        self.env.update_scoped_variable(target, value, scope_idx)?;
-                    }
-                    None => return Err("Invalid reference".to_string()),
                 }
-
-                Ok(Value::Unit)
-            }
+                _ => Err("Invalid assignment target".to_string()),
+            },
 
             Expr::CompoundAssignment { target, operator, value } => match target.as_ref() {
                 Expr::Identifier(name) => {
@@ -544,21 +571,19 @@ impl Interpreter {
 
                         for ((param, param_type), value) in params.iter().zip(arg_values) {
                             if let Pattern::Identifier { name, mutable } = param {
-                                println!("Setting parameter '{}' with value: {:?}", name, value);
                                 match param_type {
                                     Type::Reference { mutable: ref_mutable, .. } => {
-                                        println!("Parameter is reference type, mutable: {}", ref_mutable);
                                         self.env.scope_resolver.declare_reference(name, *ref_mutable);
                                         match &value {
-                                            Value::Reference { source_name, source_scope, .. } => {
+                                            Value::Reference { source_name, source_scope, data, .. } => {
                                                 let ref_value = Value::Reference {
+                                                    data: data.clone(),
                                                     source_name: source_name.clone(),
                                                     source_scope: *source_scope,
                                                     mutable: *ref_mutable,
                                                 };
                                                 if let Some(scope) = self.env.scopes.last_mut() {
                                                     scope.insert(name.to_string(), ref_value);
-                                                    println!("Stored parameter '{}' pointing to source '{}'", name, source_name);
                                                 }
                                             }
                                             _ => return Err("Expected a reference value".to_string()),

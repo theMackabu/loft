@@ -6,12 +6,12 @@ macro_rules! impl_compound_assignment {
         match ($left, $right) {
             $((Value::$type(l), Value::$type(r)) => Ok(Value::$type(l.$method(*r))),)*
 
-            $((Value::Reference { source_name, source_scope, mutable }, Value::$type(r)) => {
+            $((Value::Reference { source_name, source_scope, mutable, .. }, Value::$type(r)) => {
                 if !mutable {
                     return Err(format!("Cannot modify immutable reference"));
                 }
-                if let Some(scope) = $env.scopes.get(*source_scope) {
-                    if let Some(Value::$type(l)) = scope.get(source_name) {
+                if let Some(scope) = $env.scopes.get(source_scope.expect("HANDLE THIS")) {
+                    if let Some(Value::$type(l)) = scope.get(&source_name.clone().expect("HANDLE THIS")) {
                         Ok(Value::$type(l.$method(*r)))
                     } else {
                         Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
@@ -22,8 +22,8 @@ macro_rules! impl_compound_assignment {
             },)*
 
             $((Value::$type(l), Value::Reference { source_name, source_scope, .. }) => {
-                if let Some(scope) = $env.scopes.get(*source_scope) {
-                    if let Some(Value::$type(r)) = scope.get(source_name) {
+                if let Some(scope) = $env.scopes.get(source_scope.expect("HANDLE THIS")) {
+                    if let Some(Value::$type(r)) = scope.get(&source_name.clone().expect("HANDLE THIS")) {
                         Ok(Value::$type(l.$method(*r)))
                     } else {
                         Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
@@ -33,16 +33,16 @@ macro_rules! impl_compound_assignment {
                 }
             },)*
 
-            (Value::Reference { source_name: left_name, source_scope: left_scope, mutable: left_mutable },
+            (Value::Reference { source_name: left_name, source_scope: left_scope, mutable: left_mutable, .. },
              Value::Reference { source_name: right_name, source_scope: right_scope, .. }) => {
                 if !left_mutable {
                     return Err(format!("Cannot modify immutable reference"));
                 }
                 if let (Some(left_scope), Some(right_scope)) = (
-                    $env.scopes.get(*left_scope),
-                    $env.scopes.get(*right_scope)
+                    $env.scopes.get(left_scope.expect("HANDLE THIS")),
+                    $env.scopes.get(right_scope.expect("HANDLE THIS"))
                 ) {
-                    match (left_scope.get(left_name), right_scope.get(right_name)) {
+                    match (left_scope.get(&left_name.clone().expect("HANDLE THIS")), right_scope.get(&right_name.clone().expect("HANDLE THIS"))) {
                         $((Some(Value::$type(l)), Some(Value::$type(r))) => {
                             Ok(Value::$type(l.$method(*r)))
                         },)*
