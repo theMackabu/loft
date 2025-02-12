@@ -126,6 +126,12 @@ pub enum Expr {
     Unit,
     None,
 
+    CompoundAssignment {
+        target: Box<Expr>,
+        operator: Token,
+        value: Box<Expr>,
+    },
+
     Index {
         array: Box<Expr>,
         index: Box<Expr>,

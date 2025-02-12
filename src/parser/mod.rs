@@ -14,6 +14,7 @@ enum DeclarationKind {
 
 const MAX_RECURSION_DEPTH: i32 = 500;
 const PRECEDENCE_LOWEST: i32 = 0;
+const PRECEDENCE_ASSIGN: i32 = 1;
 const PRECEDENCE_RANGE: i32 = 1;
 const PRECEDENCE_EQUALS: i32 = 1;
 const PRECEDENCE_COMPARE: i32 = 2;
@@ -1462,6 +1463,26 @@ impl Parser {
                 Ok(Expr::Assignment { target: name, value })
             }
 
+            Token::RemAssign
+            | Token::BitAndAssign
+            | Token::StarEquals
+            | Token::PlusEquals
+            | Token::MinusEquals
+            | Token::SlashEquals
+            | Token::ShlAssign
+            | Token::ShrAssign
+            | Token::BitXorAssign
+            | Token::BitOrAssign => {
+                let operator = self.current.token.clone();
+                self.advance();
+                let value = Box::new(self.parse_expression(0)?);
+                Ok(Expr::CompoundAssignment {
+                    target: Box::new(Expr::Identifier(name)),
+                    operator,
+                    value,
+                })
+            }
+
             Token::LeftParen => {
                 self.advance();
                 let mut arguments = Vec::new();
@@ -1601,6 +1622,26 @@ impl Parser {
                     left: Box::new(left),
                     operator,
                     right: Box::new(right),
+                })
+            }
+
+            Token::RemAssign
+            | Token::BitAndAssign
+            | Token::StarEquals
+            | Token::PlusEquals
+            | Token::MinusEquals
+            | Token::SlashEquals
+            | Token::ShlAssign
+            | Token::ShrAssign
+            | Token::BitXorAssign
+            | Token::BitOrAssign => {
+                let operator = self.current.token.clone();
+                self.advance();
+                let value = self.parse_expression(PRECEDENCE_ASSIGN - 1)?;
+                Ok(Expr::CompoundAssignment {
+                    target: Box::new(left),
+                    operator,
+                    value: Box::new(value),
                 })
             }
 
@@ -1832,6 +1873,26 @@ impl Parser {
                 Ok(Expr::MemberAssignment {
                     object: Box::new(object),
                     member,
+                    value,
+                })
+            }
+
+            Token::RemAssign
+            | Token::BitAndAssign
+            | Token::StarEquals
+            | Token::PlusEquals
+            | Token::MinusEquals
+            | Token::SlashEquals
+            | Token::ShlAssign
+            | Token::ShrAssign
+            | Token::BitXorAssign
+            | Token::BitOrAssign => {
+                let operator = self.current.token.clone();
+                self.advance();
+                let value = Box::new(self.parse_expression(0)?);
+                Ok(Expr::CompoundAssignment {
+                    target: Box::new(Expr::MemberAccess { object: Box::new(object), member }),
+                    operator,
                     value,
                 })
             }
@@ -2151,6 +2212,16 @@ impl Parser {
             Token::Not => PRECEDENCE_PREFIX,
             Token::LeftBracket => PRECEDENCE_INDEX,
             Token::As => PRECEDENCE_CALL,
+            Token::RemAssign
+            | Token::BitAndAssign
+            | Token::StarEquals
+            | Token::PlusEquals
+            | Token::MinusEquals
+            | Token::SlashEquals
+            | Token::ShlAssign
+            | Token::ShrAssign
+            | Token::BitXorAssign
+            | Token::BitOrAssign => PRECEDENCE_ASSIGN,
             _ => PRECEDENCE_LOWEST,
         }
     }

@@ -95,12 +95,12 @@ fn test_enums() {
 }
 
 // allow async fn main -> Result
-fn main() -> Result<i32, ()> {
+fn main() -> Result<(), ()> {
    test_enums();
    test_patterns();
    
    let big_num: &i64 = 50;
-   let mut a_value = 0;
+   let mut a_value = 5;
    
    if *big_num < MAX_VALUE {
       io::println(big_num);
@@ -112,14 +112,14 @@ fn main() -> Result<i32, ()> {
    // Ok(get_message("testing!"))
    
    // allow this syntax wise
-   // a += 10;
+   a_value += 10;
    
    io::println(a_value);
    
    io::println(tester());
    get_message("testing!");
       
-   Result::Ok(a_value)
+   Result::Ok(())
 }
 
 // only checks type if not implicit return

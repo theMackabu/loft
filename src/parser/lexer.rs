@@ -471,7 +471,7 @@ impl Lexer {
 
                 '+' => {
                     self.advance();
-                    if self.peek() == Some('=') {
+                    if self.current_char == Some('=') {
                         self.advance();
                         Token::PlusEquals
                     } else {
@@ -480,18 +480,15 @@ impl Lexer {
                 }
 
                 '-' => {
-                    let next = self.peek();
                     self.advance();
-                    match next {
-                        Some('=') => {
-                            self.advance();
-                            Token::MinusEquals
-                        }
-                        Some('>') => {
-                            self.advance();
-                            Token::Arrow
-                        }
-                        _ => Token::Minus,
+                    if self.current_char == Some('=') {
+                        self.advance();
+                        Token::MinusEquals
+                    } else if self.current_char == Some('>') {
+                        self.advance();
+                        Token::Arrow
+                    } else {
+                        Token::Minus
                     }
                 }
 
@@ -508,7 +505,7 @@ impl Lexer {
 
                 '*' => {
                     self.advance();
-                    if self.peek() == Some('=') {
+                    if self.current_char == Some('=') {
                         self.advance();
                         Token::StarEquals
                     } else {
@@ -518,7 +515,7 @@ impl Lexer {
 
                 '/' => {
                     self.advance();
-                    if self.peek() == Some('=') {
+                    if self.current_char == Some('=') {
                         self.advance();
                         Token::SlashEquals
                     } else {
@@ -581,22 +578,23 @@ impl Lexer {
 
                 '&' => {
                     self.advance();
-                    match self.current_char {
-                        Some('&') => {
-                            self.advance();
-                            Token::And
-                        }
-                        Some('=') => {
-                            self.advance();
-                            Token::BitAndAssign
-                        }
-                        _ => Token::BitAnd,
+                    if self.current_char == Some('&') {
+                        self.advance();
+                        Token::And
+                    } else if self.current_char == Some('=') {
+                        self.advance();
+                        Token::BitAndAssign
+                    } else {
+                        Token::BitAnd
                     }
                 }
 
                 '|' => {
                     self.advance();
-                    if let Some('=') = self.current_char {
+                    if self.current_char == Some('|') {
+                        self.advance();
+                        Token::Or
+                    } else if self.current_char == Some('=') {
                         self.advance();
                         Token::BitOrAssign
                     } else {
@@ -606,7 +604,7 @@ impl Lexer {
 
                 '%' => {
                     self.advance();
-                    if self.peek() == Some('=') {
+                    if self.current_char == Some('=') {
                         self.advance();
                         Token::RemAssign
                     } else {
@@ -616,7 +614,7 @@ impl Lexer {
 
                 '^' => {
                     self.advance();
-                    if self.peek() == Some('=') {
+                    if self.current_char == Some('=') {
                         self.advance();
                         Token::BitXorAssign
                     } else {
@@ -626,10 +624,10 @@ impl Lexer {
 
                 '<' => {
                     self.advance();
-                    match self.peek() {
+                    match self.current_char {
                         Some('<') => {
                             self.advance();
-                            if self.peek() == Some('=') {
+                            if self.current_char == Some('=') {
                                 self.advance();
                                 Token::ShlAssign
                             } else {
@@ -647,10 +645,6 @@ impl Lexer {
                 '>' => {
                     self.advance();
                     match self.current_char {
-                        Some('=') => {
-                            self.advance();
-                            Token::GreaterEquals
-                        }
                         Some('>') => {
                             self.advance();
                             if self.current_char == Some('=') {
@@ -659,6 +653,10 @@ impl Lexer {
                             } else {
                                 Token::Shr
                             }
+                        }
+                        Some('=') => {
+                            self.advance();
+                            Token::GreaterEquals
                         }
                         _ => Token::RightAngle,
                     }
