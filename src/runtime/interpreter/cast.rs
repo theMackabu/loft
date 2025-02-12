@@ -1,33 +1,54 @@
 use super::*;
 
 impl Interpreter {
-    pub fn perform_cast(&self, value: Value, target_type: &Type) -> Result<Value, String> {
+    pub fn perform_cast(&mut self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {
             Type::Reference { mutable, inner } => match value {
-                Value::Reference { data, source_name, .. } => {
-                    let inner_value = *data.clone();
-                    let casted_inner = self.perform_cast(inner_value, inner)?;
+                Value::Reference { source_name, source_scope, .. } => {
+                    if let Some(scope) = self.env.scopes.get(source_scope) {
+                        if let Some(inner_value) = scope.get(&source_name) {
+                            let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
+                            self.env.update_scoped_variable(&source_name, casted_inner, source_scope)?;
 
-                    Ok(Value::Reference {
-                        source_name,
-                        mutable: *mutable,
-                        data: Box::new(casted_inner),
-                    })
+                            Ok(Value::Reference {
+                                source_name,
+                                source_scope,
+                                mutable: *mutable,
+                            })
+                        } else {
+                            Err(format!("Reference source '{}' not found", source_name))
+                        }
+                    } else {
+                        Err(format!("Reference scope {} not found", source_scope))
+                    }
                 }
-
                 other => {
                     let casted = self.perform_cast(other, inner)?;
+                    let temp_name = format!("__ref_{}", self.env.scopes.len());
+                    let current_scope = self.env.scopes.len() - 1;
+                    self.env.update_scoped_variable(&temp_name, casted, current_scope)?;
+
                     Ok(Value::Reference {
-                        source_name: None,
+                        source_name: temp_name,
+                        source_scope: current_scope,
                         mutable: *mutable,
-                        data: Box::new(casted),
                     })
                 }
             },
 
             Type::Path(path) if path.segments.len() == 1 => {
                 let value = match value {
-                    Value::Reference { data, .. } => *data.clone(),
+                    Value::Reference { source_name, source_scope, .. } => {
+                        if let Some(scope) = self.env.scopes.get(source_scope) {
+                            if let Some(val) = scope.get(&source_name) {
+                                val.clone()
+                            } else {
+                                return Err(format!("Reference source '{}' not found", source_name));
+                            }
+                        } else {
+                            return Err(format!("Reference scope {} not found", source_scope));
+                        }
+                    }
                     other => other,
                 };
 

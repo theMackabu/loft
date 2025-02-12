@@ -36,16 +36,29 @@ impl Environment {
         self.scope_resolver.exit_scope();
     }
 
+    pub fn get_variable_ref(&self, name: &str) -> Option<&Value> {
+        if self.scope_resolver.resolve(name).is_none() {
+            return None;
+        }
+        self.scopes.iter().rev().find_map(|scope| scope.get(name))
+    }
+
     /// Retrieves the value of a variable from the environment.
     ///
     /// Searches all active scopes for the variable. Returns `None` if the variable
     /// is not found or not declared.
     pub fn get_variable(&self, name: &str) -> Option<&Value> {
-        if self.scope_resolver.resolve(name).is_none() {
-            return None;
-        }
-
-        self.scopes.iter().rev().find_map(|scope| scope.get(name))
+        self.get_variable_ref(name).map(|value| {
+            if let Value::Reference { source_name, source_scope, .. } = value {
+                if let Some(scope) = self.scopes.get(*source_scope) {
+                    scope.get(source_name).unwrap_or(value)
+                } else {
+                    value
+                }
+            } else {
+                value
+            }
+        })
     }
 
     /// Sets the value of a declared variable in the current scope.
@@ -68,14 +81,28 @@ impl Environment {
 
     /// Updates the value of an existing variable.
     ///
-    /// Searches for the variable in all active scopes and updates its value if
+    /// Searches for the variable in indexed scopes and updates its value if
     /// found. Returns an error if the variable does not exist.
-    pub fn update_variable(&mut self, name: &str, value: Value) -> Result<(), String> {
-        if let Some(scope) = self.scopes.iter_mut().rev().find(|scope| scope.contains_key(name)) {
+    pub fn update_scoped_variable(&mut self, name: &str, value: Value, scope_index: usize) -> Result<(), String> {
+        println!("Updating variable '{}' in scope {} with value {:?}", name, scope_index, value);
+        println!("Current scopes: {:?}", self.scopes);
+
+        if let Some(scope) = self.scopes.get_mut(scope_index) {
             scope.insert(name.to_string(), value);
+            println!("After update, scopes: {:?}", self.scopes);
             Ok(())
         } else {
-            Err(format!("Variable '{}' not found in any scope", name))
+            Err(format!("Scope {} not found", scope_index))
         }
+    }
+
+    /// update.
+    pub fn find_variable(&self, name: &str) -> Option<(usize, &Value)> {
+        for (index, scope) in self.scopes.iter().enumerate().rev() {
+            if let Some(value) = scope.get(name) {
+                return Some((index, value));
+            }
+        }
+        None
     }
 }

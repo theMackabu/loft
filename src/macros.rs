@@ -1,40 +1,55 @@
 #[macro_export]
 macro_rules! impl_compound_assignment {
-    ($left:expr, $right:expr, $op:expr, {
+    ($env:expr, $left:expr, $right:expr, $op:expr, {
         $(($type:ident, $rust_type:ty, $method:ident)),* $(,)?
     }) => {
         match ($left, $right) {
             $((Value::$type(l), Value::$type(r)) => Ok(Value::$type(l.$method(*r))),)*
 
-            $((Value::Reference { data, mutable, .. }, Value::$type(r)) => {
+            $((Value::Reference { source_name, source_scope, mutable }, Value::$type(r)) => {
                 if !mutable {
                     return Err(format!("Cannot modify immutable reference"));
                 }
-                if let Value::$type(l) = &**data {
-                    Ok(Value::$type(l.$method(*r)))
+                if let Some(scope) = $env.scopes.get(*source_scope) {
+                    if let Some(Value::$type(l)) = scope.get(source_name) {
+                        Ok(Value::$type(l.$method(*r)))
+                    } else {
+                        Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+                    }
                 } else {
-                    Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+                    Err(format!("Reference scope not found"))
                 }
             },)*
 
-            $((Value::$type(l), Value::Reference { data, .. }) => {
-                if let Value::$type(r) = &**data {
-                    Ok(Value::$type(l.$method(*r)))
+            $((Value::$type(l), Value::Reference { source_name, source_scope, .. }) => {
+                if let Some(scope) = $env.scopes.get(*source_scope) {
+                    if let Some(Value::$type(r)) = scope.get(source_name) {
+                        Ok(Value::$type(l.$method(*r)))
+                    } else {
+                        Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+                    }
                 } else {
-                    Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+                    Err(format!("Reference scope not found"))
                 }
             },)*
 
-            (Value::Reference { data: left_data, mutable: left_mutable, .. },
-             Value::Reference { data: right_data, .. }) => {
+            (Value::Reference { source_name: left_name, source_scope: left_scope, mutable: left_mutable },
+             Value::Reference { source_name: right_name, source_scope: right_scope, .. }) => {
                 if !left_mutable {
                     return Err(format!("Cannot modify immutable reference"));
                 }
-                match (&**left_data, &**right_data) {
-                    $((Value::$type(l), Value::$type(r)) => {
-                        Ok(Value::$type(l.$method(*r)))
-                    },)*
-                    _ => Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+                if let (Some(left_scope), Some(right_scope)) = (
+                    $env.scopes.get(*left_scope),
+                    $env.scopes.get(*right_scope)
+                ) {
+                    match (left_scope.get(left_name), right_scope.get(right_name)) {
+                        $((Some(Value::$type(l)), Some(Value::$type(r))) => {
+                            Ok(Value::$type(l.$method(*r)))
+                        },)*
+                        _ => Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+                    }
+                } else {
+                    Err(format!("Reference scope not found"))
                 }
             },
 

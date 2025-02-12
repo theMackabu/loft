@@ -5,7 +5,7 @@ use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub};
 impl Interpreter {
     pub fn evaluate_compound_assignment(&self, left: &Value, operator: &Token, right: &Value) -> Result<Value, String> {
         match operator {
-            Token::PlusEquals => impl_compound_assignment!(left, right, operator, {
+            Token::PlusEquals => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, wrapping_add),
                 (I16, i16, wrapping_add),
                 (I32, i32, wrapping_add),
@@ -22,7 +22,7 @@ impl Interpreter {
                 (F64, f64, add),
             }),
 
-            Token::MinusEquals => impl_compound_assignment!(left, right, operator, {
+            Token::MinusEquals => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, wrapping_sub),
                 (I16, i16, wrapping_sub),
                 (I32, i32, wrapping_sub),
@@ -39,7 +39,7 @@ impl Interpreter {
                 (F64, f64, sub),
             }),
 
-            Token::StarEquals => impl_compound_assignment!(left, right, operator, {
+            Token::StarEquals => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, wrapping_mul),
                 (I16, i16, wrapping_mul),
                 (I32, i32, wrapping_mul),
@@ -56,7 +56,7 @@ impl Interpreter {
                 (F64, f64, mul),
             }),
 
-            Token::SlashEquals => impl_compound_assignment!(left, right, operator, {
+            Token::SlashEquals => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, wrapping_div),
                 (I16, i16, wrapping_div),
                 (I32, i32, wrapping_div),
@@ -73,7 +73,7 @@ impl Interpreter {
                 (F64, f64, div),
             }),
 
-            Token::RemAssign => impl_compound_assignment!(left, right, operator, {
+            Token::RemAssign => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, wrapping_rem),
                 (I16, i16, wrapping_rem),
                 (I32, i32, wrapping_rem),
@@ -90,7 +90,7 @@ impl Interpreter {
                 (F64, f64, rem),
             }),
 
-            Token::BitAndAssign => impl_compound_assignment!(left, right, operator, {
+            Token::BitAndAssign => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, bitand),
                 (I16, i16, bitand),
                 (I32, i32, bitand),
@@ -105,7 +105,7 @@ impl Interpreter {
                 (USize, usize, bitand),
             }),
 
-            Token::BitOrAssign => impl_compound_assignment!(left, right, operator, {
+            Token::BitOrAssign => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, bitor),
                 (I16, i16, bitor),
                 (I32, i32, bitor),
@@ -120,7 +120,7 @@ impl Interpreter {
                 (USize, usize, bitor),
             }),
 
-            Token::BitXorAssign => impl_compound_assignment!(left, right, operator, {
+            Token::BitXorAssign => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, bitxor),
                 (I16, i16, bitxor),
                 (I32, i32, bitxor),
@@ -135,7 +135,7 @@ impl Interpreter {
                 (USize, usize, bitxor),
             }),
 
-            Token::ShlAssign => impl_compound_assignment!(left, right, operator, {
+            Token::ShlAssign => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, shl),
                 (I16, i16, shl),
                 (I32, i32, shl),
@@ -150,7 +150,7 @@ impl Interpreter {
                 (USize, usize, shl),
             }),
 
-            Token::ShrAssign => impl_compound_assignment!(left, right, operator, {
+            Token::ShrAssign => impl_compound_assignment!(self.env, left, right, operator, {
                 (I8, i8, shr),
                 (I16, i16, shr),
                 (I32, i32, shr),

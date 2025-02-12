@@ -26,7 +26,7 @@ pub enum Value {
     Return(Box<Value>),
 
     Enum { enum_type: String, variant: String, data: Option<Box<Value>> },
-    Reference { data: Box<Value>, source_name: Option<String>, mutable: bool },
+    Reference { source_name: String, source_scope: usize, mutable: bool },
 
     Unit,
 }
@@ -77,7 +77,8 @@ impl fmt::Display for Value {
                 }
             }
 
-            Value::Reference { data, .. } => write!(f, "{data}"),
+            // update to show real value
+            Value::Reference { source_name, .. } => write!(f, "ref({source_name})"),
             Value::Return(v) => write!(f, "{}", v),
             Value::Unit => write!(f, "()"),
         }
