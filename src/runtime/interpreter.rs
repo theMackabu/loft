@@ -1,72 +1,27 @@
 mod assign;
 mod cast;
+mod environment;
 
-use super::{scope::Environment as ScopeEnv, value::Value};
+use super::value::Value;
 use crate::parser::{ast::*, lexer::*};
 use crate::{impl_binary_ops, impl_promote_to_type};
+
+use environment::Environment;
 use std::{cell::RefCell, collections::HashMap};
-
-struct Environment {
-    scopes: Vec<HashMap<String, Value>>,
-    scope_resolver: ScopeEnv,
-}
-
-impl Environment {
-    fn new() -> Self {
-        Self {
-            scopes: vec![HashMap::new()],
-            scope_resolver: ScopeEnv::new(),
-        }
-    }
-
-    fn enter_scope(&mut self) {
-        self.scopes.push(HashMap::new());
-        self.scope_resolver.enter_scope();
-    }
-
-    fn exit_scope(&mut self) {
-        self.scopes.pop();
-        self.scope_resolver.exit_scope();
-    }
-
-    fn set_variable(&mut self, name: &str, value: Value) -> Result<(), String> {
-        // Check if variable is declared using scope resolver
-        if self.scope_resolver.resolve(name).is_some() {
-            if let Some(scope) = self.scopes.last_mut() {
-                scope.insert(name.to_string(), value);
-                Ok(())
-            } else {
-                Err("No active scope".to_string())
-            }
-        } else {
-            Err(format!("Variable '{}' not declared", name))
-        }
-    }
-
-    fn get_variable(&self, name: &str) -> Option<&Value> {
-        // First check if variable exists in scope
-        if self.scope_resolver.resolve(name).is_some() {
-            for scope in self.scopes.iter().rev() {
-                if let Some(value) = scope.get(name) {
-                    return Some(value);
-                }
-            }
-        }
-        None
-    }
-}
 
 pub struct Interpreter {
     env: Environment,
-    ast: Vec<Stmt>,
+    fnc: HashMap<String, Stmt>,
 }
 
 impl Interpreter {
     pub fn new(ast: &Vec<Stmt>) -> Result<Self, String> {
-        let mut interpreter = Self {
-            env: Environment::new(),
-            ast: ast.clone(),
-        };
+        let fnc = ast
+            .iter()
+            .filter_map(|stmt| if let Stmt::Function { name, .. } = stmt { Some((name.clone(), stmt.clone())) } else { None })
+            .collect();
+
+        let mut interpreter = Self { env: Environment::new(), fnc };
 
         interpreter.env.scope_resolver.resolve_program(ast)?;
         interpreter.declare_globals(ast)?;
@@ -103,16 +58,7 @@ impl Interpreter {
         Ok(last_value)
     }
 
-    fn find_function(&self, name: &str) -> Option<&Stmt> {
-        for stmt in &self.ast {
-            if let Stmt::Function { name: func_name, .. } = stmt {
-                if func_name == name {
-                    return Some(stmt);
-                }
-            }
-        }
-        None
-    }
+    fn find_function(&self, name: &str) -> Option<&Stmt> { self.fnc.get(name) }
 
     fn declare_globals(&mut self, statements: &[Stmt]) -> Result<(), String> {
         for stmt in statements {
@@ -222,9 +168,16 @@ impl Interpreter {
                 self.env.scope_resolver.declare_function(name)?;
                 self.env.enter_scope();
 
-                for (pat, _) in params {
+                for (pat, ty) in params {
                     if let Pattern::Identifier { name, mutable } = pat {
-                        self.env.scope_resolver.declare_variable(name, *mutable);
+                        match &ty {
+                            Type::Reference { mutable: ref_mutable, .. } => {
+                                self.env.scope_resolver.declare_reference(name, *ref_mutable);
+                            }
+                            _ => {
+                                self.env.scope_resolver.declare_variable(name, *mutable);
+                            }
+                        }
                     }
                 }
 
@@ -293,7 +246,13 @@ impl Interpreter {
 
             Expr::String(value) => Ok(Value::Str(Box::leak(value.to_owned().into_boxed_str()))),
 
-            Expr::Identifier(name) => self.env.get_variable(name).cloned().ok_or_else(|| format!("Undefined variable: {}", name)),
+            Expr::Identifier(name) => {
+                println!("Looking up identifier: {}", name);
+                match self.env.get_variable(name) {
+                    Some(value) => Ok(value.clone()),
+                    None => Err(format!("Undefined variable: {}", name)),
+                }
+            }
 
             Expr::Tuple(expressions) => {
                 let mut values = Vec::new();
@@ -320,29 +279,60 @@ impl Interpreter {
                 Ok(result)
             }
 
-            Expr::Dereference { operand } => {
-                let value = self.evaluate_expression(operand)?;
-
-                if value.is_ref_mut() {
-                    match value.ref_mut_val() {
-                        Ok(inner_value) => Ok(inner_value.clone()),
-                        Err(err) => return Err(format!("Dereference error: {}", err)),
-                    }
-                } else {
-                    match value.ref_val() {
-                        Ok(inner_value) => Ok(inner_value.clone()),
-                        Err(err) => return Err(format!("Dereference error: {}", err)),
+            Expr::Dereference { operand } => match &**operand {
+                Expr::Assignment { target, value } => {
+                    let new_value = self.evaluate_expression(value)?;
+                    match self.env.get_variable(target) {
+                        Some(Value::Reference { data, mutable }) => {
+                            if *mutable {
+                                *data.borrow_mut() = new_value;
+                                println!("After assignment, reference contains: {:?}", data.borrow());
+                                Ok(Value::Unit)
+                            } else {
+                                Err(format!("Cannot assign through immutable reference '{}'", target))
+                            }
+                        }
+                        _ => Err(format!("Variable '{}' is not a reference", target)),
                     }
                 }
-            }
+                other => {
+                    let value = self.evaluate_expression(other)?;
+                    match value {
+                        Value::Reference { data, .. } => Ok(data.borrow().clone()),
+                        _ => Err("Cannot dereference a non-reference value".to_string()),
+                    }
+                }
+            },
 
-            Expr::Reference { mutable, operand } => {
-                let value = self.evaluate_expression(operand.as_ref())?;
-                Ok(Value::Reference {
-                    data: Box::new(RefCell::new(value)),
-                    mutable: *mutable,
-                })
-            }
+            Expr::Reference { mutable, operand } => match &**operand {
+                Expr::Identifier(name) => {
+                    if let Some(existing) = self.env.get_variable(name) {
+                        match existing {
+                            // If it's already a reference, reuse its storage
+                            Value::Reference { data, .. } => Ok(Value::Reference {
+                                data: data.clone(),
+                                mutable: *mutable,
+                            }),
+                            // Otherwise create new reference storage
+                            _ => {
+                                println!("Creating reference to: {:?}", existing);
+                                let data = Box::new(RefCell::new(existing.clone()));
+                                self.env.update_variable(
+                                    name,
+                                    Value::Reference {
+                                        data: data.clone(),
+                                        mutable: *mutable,
+                                    },
+                                )?;
+                                Ok(Value::Reference { data, mutable: *mutable })
+                            }
+                        }
+                    } else {
+                        Err(format!("Variable '{}' not found", name))
+                    }
+                }
+                _ => Err("Can only take references to variables".to_string()),
+            },
 
             Expr::Binary { left, operator, right } => {
                 let left_val = self.evaluate_expression(left)?;
@@ -424,8 +414,20 @@ impl Interpreter {
             Expr::Assignment { target, value } => {
                 let value = self.evaluate_expression(value)?;
 
+                // Resolve the target symbol
                 if let Some(symbol_info) = self.env.scope_resolver.resolve(target) {
-                    if let Some(current_value) = self.env.get_variable(target) {
+                    // Handle dereference assignment
+                    if let Some(Value::Reference { data, mutable }) = self.env.get_variable(target) {
+                        if *mutable {
+                            // Update the value inside the reference
+                            *data.borrow_mut() = value;
+                            Ok(Value::Unit)
+                        } else {
+                            Err(format!("Cannot assign to immutable reference '{}'", target))
+                        }
+                    }
+                    // Handle normal variable assignment
+                    else if let Some(current_value) = self.env.get_variable(target) {
                         if symbol_info.mutable || matches!(current_value, Value::Unit) {
                             self.env.set_variable(target, value)?;
                             Ok(Value::Unit)
@@ -514,10 +516,29 @@ impl Interpreter {
                         let outer_scope = self.env.scopes.clone();
                         self.env.enter_scope();
 
-                        for ((param, _type), value) in params.iter().zip(arg_values) {
+                        for ((param, param_type), value) in params.iter().zip(arg_values) {
                             if let Pattern::Identifier { name, mutable } = param {
-                                self.env.scope_resolver.declare_variable(name, *mutable);
-                                self.env.set_variable(name, value)?;
+                                println!("Setting parameter '{}' with value: {:?}", name, value);
+                                match param_type {
+                                    Type::Reference { mutable: ref_mutable, .. } => {
+                                        println!("Parameter is reference type, mutable: {}", ref_mutable);
+                                        self.env.scope_resolver.declare_reference(name, *ref_mutable);
+                                        match &value {
+                                            Value::Reference { data, .. } => {
+                                                // Store the whole Value::Reference, cloning the Box<RefCell>
+                                                if let Some(scope) = self.env.scopes.last_mut() {
+                                                    scope.insert(name.to_string(), value.clone());
+                                                    println!("Stored parameter '{}' with storage pointer: {:p}", name, data);
+                                                }
+                                            }
+                                            _ => return Err("Expected a reference value".to_string()),
+                                        }
+                                    }
+                                    _ => {
+                                        self.env.scope_resolver.declare_variable(name, *mutable);
+                                        self.env.set_variable(name, value)?;
+                                    }
+                                }
                             }
                         }
 

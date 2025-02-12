@@ -7,6 +7,7 @@ pub enum DeclKind {
     Variable,
     Function,
     Module,
+    Reference { mutable: bool },
 }
 
 #[derive(Debug, Clone)]
@@ -17,12 +18,12 @@ pub struct SymbolInfo {
 }
 
 #[derive(Debug)]
-pub struct Environment {
+pub struct Scope {
     scopes: Vec<HashMap<String, SymbolInfo>>,
 }
 
-impl Environment {
-    pub fn new() -> Self { Environment { scopes: vec![HashMap::new()] } }
+impl Scope {
+    pub fn new() -> Self { Scope { scopes: vec![HashMap::new()] } }
 
     pub fn enter_scope(&mut self) { self.scopes.push(HashMap::new()); }
 
@@ -45,6 +46,19 @@ impl Environment {
                 SymbolInfo {
                     name: name.to_owned(),
                     kind: DeclKind::Variable,
+                    mutable,
+                },
+            );
+        }
+    }
+
+    pub fn declare_reference(&mut self, name: &str, mutable: bool) {
+        if let Some(current) = self.scopes.last_mut() {
+            current.insert(
+                name.to_owned(),
+                SymbolInfo {
+                    name: name.to_owned(),
+                    kind: DeclKind::Reference { mutable },
                     mutable,
                 },
             );
@@ -101,7 +115,7 @@ impl Environment {
     }
 }
 
-fn resolve_stmt(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
+fn resolve_stmt(stmt: &Stmt, env: &mut Scope) -> Result<(), String> {
     use crate::parser::ast::Stmt::*;
 
     match stmt {
@@ -149,7 +163,7 @@ fn resolve_stmt(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
     }
 }
 
-fn resolve_expr(expr: &Expr, env: &mut Environment) -> Result<(), String> {
+fn resolve_expr(expr: &Expr, env: &mut Scope) -> Result<(), String> {
     use crate::parser::ast::Expr;
 
     match expr {
