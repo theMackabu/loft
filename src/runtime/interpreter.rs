@@ -1,3 +1,4 @@
+mod assign;
 mod cast;
 
 use super::{scope::Environment as ScopeEnv, value::Value};
@@ -408,6 +409,45 @@ impl Interpreter {
 
                 Err("No matching pattern found".to_string())
             }
+
+            Expr::Assignment { target, value } => {
+                let value = self.evaluate_expression(value)?;
+
+                if let Some(symbol_info) = self.env.scope_resolver.resolve(target) {
+                    if let Some(current_value) = self.env.get_variable(target) {
+                        if symbol_info.mutable || matches!(current_value, Value::Unit) {
+                            self.env.set_variable(target, value)?;
+                            Ok(Value::Unit)
+                        } else {
+                            Err(format!("Cannot assign to immutable variable '{}'", target))
+                        }
+                    } else {
+                        Err(format!("Variable '{}' not found", target))
+                    }
+                } else {
+                    Err(format!("Variable '{}' not found", target))
+                }
+            }
+
+            Expr::CompoundAssignment { target, operator, value } => match target.as_ref() {
+                Expr::Identifier(name) => {
+                    if let Some(symbol_info) = self.env.scope_resolver.resolve(name) {
+                        if !symbol_info.mutable {
+                            return Err(format!("Cannot modify immutable variable '{}'", name));
+                        }
+
+                        let left_val = self.env.get_variable(name).ok_or_else(|| format!("Variable '{}' not found", name))?.clone();
+                        let right_val = self.evaluate_expression(value)?;
+                        let result = self.evaluate_compound_assignment(&left_val, operator, &right_val)?;
+
+                        self.env.set_variable(name, result)?;
+                        Ok(Value::Unit)
+                    } else {
+                        Err(format!("Variable '{}' not found", name))
+                    }
+                }
+                _ => Err("Invalid assignment target".to_string()),
+            },
 
             // !MODULE SYSTEM!
             // TEMPORARY

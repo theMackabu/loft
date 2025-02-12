@@ -94,6 +94,11 @@ fn test_enums() {
    // io::println(triangle);
 }
 
+fn test_assignment(val: &mut i32) {
+   *val += 3;
+   io::println(val);
+}
+
 // allow async fn main -> Result
 fn main() -> Result<(), ()> {
    test_enums();
@@ -107,14 +112,9 @@ fn main() -> Result<(), ()> {
    } else {
       return "failed!";
    }
-      
-   // allow this
-   // Ok(get_message("testing!"))
    
-   // allow this syntax wise
-   a_value = 10;
-   
-   io::println(a_value);
+   a_value += 10;   
+   test_assignment(&mut a_value);
    
    io::println(tester());
    get_message("testing!");

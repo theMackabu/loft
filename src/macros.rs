@@ -1,4 +1,16 @@
 #[macro_export]
+macro_rules! impl_compound_assignment {
+    ($left:expr, $right:expr, $op:expr, {
+        $(($type:ident, $rust_type:ty, $method:ident)),* $(,)?
+    }) => {
+        match ($left, $right) {
+            $((Value::$type(l), Value::$type(r)) => Ok(Value::$type(l.$method(*r))),)*
+            _ => Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! impl_binary_ops {
     (($left_val:expr, $operator:expr, $right_val:expr), $($type:ident),*) => {
         match ($left_val, $operator, $right_val) {
