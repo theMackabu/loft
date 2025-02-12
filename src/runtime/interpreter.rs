@@ -450,12 +450,12 @@ impl Interpreter {
                             })
                         }
 
-                        _ => {
+                        data => {
                             let reference = Value::Reference {
                                 source_name: None,
                                 source_scope: None,
                                 mutable: *mutable,
-                                data: Some(Box::new(value)),
+                                data: Some(Box::new(data)),
                             };
 
                             Ok(reference)
@@ -638,12 +638,17 @@ impl Interpreter {
                                     Type::Reference { mutable: ref_mutable, .. } => {
                                         self.env.scope_resolver.declare_reference(name, *ref_mutable);
                                         match &value {
-                                            Value::Reference { source_name, source_scope, data, .. } => {
+                                            Value::Reference {
+                                                source_name,
+                                                source_scope,
+                                                data,
+                                                mutable,
+                                            } => {
                                                 let ref_value = Value::Reference {
                                                     data: data.clone(),
                                                     source_name: source_name.clone(),
                                                     source_scope: *source_scope,
-                                                    mutable: *ref_mutable,
+                                                    mutable: *mutable,
                                                 };
                                                 if let Some(scope) = self.env.scopes.last_mut() {
                                                     scope.insert(name.to_string(), ref_value);
