@@ -112,8 +112,6 @@ fn main() -> Result<(), ()> {
    //    return "failed!";
    // }
    // 
-   
-   return 1;
    test_assignment(&mut value);
    io::println(value);
 // 

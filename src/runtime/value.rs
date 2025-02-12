@@ -1,7 +1,4 @@
-use std::{
-    cell::{Ref, RefCell, RefMut},
-    fmt,
-};
+use std::fmt;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -28,41 +25,10 @@ pub enum Value {
     Tuple(Vec<Value>),
     Return(Box<Value>),
 
-    Reference { data: Box<RefCell<Value>>, mutable: bool },
     Enum { enum_type: String, variant: String, data: Option<Box<Value>> },
+    Reference { data: Box<Value>, source_name: Option<String>, mutable: bool },
 
     Unit,
-}
-
-impl Value {
-    pub fn is_ref(&self) -> bool {
-        match self {
-            Value::Reference { .. } => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_ref_mut(&self) -> bool {
-        match self {
-            Value::Reference { mutable, .. } => *mutable,
-            _ => false,
-        }
-    }
-
-    pub fn ref_val(&self) -> Result<Ref<Value>, String> {
-        match self {
-            Value::Reference { data, .. } => Ok(data.borrow()),
-            _ => Err("Not a reference".to_string()),
-        }
-    }
-
-    pub fn ref_mut_val(&self) -> Result<RefMut<Value>, String> {
-        match self {
-            Value::Reference { data, mutable } if *mutable => Ok(data.borrow_mut()),
-            Value::Reference { .. } => Err("Cannot get mutable reference to immutable value".to_string()),
-            _ => Err("Not a reference".to_string()),
-        }
-    }
 }
 
 impl fmt::Display for Value {
@@ -102,15 +68,16 @@ impl fmt::Display for Value {
             Value::Enum { enum_type, variant, data } => {
                 write!(f, "{}::{}", enum_type, variant)?;
                 if let Some(value) = data {
-                    // if data has strings, quote
-                    write!(f, "({})", value)
+                    match **value {
+                        Value::Str(v) => write!(f, "\"{}\"", v),
+                        _ => write!(f, "({})", value),
+                    }
                 } else {
                     Ok(())
                 }
             }
 
-            Value::Reference { data, .. } => write!(f, "{}", data.borrow()),
-
+            Value::Reference { data, .. } => write!(f, "{data}"),
             Value::Return(v) => write!(f, "{}", v),
             Value::Unit => write!(f, "()"),
         }

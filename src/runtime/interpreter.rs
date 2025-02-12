@@ -7,7 +7,7 @@ use crate::parser::{ast::*, lexer::*};
 use crate::{impl_binary_ops, impl_promote_to_type};
 
 use environment::Environment;
-use std::{cell::RefCell, collections::HashMap};
+use std::collections::HashMap;
 
 pub struct Interpreter {
     env: Environment,
@@ -248,6 +248,7 @@ impl Interpreter {
 
             Expr::Identifier(name) => {
                 println!("Looking up identifier: {}", name);
+                println!("{:?}", self.env.scopes);
                 match self.env.get_variable(name) {
                     Some(value) => Ok(value.clone()),
                     None => Err(format!("Undefined variable: {}", name)),
@@ -282,23 +283,43 @@ impl Interpreter {
             Expr::Dereference { operand } => match &**operand {
                 Expr::Assignment { target, value } => {
                     let new_value = self.evaluate_expression(value)?;
-                    match self.env.get_variable(target) {
-                        Some(Value::Reference { data, mutable }) => {
-                            if *mutable {
-                                *data.borrow_mut() = new_value;
-                                println!("After assignment, reference contains: {:?}", data.borrow());
+
+                    // Extract reference information first to avoid holding the borrow
+                    let ref_info = self
+                        .env
+                        .get_variable(target)
+                        .map(|v| {
+                            if let Value::Reference { data, mutable, source_name } = v {
+                                Some((data.clone(), *mutable, source_name.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                        .flatten();
+
+                    match ref_info {
+                        Some((mut data, mutable, source_name)) => {
+                            if mutable {
+                                *data = new_value.clone();
+
+                                if let Some(source) = source_name {
+                                    self.env.update_variable(&source, new_value)?;
+                                }
+
+                                println!("{:?}", self.env.scopes);
+                                println!("After assignment, reference contains: {:?}", data);
                                 Ok(Value::Unit)
                             } else {
                                 Err(format!("Cannot assign through immutable reference '{}'", target))
                             }
                         }
-                        _ => Err(format!("Variable '{}' is not a reference", target)),
+                        None => Err(format!("Variable '{}' is not a reference", target)),
                     }
                 }
                 other => {
                     let value = self.evaluate_expression(other)?;
                     match value {
-                        Value::Reference { data, .. } => Ok(data.borrow().clone()),
+                        Value::Reference { data, .. } => Ok(*data.clone()),
                         _ => Err("Cannot dereference a non-reference value".to_string()),
                     }
                 }
@@ -308,23 +329,21 @@ impl Interpreter {
                 Expr::Identifier(name) => {
                     if let Some(existing) = self.env.get_variable(name) {
                         match existing {
-                            // If it's already a reference, reuse its storage
-                            Value::Reference { data, .. } => Ok(Value::Reference {
+                            Value::Reference { data, source_name, .. } => Ok(Value::Reference {
                                 data: data.clone(),
                                 mutable: *mutable,
+                                source_name: source_name.clone(),
                             }),
-                            // Otherwise create new reference storage
                             _ => {
                                 println!("Creating reference to: {:?}", existing);
-                                let data = Box::new(RefCell::new(existing.clone()));
-                                self.env.update_variable(
-                                    name,
-                                    Value::Reference {
-                                        data: data.clone(),
-                                        mutable: *mutable,
-                                    },
-                                )?;
-                                Ok(Value::Reference { data, mutable: *mutable })
+                                let data = Box::new(existing.clone());
+                                let reference = Value::Reference {
+                                    data: data.clone(),
+                                    mutable: *mutable,
+                                    source_name: Some(name.clone()),
+                                };
+                                self.env.update_variable(name, reference.clone())?;
+                                Ok(reference)
                             }
                         }
                     } else {
@@ -416,26 +435,49 @@ impl Interpreter {
 
                 // Resolve the target symbol
                 if let Some(symbol_info) = self.env.scope_resolver.resolve(target) {
-                    // Handle dereference assignment
-                    if let Some(Value::Reference { data, mutable }) = self.env.get_variable(target) {
-                        if *mutable {
-                            // Update the value inside the reference
-                            *data.borrow_mut() = value;
-                            Ok(Value::Unit)
-                        } else {
-                            Err(format!("Cannot assign to immutable reference '{}'", target))
+                    // Get the reference information first
+                    let ref_info = self
+                        .env
+                        .get_variable(target)
+                        .map(|v| {
+                            if let Value::Reference { data, mutable, source_name } = v {
+                                Some((data.clone(), *mutable, source_name.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                        .flatten();
+
+                    match ref_info {
+                        // Handle reference assignment
+                        Some((mut data, mutable, source_name)) => {
+                            if mutable {
+                                // Update the reference value
+                                *data = value.clone();
+
+                                // Update source variable if it exists
+                                if let Some(source) = source_name {
+                                    self.env.set_variable(&source, value)?;
+                                }
+
+                                Ok(Value::Unit)
+                            } else {
+                                Err(format!("Cannot assign to immutable reference '{}'", target))
+                            }
                         }
-                    }
-                    // Handle normal variable assignment
-                    else if let Some(current_value) = self.env.get_variable(target) {
-                        if symbol_info.mutable || matches!(current_value, Value::Unit) {
-                            self.env.set_variable(target, value)?;
-                            Ok(Value::Unit)
-                        } else {
-                            Err(format!("Cannot assign to immutable variable '{}'", target))
+                        // Handle normal variable assignment
+                        None => {
+                            if let Some(current_value) = self.env.get_variable(target) {
+                                if symbol_info.mutable || matches!(current_value, Value::Unit) {
+                                    self.env.set_variable(target, value)?;
+                                    Ok(Value::Unit)
+                                } else {
+                                    Err(format!("Cannot assign to immutable variable '{}'", target))
+                                }
+                            } else {
+                                Err(format!("Variable '{}' not found", target))
+                            }
                         }
-                    } else {
-                        Err(format!("Variable '{}' not found", target))
                     }
                 } else {
                     Err(format!("Variable '{}' not found", target))
@@ -524,10 +566,15 @@ impl Interpreter {
                                         println!("Parameter is reference type, mutable: {}", ref_mutable);
                                         self.env.scope_resolver.declare_reference(name, *ref_mutable);
                                         match &value {
-                                            Value::Reference { data, .. } => {
-                                                // Store the whole Value::Reference, cloning the Box<RefCell>
+                                            Value::Reference { data, source_name, .. } => {
+                                                // Pass along the source_name so we know what variable to update
+                                                let ref_value = Value::Reference {
+                                                    data: data.clone(),
+                                                    mutable: *ref_mutable,
+                                                    source_name: source_name.clone(),
+                                                };
                                                 if let Some(scope) = self.env.scopes.last_mut() {
-                                                    scope.insert(name.to_string(), value.clone());
+                                                    scope.insert(name.to_string(), ref_value);
                                                     println!("Stored parameter '{}' with storage pointer: {:p}", name, data);
                                                 }
                                             }

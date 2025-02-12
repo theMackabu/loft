@@ -6,32 +6,33 @@ macro_rules! impl_compound_assignment {
         match ($left, $right) {
             $((Value::$type(l), Value::$type(r)) => Ok(Value::$type(l.$method(*r))),)*
 
-            $((Value::Reference { data: left_ref, .. }, Value::$type(r)) => {
-                if let Value::$type(l) = &*left_ref.borrow() {
-                    let result = l.$method(*r);
-                    *left_ref.borrow_mut() = Value::$type(result);
-                    Ok(Value::$type(result))
-                } else {
-                    Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+            $((Value::Reference { data, mutable, .. }, Value::$type(r)) => {
+                if !mutable {
+                    return Err(format!("Cannot modify immutable reference"));
                 }
-            },)*
-
-            $((Value::$type(l), Value::Reference { data: right_ref, .. }) => {
-                if let Value::$type(r) = &*right_ref.borrow() {
+                if let Value::$type(l) = &**data {
                     Ok(Value::$type(l.$method(*r)))
                 } else {
                     Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
                 }
             },)*
 
-            (Value::Reference { data: left_ref, .. }, Value::Reference { data: right_ref, .. }) => {
-                let left_val = left_ref.borrow();
-                let right_val = right_ref.borrow();
-                match (&*left_val, &*right_val) {
+            $((Value::$type(l), Value::Reference { data, .. }) => {
+                if let Value::$type(r) = &**data {
+                    Ok(Value::$type(l.$method(*r)))
+                } else {
+                    Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+                }
+            },)*
+
+            (Value::Reference { data: left_data, mutable: left_mutable, .. },
+             Value::Reference { data: right_data, .. }) => {
+                if !left_mutable {
+                    return Err(format!("Cannot modify immutable reference"));
+                }
+                match (&**left_data, &**right_data) {
                     $((Value::$type(l), Value::$type(r)) => {
-                        let result = l.$method(*r);
-                        *left_ref.borrow_mut() = Value::$type(result);
-                        Ok(Value::$type(result))
+                        Ok(Value::$type(l.$method(*r)))
                     },)*
                     _ => Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
                 }

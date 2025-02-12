@@ -4,28 +4,30 @@ impl Interpreter {
     pub fn perform_cast(&self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {
             Type::Reference { mutable, inner } => match value {
-                Value::Reference { data, .. } => {
-                    let inner_value = data.borrow().clone();
+                Value::Reference { data, source_name, .. } => {
+                    let inner_value = *data.clone();
                     let casted_inner = self.perform_cast(inner_value, inner)?;
 
                     Ok(Value::Reference {
-                        data: Box::new(RefCell::new(casted_inner)),
+                        source_name,
                         mutable: *mutable,
+                        data: Box::new(casted_inner),
                     })
                 }
 
                 other => {
                     let casted = self.perform_cast(other, inner)?;
                     Ok(Value::Reference {
-                        data: Box::new(RefCell::new(casted)),
+                        source_name: None,
                         mutable: *mutable,
+                        data: Box::new(casted),
                     })
                 }
             },
 
             Type::Path(path) if path.segments.len() == 1 => {
                 let value = match value {
-                    Value::Reference { data, .. } => data.borrow().clone(),
+                    Value::Reference { data, .. } => *data.clone(),
                     other => other,
                 };
 
