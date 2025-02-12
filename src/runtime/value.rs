@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    fmt,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -24,11 +27,35 @@ pub enum Value {
 
     Tuple(Vec<Value>),
     Return(Box<Value>),
-    Reference(Box<Value>, bool),
+    Reference(Box<RefCell<Value>>, bool),
 
     Enum { enum_type: String, variant: String, data: Option<Box<Value>> },
 
     Unit,
+}
+
+impl Value {
+    pub fn is_mutable_ref(&self) -> bool {
+        match self {
+            Value::Reference(_, is_mutable) => *is_mutable,
+            _ => false,
+        }
+    }
+
+    pub fn get_ref_value(&self) -> Result<Ref<Value>, String> {
+        match self {
+            Value::Reference(ref_cell, _) => Ok(ref_cell.borrow()),
+            _ => Err("Not a reference".to_string()),
+        }
+    }
+
+    pub fn get_mut_ref_value(&self) -> Result<RefMut<Value>, String> {
+        match self {
+            Value::Reference(ref_cell, true) => Ok(ref_cell.borrow_mut()),
+            Value::Reference(_, false) => Err("Cannot get mutable reference to immutable value".to_string()),
+            _ => Err("Not a reference".to_string()),
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -75,7 +102,7 @@ impl fmt::Display for Value {
                 }
             }
 
-            Value::Reference(v, _) => write!(f, "&{}", v),
+            Value::Reference(v, _) => write!(f, "{}", v.borrow()),
             Value::Return(v) => write!(f, "{}", v),
             Value::Unit => write!(f, "()"),
         }

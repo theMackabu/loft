@@ -3,22 +3,24 @@ use super::*;
 impl Interpreter {
     pub fn perform_cast(&self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {
-            Type::Reference { mutable, inner } => {
-                if !matches!(value, Value::Reference(..)) {
-                    let inner_value = self.perform_cast(value, inner)?;
-                    Ok(Value::Reference(Box::new(inner_value), *mutable))
-                } else {
-                    if let Value::Reference(inner_value, _) = value {
-                        let casted_inner = self.perform_cast(*inner_value, inner)?;
-                        Ok(Value::Reference(Box::new(casted_inner), *mutable))
-                    } else {
-                        unreachable!()
-                    }
+            Type::Reference { mutable, inner } => match value {
+                Value::Reference(cell, _) => {
+                    let inner_value = cell.borrow().clone();
+                    let casted_inner = self.perform_cast(inner_value, inner)?;
+                    Ok(Value::Reference(Box::new(RefCell::new(casted_inner)), *mutable))
                 }
-            }
+                other => {
+                    let casted = self.perform_cast(other, inner)?;
+                    Ok(Value::Reference(Box::new(RefCell::new(casted)), *mutable))
+                }
+            },
 
             Type::Path(path) if path.segments.len() == 1 => {
-                let value = if let Value::Reference(inner_value, _) = value { *inner_value } else { value };
+                let value = match value {
+                    Value::Reference(cell, _) => cell.borrow().clone(),
+                    other => other,
+                };
+
                 let type_name = &path.segments[0].ident;
 
                 match type_name.as_str() {

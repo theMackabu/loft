@@ -126,12 +126,6 @@ pub enum Expr {
     Unit,
     None,
 
-    CompoundAssignment {
-        target: Box<Expr>,
-        operator: Token,
-        value: Box<Expr>,
-    },
-
     Index {
         array: Box<Expr>,
         index: Box<Expr>,
@@ -183,6 +177,12 @@ pub enum Expr {
 
     Assignment {
         target: String,
+        value: Box<Expr>,
+    },
+
+    CompoundAssignment {
+        target: Box<Expr>,
+        operator: Token,
         value: Box<Expr>,
     },
 
