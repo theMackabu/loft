@@ -27,32 +27,39 @@ pub enum Value {
 
     Tuple(Vec<Value>),
     Return(Box<Value>),
-    Reference(Box<RefCell<Value>>, bool),
 
+    Reference { data: Box<RefCell<Value>>, mutable: bool },
     Enum { enum_type: String, variant: String, data: Option<Box<Value>> },
 
     Unit,
 }
 
 impl Value {
-    pub fn is_mutable_ref(&self) -> bool {
+    pub fn is_ref(&self) -> bool {
         match self {
-            Value::Reference(_, is_mutable) => *is_mutable,
+            Value::Reference { .. } => true,
             _ => false,
         }
     }
 
-    pub fn get_ref_value(&self) -> Result<Ref<Value>, String> {
+    pub fn is_ref_mut(&self) -> bool {
         match self {
-            Value::Reference(ref_cell, _) => Ok(ref_cell.borrow()),
+            Value::Reference { mutable, .. } => *mutable,
+            _ => false,
+        }
+    }
+
+    pub fn ref_val(&self) -> Result<Ref<Value>, String> {
+        match self {
+            Value::Reference { data, .. } => Ok(data.borrow()),
             _ => Err("Not a reference".to_string()),
         }
     }
 
-    pub fn get_mut_ref_value(&self) -> Result<RefMut<Value>, String> {
+    pub fn ref_mut_val(&self) -> Result<RefMut<Value>, String> {
         match self {
-            Value::Reference(ref_cell, true) => Ok(ref_cell.borrow_mut()),
-            Value::Reference(_, false) => Err("Cannot get mutable reference to immutable value".to_string()),
+            Value::Reference { data, mutable } if *mutable => Ok(data.borrow_mut()),
+            Value::Reference { .. } => Err("Cannot get mutable reference to immutable value".to_string()),
             _ => Err("Not a reference".to_string()),
         }
     }
@@ -102,7 +109,8 @@ impl fmt::Display for Value {
                 }
             }
 
-            Value::Reference(v, _) => write!(f, "{}", v.borrow()),
+            Value::Reference { data, .. } => write!(f, "{}", data.borrow()),
+
             Value::Return(v) => write!(f, "{}", v),
             Value::Unit => write!(f, "()"),
         }

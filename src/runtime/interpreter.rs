@@ -4,7 +4,7 @@ mod cast;
 use super::{scope::Environment as ScopeEnv, value::Value};
 use crate::parser::{ast::*, lexer::*};
 use crate::{impl_binary_ops, impl_promote_to_type};
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 
 struct Environment {
     scopes: Vec<HashMap<String, Value>>,
@@ -322,15 +322,26 @@ impl Interpreter {
 
             Expr::Dereference { operand } => {
                 let value = self.evaluate_expression(operand)?;
-                match value {
-                    Value::Reference(val, _) => Ok(*val),
-                    _ => Err("Cannot dereference a non-reference value".to_string()),
+
+                if value.is_ref_mut() {
+                    match value.ref_mut_val() {
+                        Ok(inner_value) => Ok(inner_value.clone()),
+                        Err(err) => return Err(format!("Dereference error: {}", err)),
+                    }
+                } else {
+                    match value.ref_val() {
+                        Ok(inner_value) => Ok(inner_value.clone()),
+                        Err(err) => return Err(format!("Dereference error: {}", err)),
+                    }
                 }
             }
 
             Expr::Reference { mutable, operand } => {
-                let value = self.evaluate_expression(operand)?;
-                Ok(Value::Reference(Box::new(value), *mutable))
+                let value = self.evaluate_expression(operand.as_ref())?;
+                Ok(Value::Reference {
+                    data: Box::new(RefCell::new(value)),
+                    mutable: *mutable,
+                })
             }
 
             Expr::Binary { left, operator, right } => {

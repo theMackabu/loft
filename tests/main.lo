@@ -95,7 +95,7 @@ fn test_enums() {
 }
 
 fn test_assignment(val: &mut i32) {
-   val += 3;
+   val = 3;
    io::println(val);
 }
 

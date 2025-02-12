@@ -6,27 +6,33 @@ macro_rules! impl_compound_assignment {
         match ($left, $right) {
             $((Value::$type(l), Value::$type(r)) => Ok(Value::$type(l.$method(*r))),)*
 
-            $((Value::Reference(ref_cell, _), Value::$type(r)) => {
-                if let Value::$type(l) = &*ref_cell.borrow() {
+            $((Value::Reference { data: left_ref, .. }, Value::$type(r)) => {
+                if let Value::$type(l) = &*left_ref.borrow() {
+                    let result = l.$method(*r);
+                    *left_ref.borrow_mut() = Value::$type(result);
+                    Ok(Value::$type(result))
+                } else {
+                    Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
+                }
+            },)*
+
+            $((Value::$type(l), Value::Reference { data: right_ref, .. }) => {
+                if let Value::$type(r) = &*right_ref.borrow() {
                     Ok(Value::$type(l.$method(*r)))
                 } else {
                     Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
                 }
             },)*
 
-            $((Value::$type(l), Value::Reference(ref_cell, _)) => {
-                if let Value::$type(r) = &*ref_cell.borrow() {
-                    Ok(Value::$type(l.$method(*r)))
-                } else {
-                    Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
-                }
-            },)*
-
-            (Value::Reference(left_ref, _), Value::Reference(right_ref, _)) => {
+            (Value::Reference { data: left_ref, .. }, Value::Reference { data: right_ref, .. }) => {
                 let left_val = left_ref.borrow();
                 let right_val = right_ref.borrow();
                 match (&*left_val, &*right_val) {
-                    $((Value::$type(l), Value::$type(r)) => Ok(Value::$type(l.$method(*r))),)*
+                    $((Value::$type(l), Value::$type(r)) => {
+                        let result = l.$method(*r);
+                        *left_ref.borrow_mut() = Value::$type(result);
+                        Ok(Value::$type(result))
+                    },)*
                     _ => Err(format!("Cannot perform {:?} operation between {} and {}", $op, $left, $right))
                 }
             },
