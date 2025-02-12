@@ -249,7 +249,12 @@ impl Interpreter {
                 _ => unreachable!(), // cannot hit this
             }),
 
-            Expr::String(value) => Ok(Value::Str(Box::leak(value.to_owned().into_boxed_str()))),
+            Expr::String(value) => Ok(Value::Reference {
+                mutable: false,
+                source_name: None,
+                source_scope: None,
+                data: Some(Box::new(Value::Str(value.to_owned()))),
+            }),
 
             Expr::Identifier(name) => match self.env.get_variable(name) {
                 Some(value) => Ok(value.clone()),
@@ -370,36 +375,94 @@ impl Interpreter {
                 }
 
                 other => {
-                    let value = self.evaluate_expression(other)?;
-                    match value {
-                        Value::Reference { source_name, source_scope, .. } => {
-                            if let Some(scope) = self.env.scopes.get(source_scope.expect("HANDLE THIS")) {
-                                if let Some(source_value) = scope.get(&source_name.clone().expect("HANDLE THIS")) {
-                                    Ok(source_value.clone())
+                    let reference = self.evaluate_expression(other)?;
+
+                    match reference {
+                        Value::Reference {
+                            source_name: Some(name),
+                            source_scope: Some(scope_index),
+                            ..
+                        } => {
+                            if let Some(scope) = self.env.scopes.get(scope_index) {
+                                if let Some(value) = scope.get(&name) {
+                                    return Ok(value.clone());
                                 } else {
-                                    Err(format!("Reference source '{}' not found", source_name.expect("HANDLE THIS")))
+                                    return Err(format!("Variable '{}' not found in scope {}", name, scope_index));
                                 }
                             } else {
-                                Err(format!("Reference scope {} not found", source_scope.expect("HANDLE THIS")))
+                                return Err(format!("Scope {} not found", scope_index));
                             }
                         }
+
+                        Value::Reference { data: Some(inner_value), .. } => {
+                            return Ok(*inner_value);
+                        }
+
                         _ => Err("Cannot dereference a non-reference value".to_string()),
                     }
                 }
             },
 
-            Expr::Reference { mutable, operand } => {
-                let evaluated_value = self.evaluate_expression(&**operand)?;
+            Expr::Reference { mutable, operand } => match &**operand {
+                Expr::Identifier(name) => {
+                    if let Some((scope_index, existing)) = self.env.find_variable(name) {
+                        match existing {
+                            Value::Reference { source_name, source_scope, data, .. } => Ok(Value::Reference {
+                                source_name: source_name.clone(),
+                                source_scope: *source_scope,
+                                mutable: *mutable,
+                                data: data.clone(),
+                            }),
+                            _ => {
+                                let reference = Value::Reference {
+                                    source_name: Some(name.clone()),
+                                    source_scope: Some(scope_index),
+                                    mutable: *mutable,
+                                    data: None,
+                                };
+                                Ok(reference)
+                            }
+                        }
+                    } else {
+                        Err(format!("Variable '{}' not found", name))
+                    }
+                }
 
-                let reference = Value::Reference {
-                    source_name: None,
-                    source_scope: None,
-                    mutable: *mutable,
-                    data: Some(Box::new(evaluated_value)),
-                };
+                other => {
+                    let value = self.evaluate_expression(&*other)?;
 
-                Ok(reference)
-            }
+                    match value {
+                        Value::Reference {
+                            ref source_name,
+                            source_scope,
+                            mutable: existing_mutable,
+                            ..
+                        } => {
+                            if *mutable && !existing_mutable {
+                                return Err("Cannot create a mutable reference to an immutable value".to_string());
+                            }
+
+                            Ok(Value::Reference {
+                                source_name: source_name.clone(),
+                                source_scope,
+                                mutable: *mutable,
+                                data: Some(Box::new(value)),
+                            })
+                        }
+
+                        _ => {
+                            let reference = Value::Reference {
+                                source_name: None,
+                                source_scope: None,
+                                mutable: *mutable,
+                                data: Some(Box::new(value)),
+                            };
+
+                            Ok(reference)
+                        }
+                    }
+                }
+            },
 
             Expr::Binary { left, operator, right } => {
                 let left_val = self.evaluate_expression(left)?;

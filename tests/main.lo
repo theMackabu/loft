@@ -103,7 +103,7 @@ fn main() -> Result<(), ()> {
    test_enums();
    test_patterns();
    
-   let big_num: i64 = &50;
+   let big_num: &i64 = &50;
    let mut value = 5;
    
    if *big_num < MAX_VALUE {

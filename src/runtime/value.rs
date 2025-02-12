@@ -19,7 +19,7 @@ pub enum Value {
     F32(f32),
     F64(f64),
 
-    Str(&'static str),
+    Str(String),
     Boolean(bool),
 
     Tuple(Vec<Value>),
@@ -78,8 +78,8 @@ impl fmt::Display for Value {
             Value::Enum { enum_type, variant, data } => {
                 write!(f, "{}::{}", enum_type, variant)?;
                 if let Some(value) = data {
-                    match **value {
-                        Value::Str(v) => write!(f, "\"{}\"", v),
+                    match value.as_ref() {
+                        Value::Str(v) => write!(f, "(\"{}\")", v),
                         _ => write!(f, "({})", value),
                     }
                 } else {
@@ -87,8 +87,16 @@ impl fmt::Display for Value {
                 }
             }
 
-            // update to show real value
-            Value::Reference { source_name, .. } => write!(f, "ref({})", source_name.clone().expect("HANDLE THIS")),
+            Value::Reference { source_name, data, .. } => {
+                if let Some(value) = data {
+                    write!(f, "{}", value)
+                } else if let Some(name) = source_name {
+                    write!(f, "ref({name})")
+                } else {
+                    write!(f, "ref(<unnamed>)")
+                }
+            }
+
             Value::Return(v) => write!(f, "{}", v),
             Value::Unit => write!(f, "()"),
         }

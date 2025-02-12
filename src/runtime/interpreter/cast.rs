@@ -3,6 +3,8 @@ use super::*;
 impl Interpreter {
     pub fn perform_cast(&mut self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {
+            // it cannot cast references like
+            // let big_num: &i64 = 50;
             Type::Reference { mutable, inner } => match value {
                 Value::Reference { source_name, source_scope, data, .. } => {
                     if let (Some(source_name), Some(source_scope)) = (source_name.clone(), source_scope) {
