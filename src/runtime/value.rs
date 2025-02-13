@@ -139,8 +139,9 @@ impl fmt::Display for Value {
                         write!(f, ", ")?;
                     }
                     match value {
-                        Value::Str(s) => write!(f, "{field_name}: \"{s}\"")?,
-                        _ => write!(f, "{field_name}: {value}")?,
+                        Value::Str(s) => write!(f, "{}: \"{}\"", field_name, s)?,
+                        Value::Reference { data: Some(v), .. } => write!(f, "{}: {}", field_name, v)?,
+                        _ => write!(f, "{}: {}", field_name, value)?,
                     }
                 }
                 write!(f, " }}")

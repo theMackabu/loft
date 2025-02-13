@@ -85,6 +85,27 @@ impl Environment {
         }
     }
 
+    /// Sets a variable in a specific scope.
+    ///
+    /// Creates or updates a variable in the specified scope. Returns an error if
+    /// the scope index is invalid.
+    pub fn set_scoped_variable(&mut self, name: &str, value: Value, scope_index: usize, mutable: bool) -> Result<(), String> {
+        if let Some(scope) = self.scopes.get_mut(scope_index) {
+            if self.scope_resolver.resolve(name).is_none() {
+                self.scope_resolver.declare_variable_in_scope(name, mutable, scope_index)?;
+            } else {
+                let symbol_info = self.scope_resolver.resolve(name).ok_or_else(|| format!("Variable '{}' not found", name))?;
+                if !symbol_info.mutable {
+                    return Err(format!("Cannot assign to immutable variable '{}'", name));
+                }
+            }
+            scope.insert(name.to_string(), value);
+            Ok(())
+        } else {
+            Err(format!("Scope {} not found", scope_index))
+        }
+    }
+
     /// Updates the value of an existing variable.
     ///
     /// Searches for the variable in indexed scopes and updates its value if

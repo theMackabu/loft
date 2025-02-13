@@ -52,6 +52,26 @@ impl Scope {
         }
     }
 
+    pub fn declare_variable_in_scope(&mut self, name: &str, mutable: bool, scope_index: usize) -> Result<(), String> {
+        if let Some(scope) = self.scopes.get_mut(scope_index) {
+            if scope.contains_key(name) {
+                return Err(format!("Variable '{}' already declared in this scope", name));
+            }
+
+            scope.insert(
+                name.to_owned(),
+                SymbolInfo {
+                    name: name.to_owned(),
+                    kind: DeclKind::Variable,
+                    mutable,
+                },
+            );
+            Ok(())
+        } else {
+            Err(format!("Scope {} not found", scope_index))
+        }
+    }
+
     pub fn declare_reference(&mut self, name: &str, mutable: bool) {
         if let Some(current) = self.scopes.last_mut() {
             current.insert(

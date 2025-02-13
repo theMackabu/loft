@@ -42,6 +42,7 @@ pub struct Function {
     pub params: Vec<(Pattern, Type)>,
     pub body: Vec<Stmt>,
     pub is_method: bool,
+    pub is_static: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

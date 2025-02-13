@@ -90,6 +90,14 @@ impl Interpreter {
                     }
                 }
 
+                Stmt::Impl { target, items, .. } => {
+                    self.handle_impl_block(target, items)?;
+                }
+
+                Stmt::Struct { name, fields, .. } => {
+                    self.handle_struct_def(name, fields)?;
+                }
+
                 Stmt::Module { name, body, .. } => {
                     self.env.scope_resolver.declare_module(name)?;
                     self.env.enter_scope();
@@ -109,11 +117,6 @@ impl Interpreter {
 
             Stmt::ExpressionStmt(expr) => {
                 self.evaluate_expression(expr)?;
-                Ok(Value::Unit)
-            }
-
-            Stmt::Struct { name, fields, .. } => {
-                self.handle_struct_def(name, fields, &[])?;
                 Ok(Value::Unit)
             }
 
@@ -217,7 +220,6 @@ impl Interpreter {
                     let type_name = &path.segments[0].ident;
                     let method_name = &path.segments[1].ident;
 
-                    // First check if it's a struct (for static methods like ::new)
                     if let Some(Value::StructDef { methods, .. }) = self.env.get_variable(type_name) {
                         if let Some(function) = methods.get(method_name) {
                             return Ok(Value::StaticMethod {
@@ -228,14 +230,12 @@ impl Interpreter {
                         }
                     }
 
-                    // Then fall back to enum handling
                     Ok(Value::Enum {
                         enum_type: type_name.clone(),
                         variant: method_name.clone(),
                         data: None,
                     })
                 } else {
-                    // Handle single segment paths (might be struct names)
                     let name = &path.segments[0].ident;
                     if let Some(value) = self.env.get_variable(name) {
                         Ok(value.clone())
@@ -638,11 +638,30 @@ impl Interpreter {
 
                         let type_name = &path.segments[0].ident;
                         let method_name = &path.segments[1].ident;
-                        let maybe_struct_def = { self.env.get_variable(type_name).cloned() };
 
-                        if let Some(struct_def) = maybe_struct_def {
-                            if let Value::StructDef { .. } = struct_def {
-                                return self.evaluate_method_call(&struct_def, method_name, arguments);
+                        if let Some((scope_idx, Value::StructDef { methods, .. })) = self.env.find_variable(type_name) {
+                            if let Some(method_fn) = methods.get(method_name) {
+                                let function = method_fn.clone();
+
+                                let mut evaluated_args = Vec::new();
+                                for arg in arguments {
+                                    evaluated_args.push(self.evaluate_expression(arg)?);
+                                }
+
+                                self.env.enter_scope();
+
+                                for (i, value) in evaluated_args.iter().enumerate() {
+                                    if let Some((param_pattern, _)) = function.params.get(i) {
+                                        if let Pattern::Identifier { name, mutable } = param_pattern {
+                                            self.env.set_scoped_variable(name, value.clone(), scope_idx, *mutable)?;
+                                        }
+                                    }
+                                }
+
+                                let result = self.execute(&function.body)?;
+                                self.env.exit_scope();
+
+                                return Ok(result);
                             }
                         }
 
