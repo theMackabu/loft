@@ -40,11 +40,16 @@ impl Interpreter {
 
         match result {
             Value::Enum { enum_type, variant, data } if enum_type == "Result" => match variant.as_str() {
-                "Ok" => Ok(*data.unwrap_or_else(|| Box::new(Value::Unit))),
-                "Err" => Err(data.map(|d| *d).unwrap_or(Value::Unit).to_string()),
+                "Ok" => match data {
+                    Some(values) if !values.is_empty() => Ok(values[0].clone()),
+                    _ => Ok(Value::Unit),
+                },
+                "Err" => match data {
+                    Some(values) if !values.is_empty() => Err(values[0].to_string()),
+                    _ => Err("Unknown error".to_string()),
+                },
                 _ => Ok(Value::Enum { enum_type, variant, data }),
             },
-
             other => Ok(other),
         }
     }
@@ -599,15 +604,20 @@ impl Interpreter {
 
                         let enum_type = &path.segments[0].ident;
                         let variant = &path.segments[1].ident;
-                        if arguments.len() == 1 {
-                            let value = self.evaluate_expression(&arguments[0])?;
+
+                        if !arguments.is_empty() {
+                            let values: Vec<Value> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
                             Ok(Value::Enum {
                                 enum_type: enum_type.clone(),
                                 variant: variant.clone(),
-                                data: Some(Box::new(value)),
+                                data: Some(values),
                             })
                         } else {
-                            Err("Enum variant with data must have exactly one argument".to_string())
+                            Ok(Value::Enum {
+                                enum_type: enum_type.clone(),
+                                variant: variant.clone(),
+                                data: None,
+                            })
                         }
                     }
 
@@ -691,7 +701,7 @@ impl Interpreter {
 
             (Pattern::Path(path), Value::Enum { variant, data, enum_type }) => {
                 if path.segments.len() == 2 {
-                    Ok(path.segments[0].ident == *enum_type && path.segments[1].ident == *variant && data.is_none())
+                    Ok(path.segments[0].ident == *enum_type && path.segments[1].ident == *variant && data.as_ref().map_or(true, |v| v.is_empty()))
                 } else {
                     Ok(false)
                 }
@@ -699,9 +709,16 @@ impl Interpreter {
 
             (Pattern::TupleStruct { path, elements }, Value::Enum { variant, data, enum_type }) => {
                 if path.segments.len() == 2 && path.segments[0].ident == *enum_type && path.segments[1].ident == *variant {
-                    match (elements.len(), data) {
-                        (1, Some(inner_value)) => self.pattern_matches(&elements[0], inner_value),
-                        (0, None) => Ok(true),
+                    match data {
+                        Some(values) if elements.len() == values.len() => {
+                            for (element, value) in elements.iter().zip(values.iter()) {
+                                if !self.pattern_matches(element, value)? {
+                                    return Ok(false);
+                                }
+                            }
+                            Ok(true)
+                        }
+                        None if elements.is_empty() => Ok(true),
                         _ => Ok(false),
                     }
                 } else {
@@ -709,12 +726,42 @@ impl Interpreter {
                 }
             }
 
-            (Pattern::Tuple(elements), Value::Enum { data: Some(inner_value), .. }) => {
-                if elements.len() == 1 {
-                    self.pattern_matches(&elements[0], inner_value)
+            (Pattern::Tuple(elements), Value::Enum { data: Some(values), .. }) => {
+                if elements.len() == values.len() {
+                    for (element, value) in elements.iter().zip(values.iter()) {
+                        if !self.pattern_matches(element, value)? {
+                            return Ok(false);
+                        }
+                    }
+                    Ok(true)
                 } else {
                     Ok(false)
                 }
+            }
+
+            (Pattern::Reference { mutable, pattern }, value) => match value {
+                Value::Reference { mutable: ref_mutable, data, .. } => {
+                    if *mutable && !ref_mutable {
+                        return Ok(false);
+                    }
+
+                    if let Some(inner_value) = data {
+                        self.pattern_matches(pattern, inner_value)
+                    } else {
+                        Ok(false)
+                    }
+                }
+
+                _ => self.pattern_matches(pattern, value),
+            },
+
+            (Pattern::Or(patterns), value) => {
+                for pattern in patterns {
+                    if self.pattern_matches(pattern, value)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
             }
 
             (Pattern::Identifier { name, mutable }, value) => {

@@ -28,7 +28,7 @@ pub enum Value {
     Enum {
         enum_type: String,
         variant: String,
-        data: Option<Box<Value>>,
+        data: Option<Vec<Value>>,
     },
 
     Reference {
@@ -58,8 +58,8 @@ impl fmt::Display for Value {
             Value::U128(v) => write!(f, "{}", v),
             Value::USize(v) => write!(f, "{}", v),
 
-            Value::F32(v) => write!(f, "{}", v),
-            Value::F64(v) => write!(f, "{}", v),
+            Value::F32(v) => write!(f, "{:.1}", v),
+            Value::F64(v) => write!(f, "{:.1}", v),
 
             Value::Str(v) => write!(f, "{}", v),
             Value::Boolean(v) => write!(f, "{}", v),
@@ -75,18 +75,6 @@ impl fmt::Display for Value {
                 write!(f, ")")
             }
 
-            Value::Enum { enum_type, variant, data } => {
-                write!(f, "{}::{}", enum_type, variant)?;
-                if let Some(value) = data {
-                    match value.as_ref() {
-                        Value::Str(v) => write!(f, "(\"{}\")", v),
-                        _ => write!(f, "({})", value),
-                    }
-                } else {
-                    Ok(())
-                }
-            }
-
             Value::Reference { source_name, data, .. } => {
                 if let Some(value) = data {
                     write!(f, "{}", value)
@@ -94,6 +82,25 @@ impl fmt::Display for Value {
                     write!(f, "ref({name})")
                 } else {
                     write!(f, "ref(<unnamed>)")
+                }
+            }
+
+            Value::Enum { enum_type, variant, data } => {
+                write!(f, "{}::{}", enum_type, variant)?;
+                if let Some(values) = data {
+                    write!(f, "(")?;
+                    for (i, value) in values.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        match value {
+                            Value::Str(v) => write!(f, "\"{}\"", v)?,
+                            _ => write!(f, "{}", value)?,
+                        }
+                    }
+                    write!(f, ")")
+                } else {
+                    Ok(())
                 }
             }
 
