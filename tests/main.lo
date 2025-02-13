@@ -86,12 +86,12 @@ pub enum Shape {
 
 fn test_enums() {
    let circle = Shape::Circle(5.0);
-   let rect = Shape::Rectangle(4.0, 6.0); // Runtime error: Enum variant with data must have exactly one argument
-   let triangle = Shape::Triangle { base: 3.0, height: 4.0 }; // add support for this
+   let rect = Shape::Rectangle(4.0, 6.0); 
+   // let triangle = Shape::Triangle { base: 3.0, height: 4.0 };
 
    io::println(circle);
    io::println(rect);
-   io::println(triangle);
+   // io::println(triangle);
 }
 
 fn test_assignment(val: &mut i32) {

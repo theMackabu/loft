@@ -1,0 +1,25 @@
+struct Triangle {
+   base: f64, 
+   height: f64,
+   name: &str
+}
+
+impl Triangle {
+   fn new(base: f64, height: f64, name: &str) -> Self {
+      Self { base, height, name }
+   }
+   
+   fn display(&self) {
+      io::println(self.base)
+      io::println(self.height)
+      io::print;ln(self.name)
+   }
+}
+
+fn main() {
+   let trig1 = Triangle::new(10.7, 5.3, "first");
+   let trig2 = Triangle { base: 9.0, height: 1.4, name: "second" };
+   
+   trig1.display();
+   trig2.display()
+}
