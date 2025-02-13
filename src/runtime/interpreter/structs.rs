@@ -1,6 +1,47 @@
 use super::*;
 
 impl Interpreter {
+    pub fn extract_field_chain(&self, expr: &Expr) -> Result<(String, Vec<String>), String> {
+        match expr {
+            Expr::Identifier(name) => Ok((name.clone(), vec![])),
+            Expr::MemberAccess { object, member } => {
+                let (base, mut chain) = self.extract_field_chain(object)?;
+                chain.push(member.clone());
+                Ok((base, chain))
+            }
+            _ => Err("Invalid expression in member assignment target".to_string()),
+        }
+    }
+
+    pub fn update_struct_field(&self, value: &mut Value, chain: &[String], new_value: Value) -> Result<(), String> {
+        if chain.is_empty() {
+            return Err("Field chain is empty; cannot update".to_string());
+        }
+        match value {
+            Value::Struct { fields, .. } => {
+                let field_name = &chain[0];
+                if chain.len() == 1 {
+                    if let Some((_, field_val)) = fields.iter_mut().find(|(name, _)| name == field_name) {
+                        *field_val = new_value;
+                        Ok(())
+                    } else {
+                        Err(format!("Field '{}' not found", field_name))
+                    }
+                } else {
+                    if let Some((_, field_val)) = fields.iter_mut().find(|(name, _)| name == field_name) {
+                        match field_val {
+                            Value::Struct { .. } => self.update_struct_field(field_val, &chain[1..], new_value),
+                            _ => Err(format!("Field '{}' is not a struct", field_name)),
+                        }
+                    } else {
+                        Err(format!("Field '{}' not found", field_name))
+                    }
+                }
+            }
+            _ => Err("Target value is not a struct".to_string()),
+        }
+    }
+
     pub fn handle_struct_def(&mut self, name: &str, fields: &[(String, bool, Type)]) -> Result<(), String> {
         self.env.scope_resolver.declare_variable(name, false);
 

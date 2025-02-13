@@ -811,45 +811,39 @@ impl Interpreter {
 
             Expr::MemberAssignment { object, member, value } => {
                 let right_val = self.evaluate_expression(value)?;
-                match object.as_ref() {
-                    Expr::Identifier(var_name) => {
-                        // check mutability first using the scope resolver (migrate to struct?)
-                        if let Some(symbol_info) = self.env.scope_resolver.resolve(var_name) {
-                            if !symbol_info.mutable {
-                                return Err(format!("Cannot assign to immutable variable '{}'", var_name));
-                            }
-                        } else {
-                            return Err(format!("Variable '{}' not found", var_name));
-                        }
 
-                        if let Some((scope_index, original_value)) = self.env.find_variable(var_name) {
-                            match original_value {
-                                Value::Struct { .. } => {
-                                    let mut new_struct = original_value.clone();
-                                    if let Value::Struct { ref mut fields, .. } = new_struct {
-                                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
-                                            *field_value = right_val;
-                                            self.env.update_scoped_variable(var_name, new_struct, scope_index)?;
-                                            Ok(Value::Unit)
-                                        } else {
-                                            Err(format!("Field '{}' not found", member))
-                                        }
-                                    } else {
-                                        unreachable!()
-                                    }
+                match self.extract_field_chain(object) {
+                    Ok((base_name, mut chain)) => {
+                        if chain.last().map_or(true, |m| m != member) {
+                            chain.push(member.clone());
+                        }
+                        if let Some((scope_index, base_value)) = self.env.find_variable(&base_name) {
+                            // check that the variable is mutable (move to struct?)
+                            if let Some(symbol_info) = self.env.scope_resolver.resolve(&base_name) {
+                                if !symbol_info.mutable {
+                                    return Err(format!("Cannot assign to immutable variable '{}'", base_name));
                                 }
-                                _ => Err(format!("Variable '{}' is not a struct", var_name)),
+                            } else {
+                                return Err(format!("Variable '{}' not found", base_name));
                             }
+
+                            let mut updated_base = base_value.clone();
+                            self.update_struct_field(&mut updated_base, &chain, right_val)?;
+                            self.env.update_scoped_variable(&base_name, updated_base, scope_index)?;
+                            Ok(Value::Unit)
                         } else {
-                            Err(format!("Variable '{}' not found", var_name))
+                            Err(format!("Variable '{}' not found", base_name))
                         }
                     }
-
-                    _ => {
+                    Err(_) => {
                         let evaluated = self.evaluate_expression(object)?;
                         match evaluated {
                             Value::Reference {
-                                mutable, data: Some(mut boxed_value), ..
+                                mutable,
+                                data: Some(mut boxed_value),
+                                source_name,
+                                source_scope,
+                                ..
                             } => {
                                 if !mutable {
                                     return Err("Cannot assign through immutable reference".to_string());
@@ -857,6 +851,8 @@ impl Interpreter {
                                 if let Value::Struct { ref mut fields, .. } = &mut *boxed_value {
                                     if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
                                         *field_value = right_val;
+                                        self.env
+                                            .update_scoped_variable(&source_name.expect("Missing source name"), *boxed_value, source_scope.expect("Missing source scope"))?;
                                         Ok(Value::Unit)
                                     } else {
                                         Err(format!("Field '{}' not found", member))

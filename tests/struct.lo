@@ -50,7 +50,7 @@ fn main() {
    };
    
    trig1.base = 0.0;
-   
+      
    trig1.display();
    trig2.display();
 }
