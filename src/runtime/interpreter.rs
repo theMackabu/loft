@@ -326,6 +326,11 @@ impl Interpreter {
             }
 
             Expr::Dereference { operand } => match &**operand {
+                Expr::MethodCall { object, method, arguments } => {
+                    let obj_value = self.evaluate_expression(object)?;
+                    self.evaluate_method_call(&obj_value, method, arguments)
+                }
+
                 Expr::Assignment { target, value } => match target.as_ref() {
                     Expr::Identifier(identifier) => {
                         let new_value = self.evaluate_expression(value)?;
@@ -803,14 +808,14 @@ impl Interpreter {
                         .map(|(_, value)| value.clone())
                         .ok_or_else(|| format!("Field '{}' not found", member)),
 
-                    // Value::Reference { data: Some(boxed_value), .. } => match &*boxed_value {
-                    //     Value::Struct { fields, .. } => fields
-                    //         .iter()
-                    //         .find(|(field_name, _)| field_name == member)
-                    //         .map(|(_, value)| value.clone())
-                    //         .ok_or_else(|| format!("Field '{}' not found", member)),
-                    //     _ => Err("Cannot access member of non-struct reference".to_string()),
-                    // },
+                    Value::Reference { data: Some(boxed_value), .. } => match &*boxed_value {
+                        Value::Struct { fields, .. } => fields
+                            .iter()
+                            .find(|(field_name, _)| field_name == member)
+                            .map(|(_, value)| value.clone())
+                            .ok_or_else(|| format!("Field '{}' not found", member)),
+                        _ => Err("Cannot access member of non-struct reference".to_string()),
+                    },
                     _ => Err("Cannot access member of non-struct value".to_string()),
                 }
             }

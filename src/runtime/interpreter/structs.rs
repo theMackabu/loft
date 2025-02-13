@@ -87,46 +87,53 @@ impl Interpreter {
     }
 
     pub fn evaluate_method_call(&mut self, object: &Value, method: &str, args: &[Expr]) -> Result<Value, String> {
-        // check if &mut self works
         match object {
-            Value::Struct { name, fields } => {
-                let methods = match self.env.get_variable(name) {
-                    Some(Value::StructDef { methods, .. }) => methods.clone(),
-                    _ => return Err(format!("Struct definition '{}' not found", name)),
-                };
+            Value::Struct { name, fields } => self.handle_struct_method_call(name, fields, method, args),
 
-                let function = match methods.get(method) {
-                    Some(f) => f.clone(),
-                    None => return Err(format!("Method '{}' not found on struct '{}'", method, name)),
-                };
+            Value::Reference { data: Some(boxed_value), .. } => match &**boxed_value {
+                Value::Struct { name, fields } => self.handle_struct_method_call(name, fields, method, args),
+                _ => Err("Cannot call method on non-struct reference".to_string()),
+            },
 
-                self.env.enter_scope();
-                self.env.scope_resolver.declare_variable("self", false);
-
-                let self_value = Value::Struct {
-                    name: name.clone(),
-                    fields: fields.clone(),
-                };
-
-                self.env.set_variable("self", self_value)?;
-
-                let evaluated_args: Vec<Value> = args.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
-
-                for (i, value) in evaluated_args.into_iter().enumerate() {
-                    if let Some((param_pattern, _)) = function.params.get(i + 1) {
-                        if let Pattern::Identifier { name, mutable } = param_pattern {
-                            self.env.scope_resolver.declare_variable(name, *mutable);
-                            self.env.set_variable(name, value)?;
-                        }
-                    }
-                }
-
-                let result = self.execute(&function.body)?;
-                self.env.exit_scope();
-
-                Ok(result)
-            }
             _ => Err("Cannot call method on non-struct value".to_string()),
         }
+    }
+
+    fn handle_struct_method_call(&mut self, name: &String, fields: &Vec<(String, Value)>, method: &str, args: &[Expr]) -> Result<Value, String> {
+        let methods = match self.env.get_variable(name) {
+            Some(Value::StructDef { methods, .. }) => methods.clone(),
+            _ => return Err(format!("Struct definition '{}' not found", name)),
+        };
+
+        let function = match methods.get(method) {
+            Some(f) => f.clone(),
+            None => return Err(format!("Method '{}' not found on struct '{}'", method, name)),
+        };
+
+        self.env.enter_scope();
+        self.env.scope_resolver.declare_variable("self", false);
+
+        let self_value = Value::Struct {
+            name: name.to_owned(),
+            fields: fields.to_owned(),
+        };
+
+        self.env.set_variable("self", self_value)?;
+
+        let evaluated_args: Vec<Value> = args.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
+
+        for (i, value) in evaluated_args.into_iter().enumerate() {
+            if let Some((param_pattern, _)) = function.params.get(i + 1) {
+                if let Pattern::Identifier { name, mutable } = param_pattern {
+                    self.env.scope_resolver.declare_variable(name, *mutable);
+                    self.env.set_variable(name, value)?;
+                }
+            }
+        }
+
+        let result = self.execute(&function.body)?;
+        self.env.exit_scope();
+
+        Ok(result)
     }
 }

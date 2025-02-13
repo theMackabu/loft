@@ -1,28 +1,51 @@
 struct Triangle {
    base: f64, 
    height: f64,
-   name: &str
+   info: Info
+}
+
+struct Info {
+   id: u8,
+   name: &str, 
+}
+
+impl Info {
+   fn get_name(&self) -> &str {
+      self.name
+   }
+   
+   fn set_name(&mut self, name: &str) {
+      self.name = name;
+   }
 }
 
 impl Triangle {
-   fn new(base: f64, height: f64, name: &str) -> Self {
-      Self { base, height, name }
+   fn new(base: f64, height: f64, name: &str, id: u8) -> Self {
+      Self { base, height, info: Info { name, id } }
    }
    
    fn display(&mut self) {
+      self.info.set_name("third");
       
-      // fix mutability 
-      self.name = "third";
-      
-      io::println(self.name);
+      io::println(self.info.id);
+      io::println(self.info.get_name());
+
       io::println(self.base);
       io::println(self.height);
    }
 }
 
 fn main() {
-   let trig1 = Triangle::new(10.7, 5.3, "first");
-   let trig2 = Triangle { base: 9.0, height: 1.4, name: "second" };
+   let mut trig1 = Triangle::new(10.7, 5.3, "first", 1);
+   
+   let mut trig2 = &Triangle { 
+      base: 9.0, 
+      height: 1.4, 
+      info: Info { 
+         name: "second", 
+         id: 2 
+      }
+   };
    
    trig1.display();
    trig2.display();

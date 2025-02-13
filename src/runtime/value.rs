@@ -76,6 +76,9 @@ impl fmt::Display for Value {
             Value::U128(v) => write!(f, "{v}"),
             Value::USize(v) => write!(f, "{v}"),
 
+            Value::F32(v) => write!(f, "{v}"),
+            Value::F64(v) => write!(f, "{v}"),
+
             Value::Unit => write!(f, "()"),
 
             Value::Str(v) => write!(f, "{}", v),
@@ -87,22 +90,6 @@ impl fmt::Display for Value {
             Value::StructDef { name, .. } => write!(f, "<struct {name}>"),
 
             Value::StaticMethod { struct_name, method, .. } => write!(f, "{}::{}", struct_name, method),
-
-            Value::F32(v) => {
-                if v.fract() == 0.0 {
-                    write!(f, "{v:.1}")
-                } else {
-                    write!(f, "{v}")
-                }
-            }
-
-            Value::F64(v) => {
-                if v.fract() == 0.0 {
-                    write!(f, "{v:.1}")
-                } else {
-                    write!(f, "{v}")
-                }
-            }
 
             Value::Tuple(values) => {
                 write!(f, "(")?;
