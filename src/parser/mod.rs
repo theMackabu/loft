@@ -496,6 +496,22 @@ impl Parser {
             }
         }
 
+        if self.current.token == Token::Mut {
+            self.advance(); // consume 'mut'
+            if let Token::Identifier(id) = &self.current.token {
+                if id == "self" {
+                    self.advance();
+                    return Ok((
+                        Pattern::Identifier {
+                            name: "self".to_string(),
+                            mutable: true,
+                        },
+                        None,
+                    ));
+                }
+            }
+        }
+
         if let Token::Identifier(id) = &self.current.token {
             if id == "self" {
                 self.advance();

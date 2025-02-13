@@ -799,6 +799,40 @@ impl Interpreter {
                 }
             }
 
+            Expr::MemberAssignment { object, member, value } => {
+                let right_val = self.evaluate_expression(value)?;
+
+                match self.evaluate_expression(object)? {
+                    Value::Struct { mut fields, .. } => {
+                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                            *field_value = right_val;
+                            Ok(Value::Unit)
+                        } else {
+                            Err(format!("Field '{}' not found", member))
+                        }
+                    }
+                    Value::Reference {
+                        data: Some(mut boxed_value), mutable, ..
+                    } => {
+                        if !mutable {
+                            return Err("Cannot assign through immutable reference".to_string());
+                        }
+
+                        if let Value::Struct { fields, .. } = &mut *boxed_value {
+                            if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                                *field_value = right_val;
+                                Ok(Value::Unit)
+                            } else {
+                                Err(format!("Field '{}' not found", member))
+                            }
+                        } else {
+                            Err("Cannot assign to field of non-struct reference".to_string())
+                        }
+                    }
+                    _ => Err("Cannot assign to field of non-struct value".to_string()),
+                }
+            }
+
             Expr::MemberAccess { object, member } => {
                 let obj_value = self.evaluate_expression(object)?;
                 match obj_value {

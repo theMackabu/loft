@@ -38,7 +38,7 @@ impl Triangle {
 fn main() {
    let mut trig1 = Triangle::new(10.7, 5.3, "first", 1);
    
-   let mut trig2 = &Triangle { 
+   let mut trig2 = Triangle { 
       base: 9.0, 
       height: 1.4, 
       info: Info { 
@@ -46,6 +46,8 @@ fn main() {
          id: 2 
       }
    };
+   
+   trig1.base = 0.0;
    
    trig1.display();
    trig2.display();
