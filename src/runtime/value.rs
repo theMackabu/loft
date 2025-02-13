@@ -25,6 +25,11 @@ pub enum Value {
     Tuple(Vec<Value>),
     Return(Box<Value>),
 
+    Struct {
+        name: String,
+        fields: Vec<(String, Value, bool)>,
+    },
+
     Enum {
         enum_type: String,
         variant: String,
@@ -83,6 +88,17 @@ impl fmt::Display for Value {
                 } else {
                     write!(f, "ref(<unnamed>)")
                 }
+            }
+
+            Value::Struct { name, fields } => {
+                write!(f, "{} {{ ", name)?;
+                for (i, (field_name, value, _)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", field_name, value)?;
+                }
+                write!(f, " }}")
             }
 
             Value::Enum { enum_type, variant, data } => {

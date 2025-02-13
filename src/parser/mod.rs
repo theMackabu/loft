@@ -1438,6 +1438,17 @@ impl Parser {
 
         if self.current.token == Token::DoubleColon {
             let path = self.parse_path_starting_with(name)?;
+
+            if self.current.token == Token::LeftBrace {
+                self.advance(); // consume {
+                let fields = self.parse_struct_init_fields()?;
+                self.expect(Token::RightBrace)?;
+                return Ok(Expr::StructInit {
+                    struct_name: path.segments.last().unwrap().ident.clone(),
+                    fields,
+                });
+            }
+
             if self.current.token == Token::LeftParen {
                 self.advance(); // consume '('
                 let mut arguments = Vec::new();
