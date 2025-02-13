@@ -811,35 +811,63 @@ impl Interpreter {
 
             Expr::MemberAssignment { object, member, value } => {
                 let right_val = self.evaluate_expression(value)?;
-
-                match self.evaluate_expression(object)? {
-                    Value::Struct { mut fields, .. } => {
-                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
-                            *field_value = right_val;
-                            Ok(Value::Unit)
-                        } else {
-                            Err(format!("Field '{}' not found", member))
-                        }
-                    }
-                    Value::Reference {
-                        data: Some(mut boxed_value), mutable, ..
-                    } => {
-                        if !mutable {
-                            return Err("Cannot assign through immutable reference".to_string());
-                        }
-
-                        if let Value::Struct { fields, .. } = &mut *boxed_value {
-                            if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
-                                *field_value = right_val;
-                                Ok(Value::Unit)
-                            } else {
-                                Err(format!("Field '{}' not found", member))
+                match object.as_ref() {
+                    Expr::Identifier(var_name) => {
+                        // check mutability first using the scope resolver (migrate to struct?)
+                        if let Some(symbol_info) = self.env.scope_resolver.resolve(var_name) {
+                            if !symbol_info.mutable {
+                                return Err(format!("Cannot assign to immutable variable '{}'", var_name));
                             }
                         } else {
-                            Err("Cannot assign to field of non-struct reference".to_string())
+                            return Err(format!("Variable '{}' not found", var_name));
+                        }
+
+                        if let Some((scope_index, original_value)) = self.env.find_variable(var_name) {
+                            match original_value {
+                                Value::Struct { .. } => {
+                                    let mut new_struct = original_value.clone();
+                                    if let Value::Struct { ref mut fields, .. } = new_struct {
+                                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                                            *field_value = right_val;
+                                            self.env.update_scoped_variable(var_name, new_struct, scope_index)?;
+                                            Ok(Value::Unit)
+                                        } else {
+                                            Err(format!("Field '{}' not found", member))
+                                        }
+                                    } else {
+                                        unreachable!()
+                                    }
+                                }
+                                _ => Err(format!("Variable '{}' is not a struct", var_name)),
+                            }
+                        } else {
+                            Err(format!("Variable '{}' not found", var_name))
                         }
                     }
-                    _ => Err("Cannot assign to field of non-struct value".to_string()),
+
+                    _ => {
+                        let evaluated = self.evaluate_expression(object)?;
+                        match evaluated {
+                            Value::Reference {
+                                mutable, data: Some(mut boxed_value), ..
+                            } => {
+                                if !mutable {
+                                    return Err("Cannot assign through immutable reference".to_string());
+                                }
+                                if let Value::Struct { ref mut fields, .. } = &mut *boxed_value {
+                                    if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                                        *field_value = right_val;
+                                        Ok(Value::Unit)
+                                    } else {
+                                        Err(format!("Field '{}' not found", member))
+                                    }
+                                } else {
+                                    Err("Cannot assign to field of non-struct reference".to_string())
+                                }
+                            }
+                            _ => Err("Invalid target for member assignment".to_string()),
+                        }
+                    }
                 }
             }
 

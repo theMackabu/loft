@@ -111,22 +111,63 @@ impl Interpreter {
         };
 
         self.env.enter_scope();
-        self.env.scope_resolver.declare_variable("self", false);
 
-        let self_value = Value::Struct {
-            name: name.to_owned(),
-            fields: fields.to_owned(),
-        };
+        if let Some((self_param, _ty)) = function.params.get(0) {
+            match self_param {
+                Pattern::Identifier { name: self_name, mutable } => {
+                    self.env.scope_resolver.declare_variable(self_name, *mutable);
 
-        self.env.set_variable("self", self_value)?;
+                    let self_value = Value::Struct {
+                        name: name.to_owned(),
+                        fields: fields.to_owned(),
+                    };
+
+                    self.env.set_variable(self_name, self_value)?;
+                }
+
+                Pattern::Reference { mutable: ref_mut, pattern } => {
+                    if let Pattern::Identifier { name: self_name, mutable: _ } = &**pattern {
+                        let binding_mutability = *ref_mut;
+                        self.env.scope_resolver.declare_variable(self_name, binding_mutability);
+
+                        let self_value = Value::Struct {
+                            name: name.to_owned(),
+                            fields: fields.to_owned(),
+                        };
+
+                        self.env.set_variable(self_name, self_value)?;
+                    } else {
+                        return Err("Invalid pattern for self parameter".to_string());
+                    }
+                }
+                _ => return Err("Invalid pattern for self parameter".to_string()),
+            }
+        } else {
+            return Err("Method does not have a self parameter.".to_string());
+        }
 
         let evaluated_args: Vec<Value> = args.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
 
         for (i, value) in evaluated_args.into_iter().enumerate() {
             if let Some((param_pattern, _)) = function.params.get(i + 1) {
-                if let Pattern::Identifier { name, mutable } = param_pattern {
-                    self.env.scope_resolver.declare_variable(name, *mutable);
-                    self.env.set_variable(name, value)?;
+                match param_pattern {
+                    Pattern::Identifier { name, mutable } => {
+                        self.env.scope_resolver.declare_variable(name, *mutable);
+                        self.env.set_variable(name, value)?;
+                    }
+
+                    Pattern::Reference { mutable: ref_mut, pattern } => {
+                        if let Pattern::Identifier { name, mutable: _ } = &**pattern {
+                            let binding_mutability = *ref_mut;
+                            self.env.scope_resolver.declare_variable(name, binding_mutability);
+                            self.env.set_variable(name, value)?;
+                        } else {
+                            return Err("Invalid parameter pattern encountered.".to_string());
+                        }
+                    }
+                    _ => {
+                        return Err("Invalid parameter pattern encountered.".to_string());
+                    }
                 }
             }
         }

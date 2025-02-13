@@ -27,6 +27,8 @@ impl Triangle {
    fn display(&mut self) {
       self.info.set_name("third");
       
+      self.info.id = 0;
+      
       io::println(self.info.id);
       io::println(self.info.get_name());
 
