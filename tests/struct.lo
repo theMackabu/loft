@@ -9,10 +9,14 @@ impl Triangle {
       Self { base, height, name }
    }
    
-   fn display(&self) {
+   fn display(&mut self) {
+      
+      // fix mutability 
+      self.name = "third";
+      
+      io::println(self.name);
       io::println(self.base);
       io::println(self.height);
-      io::println(self.name);
    }
 }
 

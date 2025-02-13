@@ -326,30 +326,52 @@ impl Interpreter {
             }
 
             Expr::Dereference { operand } => match &**operand {
-                Expr::Assignment { target, value } => {
-                    let identifier = if let Expr::Identifier(ref name) = target.as_ref() {
-                        name.clone()
-                    } else {
-                        return Err("Invalid assignment target".to_string());
-                    };
+                Expr::Assignment { target, value } => match target.as_ref() {
+                    Expr::Identifier(identifier) => {
+                        let new_value = self.evaluate_expression(value)?;
 
-                    let new_value = self.evaluate_expression(value)?;
+                        let (source_name, source_scope, _) = if let Some(Value::Reference {
+                            source_name, source_scope, mutable, ..
+                        }) = self.env.get_variable_ref(identifier)
+                        {
+                            if !mutable {
+                                return Err(format!("Cannot assign through immutable reference '{}'", identifier));
+                            }
+                            (source_name.clone(), *source_scope, mutable)
+                        } else {
+                            return Err(format!("Variable '{}' is not a reference", identifier));
+                        };
 
-                    let (source_name, source_scope, _) = if let Some(Value::Reference {
-                        source_name, source_scope, mutable, ..
-                    }) = self.env.get_variable_ref(&identifier)
-                    {
-                        if !mutable {
-                            return Err(format!("Cannot assign through immutable reference '{}'", identifier));
+                        self.env.update_scoped_variable(&source_name.expect("HANDLE THIS"), new_value, source_scope.expect("HANDLE THIS"))?;
+                        Ok(Value::Unit)
+                    }
+                    Expr::MemberAccess { object, member } => {
+                        let new_value = self.evaluate_expression(value)?;
+
+                        if let Value::Reference {
+                            mutable, data: Some(mut boxed_value), ..
+                        } = self.evaluate_expression(object)?
+                        {
+                            if !mutable {
+                                return Err("Cannot assign through immutable reference".to_string());
+                            }
+
+                            if let Value::Struct { fields, .. } = &mut *boxed_value {
+                                if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                                    *field_value = new_value;
+                                    Ok(Value::Unit)
+                                } else {
+                                    Err(format!("Field '{}' not found", member))
+                                }
+                            } else {
+                                Err("Cannot assign to field of non-struct reference".to_string())
+                            }
+                        } else {
+                            Err("Cannot dereference non-reference value".to_string())
                         }
-                        (source_name.clone(), *source_scope, mutable)
-                    } else {
-                        return Err(format!("Variable '{}' is not a reference", identifier));
-                    };
-
-                    self.env.update_scoped_variable(&source_name.expect("HANDLE THIS"), new_value, source_scope.expect("HANDLE THIS"))?;
-                    Ok(Value::Unit)
-                }
+                    }
+                    _ => Err("Invalid assignment target".to_string()),
+                },
 
                 Expr::CompoundAssignment { target, operator, value } => {
                     let identifier = if let Expr::Identifier(ref name) = target.as_ref() {
@@ -594,6 +616,21 @@ impl Interpreter {
                         Err(format!("Variable '{}' not found", name))
                     }
                 }
+
+                Expr::MemberAccess { object, member } => {
+                    if let Value::Struct { mut fields, .. } = self.evaluate_expression(object)? {
+                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                            let right_val = self.evaluate_expression(value)?;
+                            *field_value = right_val;
+                            Ok(Value::Unit)
+                        } else {
+                            Err(format!("Field '{}' not found", member))
+                        }
+                    } else {
+                        Err("Cannot assign to field of non-struct value".to_string())
+                    }
+                }
+
                 _ => Err("Invalid assignment target".to_string()),
             },
 
@@ -614,6 +651,22 @@ impl Interpreter {
                         Err(format!("Variable '{}' not found", name))
                     }
                 }
+
+                Expr::MemberAccess { object, member } => {
+                    if let Value::Struct { mut fields, .. } = self.evaluate_expression(object)? {
+                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                            let right_val = self.evaluate_expression(value)?;
+                            let result = self.evaluate_compound_assignment(field_value, operator, &right_val)?;
+                            *field_value = result;
+                            Ok(Value::Unit)
+                        } else {
+                            Err(format!("Field '{}' not found", member))
+                        }
+                    } else {
+                        Err("Cannot modify field of non-struct value".to_string())
+                    }
+                }
+
                 _ => Err("Invalid assignment target".to_string()),
             },
 
@@ -738,6 +791,27 @@ impl Interpreter {
                     }
 
                     _ => Err(format!("Unsupported function call type: {:?}", function)),
+                }
+            }
+
+            Expr::MemberAccess { object, member } => {
+                let obj_value = self.evaluate_expression(object)?;
+                match obj_value {
+                    Value::Struct { fields, .. } => fields
+                        .iter()
+                        .find(|(field_name, _)| field_name == member)
+                        .map(|(_, value)| value.clone())
+                        .ok_or_else(|| format!("Field '{}' not found", member)),
+
+                    // Value::Reference { data: Some(boxed_value), .. } => match &*boxed_value {
+                    //     Value::Struct { fields, .. } => fields
+                    //         .iter()
+                    //         .find(|(field_name, _)| field_name == member)
+                    //         .map(|(_, value)| value.clone())
+                    //         .ok_or_else(|| format!("Field '{}' not found", member)),
+                    //     _ => Err("Cannot access member of non-struct reference".to_string()),
+                    // },
+                    _ => Err("Cannot access member of non-struct value".to_string()),
                 }
             }
 
