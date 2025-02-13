@@ -608,6 +608,11 @@ impl Interpreter {
             }
 
             Expr::Assignment { target, value } => match target.as_ref() {
+                Expr::MethodCall { object, method, arguments } => {
+                    let obj_value = self.evaluate_expression(object)?;
+                    self.evaluate_method_call(&obj_value, method, arguments)
+                }
+
                 Expr::Identifier(name) => {
                     if let Some(symbol_info) = self.env.scope_resolver.resolve(name) {
                         if !symbol_info.mutable {
@@ -640,6 +645,11 @@ impl Interpreter {
             },
 
             Expr::CompoundAssignment { target, operator, value } => match target.as_ref() {
+                Expr::MethodCall { object, method, arguments } => {
+                    let obj_value = self.evaluate_expression(object)?;
+                    self.evaluate_method_call(&obj_value, method, arguments)
+                }
+
                 Expr::Identifier(name) => {
                     if let Some(symbol_info) = self.env.scope_resolver.resolve(name) {
                         if !symbol_info.mutable {
