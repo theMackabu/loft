@@ -22,7 +22,7 @@ pub enum NumericType {
     F64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
     Identifier { name: String, mutable: bool },
     Reference { mutable: bool, pattern: Box<Pattern> },
@@ -37,38 +37,45 @@ pub enum Pattern {
     Struct { path: Path, fields: Vec<(String, Pattern)>, rest: bool },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Function {
+    pub params: Vec<(Pattern, Type)>,
+    pub body: Vec<Stmt>,
+    pub is_method: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum MacroDelimiter {
     Paren,
     Bracket,
     Brace,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Attribute {
     pub is_inner: bool,
     pub name: String,
     pub tokens: Vec<TokenInfo>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WhileCondition {
     Expression(Box<Expr>),
     Let(Pattern, Box<Expr>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PathSegment {
     pub ident: String,
     pub generics: Vec<Type>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Path {
     pub segments: Vec<PathSegment>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Type {
     Unit,
     Path(Path),
@@ -85,27 +92,27 @@ pub enum Type {
     Pointer { inner: Box<Type> },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum EnumVariant {
     Simple(String),
     Tuple(String, Vec<Type>),
     Struct(String, Vec<(String, Type)>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum UsePath {
     Simple(String),
     Nested(Vec<String>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MatchArm {
     pub pattern: Pattern,
     pub guard: Option<Expr>,
     pub body: Expr,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Path(Path),
     Boolean(bool),
@@ -255,7 +262,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     Return(Option<Expr>),
     Continue(Option<String>),

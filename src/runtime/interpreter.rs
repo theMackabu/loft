@@ -1,6 +1,7 @@
 mod assign;
 mod cast;
 mod environment;
+mod structs;
 
 use super::value::Value;
 use crate::parser::{ast::*, lexer::*};
@@ -111,6 +112,11 @@ impl Interpreter {
                 Ok(Value::Unit)
             }
 
+            Stmt::Struct { name, fields, .. } => {
+                self.handle_struct_def(name, fields, &[])?;
+                Ok(Value::Unit)
+            }
+
             Stmt::Return(expr) => match expr {
                 Some(e) => {
                     let val = self.evaluate_expression(e)?;
@@ -208,16 +214,44 @@ impl Interpreter {
         match expr {
             Expr::Path(path) => {
                 if path.segments.len() == 2 {
-                    let enum_type = &path.segments[0].ident;
-                    let variant = &path.segments[1].ident;
+                    let type_name = &path.segments[0].ident;
+                    let method_name = &path.segments[1].ident;
+
+                    // First check if it's a struct (for static methods like ::new)
+                    if let Some(Value::StructDef { methods, .. }) = self.env.get_variable(type_name) {
+                        if let Some(function) = methods.get(method_name) {
+                            return Ok(Value::StaticMethod {
+                                struct_name: type_name.clone(),
+                                method: method_name.clone(),
+                                function: function.clone(),
+                            });
+                        }
+                    }
+
+                    // Then fall back to enum handling
                     Ok(Value::Enum {
-                        enum_type: enum_type.clone(),
-                        variant: variant.clone(),
+                        enum_type: type_name.clone(),
+                        variant: method_name.clone(),
                         data: None,
                     })
                 } else {
-                    Err(format!("Invalid path expression: {:?}", path))
+                    // Handle single segment paths (might be struct names)
+                    let name = &path.segments[0].ident;
+                    if let Some(value) = self.env.get_variable(name) {
+                        Ok(value.clone())
+                    } else {
+                        Err(format!("Undefined symbol: {}", name))
+                    }
                 }
+            }
+
+            Expr::StructInit { struct_name, fields } => {
+                return self.evaluate_struct_init(struct_name, fields);
+            }
+
+            Expr::MethodCall { object, method, arguments } => {
+                let obj_value = self.evaluate_expression(object)?;
+                self.evaluate_method_call(&obj_value, method, arguments)
             }
 
             Expr::Cast { expr, target_type } => {
@@ -595,30 +629,30 @@ impl Interpreter {
                         if path.segments[0].ident == "io" && path.segments[1].ident == "println" {
                             if let Some(arg) = arguments.first() {
                                 let value = self.evaluate_expression(arg)?;
-                                println!("{value}"); // TEMPORARY - add display and args
+                                println!("{value}");
                                 return Ok(Value::Unit);
                             } else {
                                 return Err("io::println requires an argument".to_string());
                             }
                         }
 
-                        let enum_type = &path.segments[0].ident;
-                        let variant = &path.segments[1].ident;
+                        let type_name = &path.segments[0].ident;
+                        let method_name = &path.segments[1].ident;
+                        let maybe_struct_def = { self.env.get_variable(type_name).cloned() };
 
-                        if !arguments.is_empty() {
-                            let values: Vec<Value> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
-                            Ok(Value::Enum {
-                                enum_type: enum_type.clone(),
-                                variant: variant.clone(),
-                                data: Some(values),
-                            })
-                        } else {
-                            Ok(Value::Enum {
-                                enum_type: enum_type.clone(),
-                                variant: variant.clone(),
-                                data: None,
-                            })
+                        if let Some(struct_def) = maybe_struct_def {
+                            if let Value::StructDef { .. } = struct_def {
+                                return self.evaluate_method_call(&struct_def, method_name, arguments);
+                            }
                         }
+
+                        let values: Vec<Value> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
+
+                        Ok(Value::Enum {
+                            enum_type: type_name.clone(),
+                            variant: method_name.clone(),
+                            data: if values.is_empty() { None } else { Some(values) },
+                        })
                     }
 
                     Expr::Identifier(name) => {

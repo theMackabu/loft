@@ -10,9 +10,9 @@ impl Triangle {
    }
    
    fn display(&self) {
-      io::println(self.base)
-      io::println(self.height)
-      io::print;ln(self.name)
+      io::println(self.base);
+      io::println(self.height);
+      io::println(self.name);
    }
 }
 
@@ -20,6 +20,9 @@ fn main() {
    let trig1 = Triangle::new(10.7, 5.3, "first");
    let trig2 = Triangle { base: 9.0, height: 1.4, name: "second" };
    
+   io::println(trig1);
+   io::println(trig2);
+
    trig1.display();
-   trig2.display()
+   trig2.display();
 }

@@ -102,13 +102,13 @@ pub enum Token {
     EOF,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Location {
     pub line: usize,
     pub column: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TokenInfo {
     pub token: Token,
     pub location: Location,
