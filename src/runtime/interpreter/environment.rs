@@ -45,6 +45,10 @@ impl Environment {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
     }
 
+    pub fn get_variable_owned(&self, name: &str) -> Option<Value> { self.get_variable(name).cloned() }
+
+    pub fn get_variable_source(&self, name: &str) -> Option<(String, usize)> { self.find_variable(name).map(|(scope_index, _)| (name.to_string(), scope_index)) }
+
     /// Retrieves the value of a variable from the environment.
     ///
     /// Searches all active scopes for the variable. Returns `None` if the variable
@@ -143,7 +147,7 @@ impl Environment {
     /// Returns the current scope (e.g., the index of the current scope).
     pub fn get_current_scope(&self) -> usize { self.scopes.len() - 1 }
 
-    fn make_deeply_mutable(&self, value: Value) -> Value {
+    pub fn make_deeply_mutable(&self, value: Value) -> Value {
         let inner = match value.inner() {
             ValueType::Struct { name, fields } => {
                 let mut mutable_fields = HashMap::new();
@@ -165,7 +169,7 @@ impl Environment {
         Box::new(ValueEnum::Mutable(inner))
     }
 
-    fn make_deeply_immutable(&self, value: Value) -> Value {
+    pub fn make_deeply_immutable(&self, value: Value) -> Value {
         let inner = match value.inner() {
             ValueType::Struct { name, fields } => {
                 let mut immutable_fields = HashMap::new();

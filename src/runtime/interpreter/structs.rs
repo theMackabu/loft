@@ -105,7 +105,14 @@ impl Interpreter {
 
     pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
         match object.inner() {
-            ValueType::Struct { name, fields } => self.handle_struct_method_call(&name, &fields, None, method, args),
+            ValueType::Struct { name, fields } => {
+                let origin_info = if let Some((source_name, source_scope)) = self.env.get_variable_source(&name) {
+                    Some((source_name, source_scope))
+                } else {
+                    None
+                };
+                self.handle_struct_method_call(&name, &fields, origin_info, method, args)
+            }
 
             ValueType::Reference {
                 data: Some(boxed_value),
@@ -119,7 +126,10 @@ impl Interpreter {
 
                 match boxed_value.inner() {
                     ValueType::Struct { name, fields } => {
-                        let origin_info = source_name.as_ref().zip(source_scope).map(|(name, scope)| (name, scope));
+                        let origin_info = match (source_name, source_scope) {
+                            (Some(name), Some(scope)) => Some((name.clone(), scope)),
+                            _ => self.env.get_variable_source(&name).map(|(name, scope)| (name.clone(), scope)),
+                        };
 
                         self.handle_struct_method_call(&name, &fields, origin_info, method, args)
                     }
@@ -131,7 +141,7 @@ impl Interpreter {
         }
     }
 
-    pub fn handle_struct_method_call(&mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(&String, usize)>, method: &str, args: &[Expr]) -> Result<Value, String> {
+    pub fn handle_struct_method_call(&mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(String, usize)>, method: &str, args: &[Expr]) -> Result<Value, String> {
         let struct_def = match self.env.get_variable(name) {
             Some(value) => match value.inner() {
                 ValueType::StructDef { methods, .. } => methods,
@@ -145,15 +155,18 @@ impl Interpreter {
         self.env.enter_scope();
 
         let mut params_to_process = Vec::new();
+        let mut original_location = None;
 
         if !function.is_static {
-            let base_self_value = val!(ValueType::Struct {
+            let base_self_value = val!(mut ValueType::Struct {
                 name: name.clone(),
                 fields: fields.clone(),
             });
 
-            let self_value = if let Some((source_name, scope_index)) = origin {
-                val!(ValueType::Reference {
+            original_location = origin.clone().map(|(name, scope)| (name, scope));
+
+            let self_value = if let Some((source_name, scope_index)) = origin.clone() {
+                val!(mut ValueType::Reference {
                     source_name: Some(source_name.to_string()),
                     source_scope: Some(scope_index),
                     data: Some(base_self_value)
@@ -165,18 +178,16 @@ impl Interpreter {
             if let Some((pattern, param_type)) = function.params.first() {
                 match pattern {
                     Pattern::Identifier { name: param_name, mutable } if param_name == "self" => {
-                        params_to_process.push(("self".to_string(), self_value, *mutable, param_type.clone()));
+                        let final_self = if *mutable { self.env.make_deeply_mutable(self_value) } else { self_value };
+                        params_to_process.push(("self".to_string(), final_self, *mutable, param_type.clone()));
                     }
+
                     Pattern::Reference { mutable, pattern } => {
                         if let Pattern::Identifier { name: param_name, .. } = pattern.as_ref() {
                             if param_name != "self" {
                                 return Err("First parameter must be a form of 'self'".to_string());
                             }
-                            let ref_value = val!(ValueType::Reference {
-                                source_name: None,
-                                source_scope: None,
-                                data: Some(self_value)
-                            });
+                            let ref_value = if *mutable { self.env.make_deeply_mutable(self_value) } else { self_value };
                             params_to_process.push(("self".to_string(), ref_value, *mutable, param_type.clone()));
                         }
                     }
@@ -208,14 +219,41 @@ impl Interpreter {
             }
 
             let final_value = if mutable { value.into_mutable() } else { value.into_immutable() };
-
             self.env.set_variable(&param_name, Box::new(final_value))?;
         }
 
+        println!("Before method execution - origin: {:?}", origin.clone());
         let result = self.execute(&function.body);
+        println!("After method execution");
+
+        if let Some((source_name, scope_index)) = original_location.clone() {
+            println!("Attempting update - source: {}, scope: {}", source_name, scope_index);
+            if let Some(modified_self) = self.env.get_variable_owned("self") {
+                println!("Modified self value: {:?}", modified_self);
+
+                let final_value = match modified_self.inner() {
+                    ValueType::Reference { data: Some(inner), .. } => inner,
+                    _ => modified_self,
+                };
+
+                let final_value = self.env.make_deeply_mutable(final_value);
+                println!("Final value to update: {:?}", final_value);
+                match self.env.update_scoped_variable(&source_name, final_value, scope_index) {
+                    Ok(_) => println!("Update successful"),
+                    Err(e) => println!("Update failed: {}", e),
+                }
+            }
+        }
+
+        if let Some((source_name, scope_index)) = original_location {
+            if let Some(scope) = self.env.scopes.get(scope_index) {
+                if let Some(value) = scope.get(&source_name) {
+                    println!("Variable after update: {:?}", value);
+                }
+            }
+        }
 
         self.env.exit_scope();
-
-        return result;
+        result
     }
 }

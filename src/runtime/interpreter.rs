@@ -314,17 +314,32 @@ impl Interpreter {
             }
 
             Expr::Identifier(name) => {
-                if let Some((_, value)) = self.env.find_variable(name) {
+                if let Some((scope_index, value)) = self.env.find_variable(name) {
                     if matches!(value.inner(), ValueType::Reference { .. }) {
                         return Ok(value.clone());
                     }
 
                     let is_mutable = self.env.scope_resolver.resolve(name).map(|info| info.mutable).unwrap_or(false);
 
-                    if is_mutable {
-                        Ok(Box::new(value.as_ref().clone().into_mutable()))
-                    } else {
-                        Ok(value.clone())
+                    match value.inner() {
+                        ValueType::Struct { .. } => {
+                            let mut val = value.clone();
+                            if is_mutable {
+                                val = self.env.make_deeply_mutable(val);
+                            }
+                            Ok(val!(mut ValueType::Reference {
+                                source_name: Some(name.to_string()),
+                                source_scope: Some(scope_index),
+                                data: Some(val)
+                            }))
+                        }
+                        _ => {
+                            if is_mutable {
+                                Ok(Box::new(value.as_ref().clone().into_mutable()))
+                            } else {
+                                Ok(value.clone())
+                            }
+                        }
                     }
                 } else {
                     Err(format!("Undefined variable: {}", name))
@@ -869,7 +884,7 @@ impl Interpreter {
                                 return Err(format!("Variable '{}' not found", base_name));
                             }
 
-                            let mut updated_base = base_value.clone();
+                            let mut updated_base = self.env.make_deeply_mutable(base_value.clone());
 
                             updated_base.set_struct_field(&chain, right_val)?;
                             self.env.update_scoped_variable(&base_name, updated_base, scope_index)?;
@@ -880,13 +895,13 @@ impl Interpreter {
                     }
 
                     Err(_) => {
-                        let mut evaluated = self.evaluate_expression(object)?;
+                        let mut target = self.evaluate_expression(object)?;
 
-                        if !evaluated.is_mutable() {
+                        if !target.is_mutable() {
                             return Err("Cannot assign through immutable reference".to_string());
                         }
 
-                        match evaluated.inner_mut() {
+                        match target.inner_mut() {
                             ValueType::Reference {
                                 data: Some(ref mut boxed_value),
                                 source_name: Some(ref source_name),
@@ -895,7 +910,8 @@ impl Interpreter {
                             } => match boxed_value.inner_mut() {
                                 ValueType::Struct { fields, .. } => {
                                     if let Some(field_value) = fields.get_mut(member) {
-                                        *field_value = right_val;
+                                        *field_value = right_val.clone();
+
                                         self.env.update_scoped_variable(source_name, boxed_value.clone(), *scope)?;
                                         Ok(ValueEnum::unit())
                                     } else {
@@ -904,6 +920,16 @@ impl Interpreter {
                                 }
                                 _ => Err("Cannot assign to field of non-struct reference".to_string()),
                             },
+
+                            ValueType::Struct { fields, .. } => {
+                                if let Some(field_value) = fields.get_mut(member) {
+                                    *field_value = right_val;
+                                    Ok(ValueEnum::unit())
+                                } else {
+                                    Err(format!("Field '{}' not found", member))
+                                }
+                            }
+
                             _ => Err("Invalid target for member assignment".to_string()),
                         }
                     }
@@ -912,28 +938,47 @@ impl Interpreter {
 
             Expr::MemberAccess { object, member } => {
                 let obj_value = self.evaluate_expression(object)?;
-                match obj_value.inner() {
-                    ValueType::Struct { fields, .. } => fields.get(member).cloned().ok_or_else(|| format!("Field '{}' not found", member)),
+                println!("\nMember Access Debug:");
+                println!("Accessing member: {}", member);
+                println!("Object value: {:?}", obj_value);
 
-                    ValueType::Reference { data: Some(ref boxed_value), .. } => match boxed_value.inner() {
-                        ValueType::Struct { fields, .. } => {
-                            if let Some(field_value) = fields.get(member) {
-                                if obj_value.is_mutable() {
-                                    Ok(val!(mut ValueType::Reference {
-                                        source_name: None,
-                                        source_scope: None,
-                                        data: Some(field_value.clone()),
-                                    }))
+                fn get_struct_value(value: &Value) -> Option<(HashMap<String, Value>, bool, Option<(String, usize)>)> {
+                    match value.inner() {
+                        ValueType::Struct { fields, .. } => Some((fields.clone(), value.is_mutable(), None)),
+                        ValueType::Reference {
+                            data: Some(ref inner),
+                            source_name,
+                            source_scope,
+                            ..
+                        } => get_struct_value(inner).map(|(fields, is_mut, _)| (fields, is_mut && value.is_mutable(), source_name.as_ref().cloned().zip(source_scope))),
+                        _ => None,
+                    }
+                }
+
+                match get_struct_value(&obj_value) {
+                    Some((fields, is_mutable, source_info)) => {
+                        if let Some(field_value) = fields.get(member).cloned() {
+                            if is_mutable {
+                                let mut_field = self.env.make_deeply_mutable(field_value);
+                                let (source_name, source_scope) = if let ValueType::Struct { .. } = mut_field.inner() {
+                                    (source_info.as_ref().map(|(name, _)| name.clone()), source_info.as_ref().map(|(_, scope)| *scope))
                                 } else {
-                                    Ok(field_value.clone())
-                                }
+                                    (None, None)
+                                };
+
+                                Ok(val!(mut ValueType::Reference {
+                                    source_name,
+                                    source_scope,
+                                    data: Some(mut_field),
+                                }))
                             } else {
-                                Err(format!("Field '{}' not found", member))
+                                Ok(field_value)
                             }
+                        } else {
+                            Err(format!("Field '{}' not found", member))
                         }
-                        _ => Err("Cannot access member of non-struct reference".to_string()),
-                    },
-                    _ => Err("Cannot access member of non-struct value".to_string()),
+                    }
+                    None => Err("Cannot access member of non-struct value".to_string()),
                 }
             }
 

@@ -115,6 +115,25 @@ impl ValueEnum {
         }
     }
 
+    pub fn get_source_info(&self) -> Option<(String, usize)> {
+        match &self.inner() {
+            ValueType::Reference {
+                source_name: Some(name),
+                source_scope: Some(scope),
+                ..
+            } => Some((name.clone(), *scope)),
+            _ => None,
+        }
+    }
+
+    pub fn into_reference(self, source_name: Option<String>, source_scope: Option<usize>) -> ValueEnum {
+        ValueEnum::Mutable(ValueType::Reference {
+            source_name,
+            source_scope,
+            data: Some(Box::new(self)),
+        })
+    }
+
     pub fn set_struct_field(&mut self, chain: &[String], new_value: Value) -> Result<(), String> {
         if chain.is_empty() {
             return Err("Field chain is empty; cannot update".to_string());
