@@ -129,18 +129,31 @@ impl Interpreter {
 
     pub fn evaluate_method_call(&mut self, object: &Value, method: &str, args: &[Expr]) -> Result<Value, String> {
         match object {
-            Value::Struct { name, fields } => self.handle_struct_method_call(name, fields, method, args),
-
-            Value::Reference { data: Some(boxed_value), .. } => match &**boxed_value {
-                Value::Struct { name, fields } => self.handle_struct_method_call(name, fields, method, args),
+            Value::Struct { name, fields } => {
+                // No origin, so we call the non-mutating branch.
+                self.handle_struct_method_call(name, fields, None, method, args)
+            }
+            Value::Reference {
+                data: Some(boxed_value),
+                source_name,
+                source_scope,
+                mutable,
+                ..
+            } => match &**boxed_value {
+                Value::Struct { name, fields } => {
+                    if !mutable {
+                        return Err("Cannot call method on non-mutable reference".to_string());
+                    }
+                    let origin_info = (source_name.as_ref().ok_or("Missing source variable name")?, source_scope.ok_or("Missing source scope")?);
+                    self.handle_struct_method_call(name, fields, Some(origin_info), method, args)
+                }
                 _ => Err("Cannot call method on non-struct reference".to_string()),
             },
-
             _ => Err("Cannot call method on non-struct value".to_string()),
         }
     }
 
-    fn handle_struct_method_call(&mut self, name: &String, fields: &Vec<(String, Value)>, method: &str, args: &[Expr]) -> Result<Value, String> {
+    fn handle_struct_method_call(&mut self, name: &String, fields: &Vec<(String, Value)>, origin: Option<(&String, usize)>, method: &str, args: &[Expr]) -> Result<Value, String> {
         let methods = match self.env.get_variable(name) {
             Some(Value::StructDef { methods, .. }) => methods.clone(),
             _ => return Err(format!("Struct definition '{}' not found", name)),
@@ -153,30 +166,22 @@ impl Interpreter {
 
         self.env.enter_scope();
 
+        let self_value = Value::Struct {
+            name: name.to_owned(),
+            fields: fields.clone(),
+        };
+
         if let Some((self_param, _ty)) = function.params.get(0) {
             match self_param {
                 Pattern::Identifier { name: self_name, mutable } => {
                     self.env.scope_resolver.declare_variable(self_name, *mutable);
-
-                    let self_value = Value::Struct {
-                        name: name.to_owned(),
-                        fields: fields.to_owned(),
-                    };
-
-                    self.env.set_variable(self_name, self_value)?;
+                    self.env.set_variable(self_name, self_value.clone())?;
                 }
-
                 Pattern::Reference { mutable: ref_mut, pattern } => {
-                    if let Pattern::Identifier { name: self_name, mutable: _ } = &**pattern {
+                    if let Pattern::Identifier { name: self_name, .. } = &**pattern {
                         let binding_mutability = *ref_mut;
                         self.env.scope_resolver.declare_variable(self_name, binding_mutability);
-
-                        let self_value = Value::Struct {
-                            name: name.to_owned(),
-                            fields: fields.to_owned(),
-                        };
-
-                        self.env.set_variable(self_name, self_value)?;
+                        self.env.set_variable(self_name, self_value.clone())?;
                     } else {
                         return Err("Invalid pattern for self parameter".to_string());
                     }
@@ -188,7 +193,6 @@ impl Interpreter {
         }
 
         let evaluated_args: Vec<Value> = args.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
-
         for (i, value) in evaluated_args.into_iter().enumerate() {
             if let Some((param_pattern, _)) = function.params.get(i + 1) {
                 match param_pattern {
@@ -196,9 +200,8 @@ impl Interpreter {
                         self.env.scope_resolver.declare_variable(name, *mutable);
                         self.env.set_variable(name, value)?;
                     }
-
                     Pattern::Reference { mutable: ref_mut, pattern } => {
-                        if let Pattern::Identifier { name, mutable: _ } = &**pattern {
+                        if let Pattern::Identifier { name, .. } = &**pattern {
                             let binding_mutability = *ref_mut;
                             self.env.scope_resolver.declare_variable(name, binding_mutability);
                             self.env.set_variable(name, value)?;
@@ -206,16 +209,34 @@ impl Interpreter {
                             return Err("Invalid parameter pattern encountered.".to_string());
                         }
                     }
-                    _ => {
-                        return Err("Invalid parameter pattern encountered.".to_string());
-                    }
+                    _ => return Err("Invalid parameter pattern encountered.".to_string()),
                 }
             }
         }
 
         let result = self.execute(&function.body)?;
-        self.env.exit_scope();
 
+        let updated_self = if let Some((self_param, _)) = function.params.get(0) {
+            match self_param {
+                Pattern::Identifier { name, .. } => self.env.get_variable(name).cloned().ok_or_else(|| format!("Could not retrieve updated self value for '{name}'"))?,
+                Pattern::Reference { pattern, .. } => {
+                    if let Pattern::Identifier { name, .. } = &**pattern {
+                        self.env.get_variable(name).cloned().ok_or_else(|| format!("Could not retrieve updated self value for '{name}'"))?
+                    } else {
+                        self_value.clone()
+                    }
+                }
+                _ => self_value.clone(),
+            }
+        } else {
+            self_value.clone()
+        };
+
+        if let Some((origin_name, scope_index)) = origin {
+            self.env.update_scoped_variable(origin_name, updated_self.clone(), scope_index)?;
+        }
+
+        self.env.exit_scope();
         Ok(result)
     }
 }

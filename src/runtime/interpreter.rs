@@ -295,10 +295,29 @@ impl Interpreter {
                 data: Some(Box::new(Value::Str(value.to_owned()))),
             }),
 
-            Expr::Identifier(name) => match self.env.get_variable(name) {
-                Some(value) => Ok(value.clone()),
-                None => Err(format!("Undefined variable: {}", name)),
-            },
+            Expr::Identifier(name) => {
+                if let Some((scope_index, value)) = self.env.find_variable(name) {
+                    if let Value::Reference { .. } = value {
+                        return Ok(value.to_owned());
+                    }
+
+                    let is_mutable = self.env.scope_resolver.resolve(name).map(|info| info.mutable).unwrap_or(false);
+
+                    if is_mutable {
+                        Ok(Value::Reference {
+                            mutable: true,
+                            source_name: Some(name.clone()),
+                            source_scope: Some(scope_index),
+                            // IMPORTANT!!! the current binding is cloned and wrapped.
+                            data: Some(Box::new(value.clone())),
+                        })
+                    } else {
+                        Ok(value.to_owned())
+                    }
+                } else {
+                    Err(format!("Undefined variable: {}", name))
+                }
+            }
 
             Expr::Tuple(expressions) => {
                 let mut values = Vec::new();
@@ -809,6 +828,7 @@ impl Interpreter {
                 }
             }
 
+            // support compound assignment
             Expr::MemberAssignment { object, member, value } => {
                 let right_val = self.evaluate_expression(value)?;
 
