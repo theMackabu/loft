@@ -161,30 +161,42 @@ impl Interpreter {
         let function = struct_def.get(method).ok_or_else(|| format!("Method '{}' not found on struct '{}'", method, name))?.clone();
 
         self.env.enter_scope();
-
         let mut params_to_process = Vec::new();
 
-        if !function.is_static {
-            let base_self_value = val!(mut ValueType::Struct {
+        let effective_origin = self.env.resolve_effective_origin("self", &origin);
+
+        let live_self_value = if !effective_origin.0.is_empty() {
+            self.env
+                .get_variable(&effective_origin.0)
+                .ok_or_else(|| format!("Variable '{}' not found", effective_origin.0))?
+                .clone()
+        } else {
+            val!(mut ValueType::Struct {
                 name: name.clone(),
                 fields: fields.clone(),
-            });
+            })
+        };
 
-            let self_value = if let Some((outer_name, scope_index)) = origin.clone() {
-                val!(mut ValueType::Reference {
-                    source_name: Some(outer_name),
-                    source_scope: Some(scope_index),
-                    data: Some(base_self_value)
-                })
+        let self_value = if !function.is_static {
+            if origin.is_some() {
+                live_self_value
             } else {
-                base_self_value
-            };
+                val!(mut ValueType::Reference {
+                    source_name: None,
+                    source_scope: None,
+                    data: Some(live_self_value)
+                })
+            }
+        } else {
+            live_self_value
+        };
 
+        if !function.is_static {
             if let Some((pattern, param_type)) = function.params.first() {
                 match pattern {
                     Pattern::Identifier { name: param_name, mutable } if param_name == "self" => {
                         let final_self = if *mutable { self.env.make_deeply_mutable(self_value) } else { self_value };
-                        params_to_process.push(("self".to_string(), final_self, *mutable, param_type.clone()));
+                        params_to_process.push(("self".to_owned(), final_self, *mutable, param_type.clone()));
                     }
 
                     Pattern::Reference { mutable, pattern } => {
@@ -193,9 +205,10 @@ impl Interpreter {
                                 return Err("First parameter must be a form of 'self'".to_string());
                             }
                             let ref_value = if *mutable { self.env.make_deeply_mutable(self_value) } else { self_value };
-                            params_to_process.push(("self".to_string(), ref_value, *mutable, param_type.clone()));
+                            params_to_process.push(("self".to_owned(), ref_value, *mutable, param_type.clone()));
                         }
                     }
+
                     _ => return Err("First parameter must be a form of 'self'".to_string()),
                 }
             }
@@ -218,9 +231,7 @@ impl Interpreter {
                         return Err("Cannot pass immutable value as mutable reference".to_string());
                     }
                 }
-                _ => {
-                    self.env.scope_resolver.declare_variable(&param_name, mutable);
-                }
+                _ => self.env.scope_resolver.declare_variable(&param_name, mutable),
             }
 
             let final_value = if mutable { value.into_mutable() } else { value.into_immutable() };
@@ -232,24 +243,18 @@ impl Interpreter {
         println!("After method execution");
 
         if let Some((mut base_name, chain)) = field_chain {
-            // If the extracted base name is "self", substitute it with the outer variable name.
             if base_name == "self" {
-                if let Some((outer_name, _)) = origin.clone() {
-                    base_name = outer_name;
-                }
+                base_name = effective_origin.0.clone();
             }
             println!("Attempting nested update - base: {}, chain: {:?}", base_name, chain);
+
             if let Some((scope_index, base_value)) = self.env.find_variable(&base_name) {
-                // Create a mutable copy of the outer variable.
                 let mut updated_base = self.env.make_deeply_mutable(base_value.clone());
-                if let Some(modified_self) = self.env.scopes.last().and_then(|scope| scope.get("self")).cloned() {
-                    let final_value = match modified_self.inner() {
-                        ValueType::Reference { data: Some(inner), .. } => inner,
-                        _ => modified_self,
-                    };
-                    let final_value = self.env.make_deeply_mutable(final_value);
+
+                if let Some(local_self) = self.env.scopes.last().and_then(|scope| scope.get("self")).cloned() {
+                    let subfield_value = local_self.get_struct_field(&chain).ok_or_else(|| format!("Failed to get subfield with chain {:?}", chain))?;
+                    let final_value = self.env.make_deeply_mutable(subfield_value.clone());
                     println!("Nested update final value: {:?}", final_value);
-                    // Attempt to set the nested field.
                     updated_base.set_struct_field(&chain, final_value)?;
                     match self.env.update_scoped_variable(&base_name, updated_base, scope_index) {
                         Ok(_) => println!("Nested update successful"),
@@ -263,7 +268,8 @@ impl Interpreter {
             }
         } else if let Some((ref source_name, scope_index)) = origin {
             println!("Attempting update - source: {}, scope: {}", source_name, scope_index);
-            if let Some(modified_self) = self.env.get_variable_owned("self") {
+
+            if let Some(modified_self) = self.env.scopes.last().and_then(|scope| scope.get("self")).cloned() {
                 println!("Modified self value: {:?}", modified_self);
                 let final_value = match modified_self.inner() {
                     ValueType::Reference { data: Some(inner), .. } => inner,
@@ -271,7 +277,7 @@ impl Interpreter {
                 };
                 let final_value = self.env.make_deeply_mutable(final_value);
                 println!("Final value to update: {:?}", final_value);
-                match self.env.update_scoped_variable(&source_name, final_value, scope_index) {
+                match self.env.update_scoped_variable(source_name, final_value, scope_index) {
                     Ok(_) => println!("Update successful"),
                     Err(e) => println!("Update failed: {}", e),
                 }

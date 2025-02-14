@@ -134,6 +134,31 @@ impl ValueEnum {
         })
     }
 
+    pub fn get_struct_field(&self, chain: &[String]) -> Option<Value> {
+        if chain.is_empty() {
+            return None;
+        }
+
+        match self.inner() {
+            ValueType::Reference { data: Some(inner), .. } => inner.get_struct_field(chain),
+
+            ValueType::Struct { fields, .. } => {
+                let field_name = &chain[0];
+                if chain.len() == 1 {
+                    fields.get(field_name).cloned()
+                } else {
+                    if let Some(next) = fields.get(field_name) {
+                        next.get_struct_field(&chain[1..])
+                    } else {
+                        None
+                    }
+                }
+            }
+
+            _ => None,
+        }
+    }
+
     pub fn set_struct_field(&mut self, chain: &[String], new_value: Value) -> Result<(), String> {
         if chain.is_empty() {
             return Err("Field chain is empty; cannot update".to_string());

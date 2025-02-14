@@ -47,7 +47,15 @@ impl Environment {
 
     pub fn get_variable_source(&self, name: &str) -> Option<(String, usize)> { self.find_variable(name).map(|(scope_index, _)| (name.to_string(), scope_index)) }
 
-    pub fn get_variable_owned(&self, name: &str) -> Option<Value> { self.get_variable(name).cloned() }
+    pub fn resolve_effective_origin(&self, name: &str, origin: &Option<(String, usize)>) -> (String, usize) {
+        let current_scope = self.get_current_scope();
+        if name == "self" {
+            if let Some((outer_name, outer_scope)) = origin {
+                return (outer_name.to_owned(), *outer_scope);
+            }
+        }
+        (name.to_owned(), current_scope)
+    }
 
     /// Retrieves the value of a variable from the environment.
     ///
