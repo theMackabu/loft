@@ -50,20 +50,19 @@ impl Environment {
     /// Searches all active scopes for the variable. Returns `None` if the variable
     /// is not found or not declared.
     pub fn get_variable(&self, name: &str) -> Option<&Value> {
-        self.get_variable_ref(name).and_then(|value| {
-            if let Value::Reference { source_name, source_scope, .. } = value {
+        self.get_variable_ref(name).and_then(|value| match value.inner() {
+            ValueType::Reference { source_name, source_scope, .. } => {
                 if let (Some(source_name), Some(source_scope)) = (source_name, source_scope) {
-                    if let Some(scope) = self.scopes.get(*source_scope) {
-                        scope.get(source_name).or(Some(value))
+                    if let Some(scope) = self.scopes.get(source_scope) {
+                        scope.get(&source_name).or(Some(value))
                     } else {
                         Some(value)
                     }
                 } else {
                     Some(value)
                 }
-            } else {
-                Some(value)
             }
+            _ => Some(value),
         })
     }
 

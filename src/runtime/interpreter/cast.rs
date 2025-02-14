@@ -5,20 +5,20 @@ impl Interpreter {
         match target_type {
             // it cannot cast references like
             // let big_num: &i64 = 50;
-            Type::Reference { mutable, inner } => match value {
-                Value::Reference { source_name, source_scope, data, .. } => {
+            Type::Reference { mutable, inner } => match value.inner() {
+                ValueType::Reference { source_name, source_scope, data } => {
                     if let (Some(source_name), Some(source_scope)) = (source_name.clone(), source_scope) {
                         if let Some(scope) = self.env.scopes.get(source_scope) {
                             if let Some(inner_value) = scope.get(&source_name) {
                                 let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
                                 self.env.update_scoped_variable(&source_name, casted_inner, source_scope)?;
 
-                                Ok(Value::Reference {
+                                let reference = ValueType::Reference {
                                     source_name: Some(source_name),
                                     source_scope: Some(source_scope),
-                                    mutable: *mutable,
                                     data: None,
-                                })
+                                };
+                                Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                             } else {
                                 Err(format!("Reference source '{}' not found", source_name))
                             }
@@ -26,36 +26,36 @@ impl Interpreter {
                             Err(format!("Reference scope {} not found", source_scope))
                         }
                     } else if let Some(inner_value) = data {
-                        let casted_inner = self.perform_cast(*inner_value, inner)?;
-                        Ok(Value::Reference {
+                        let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
+                        let reference = ValueType::Reference {
                             source_name: None,
                             source_scope: None,
-                            mutable: *mutable,
-                            data: Some(Box::new(casted_inner)),
-                        })
+                            data: Some(casted_inner),
+                        };
+                        Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                     } else {
                         Err("Invalid reference: missing both source and data".to_string())
                     }
                 }
 
-                other => {
-                    let casted = self.perform_cast(other, inner)?;
+                _ => {
+                    let casted = self.perform_cast(value, inner)?;
                     let temp_name = self.env.generate_temp_reference_name();
                     let current_scope = self.env.get_current_scope();
                     self.env.update_scoped_variable(&temp_name, casted, current_scope)?;
 
-                    Ok(Value::Reference {
+                    let reference = ValueType::Reference {
                         source_name: Some(temp_name),
                         source_scope: Some(current_scope),
-                        mutable: *mutable,
                         data: None,
-                    })
+                    };
+                    Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                 }
             },
 
             Type::Path(path) if path.segments.len() == 1 => {
-                let value = match value {
-                    Value::Reference { source_name, source_scope, data, .. } => {
+                let value = match value.inner() {
+                    ValueType::Reference { source_name, source_scope, data } => {
                         if let (Some(source_name), Some(source_scope)) = (source_name.clone(), source_scope) {
                             if let Some(scope) = self.env.scopes.get(source_scope) {
                                 if let Some(val) = scope.get(&source_name) {
@@ -67,12 +67,12 @@ impl Interpreter {
                                 return Err(format!("Reference scope {} not found", source_scope));
                             }
                         } else if let Some(inner_value) = data {
-                            *inner_value
+                            inner_value.clone()
                         } else {
                             return Err("Invalid reference: missing both source and data".to_string());
                         }
                     }
-                    other => other,
+                    _ => value,
                 };
 
                 let type_name = &path.segments[0].ident;
@@ -106,23 +106,23 @@ impl Interpreter {
     where
         T: TryFrom<i64> + TryFrom<u64> + 'static,
     {
-        match value {
-            Value::I8(v) => self.numeric_to_int::<T>(v as i64),
-            Value::I16(v) => self.numeric_to_int::<T>(v as i64),
-            Value::I32(v) => self.numeric_to_int::<T>(v as i64),
-            Value::I64(v) => self.numeric_to_int::<T>(v),
-            Value::I128(v) => self.numeric_to_int::<T>(v as i64),
-            Value::ISize(v) => self.numeric_to_int::<T>(v as i64),
+        match value.inner() {
+            ValueType::I8(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::I16(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::I32(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::I64(v) => self.numeric_to_int::<T>(v),
+            ValueType::I128(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::ISize(v) => self.numeric_to_int::<T>(v as i64),
 
-            Value::U8(v) => self.numeric_to_int::<T>(v as i64),
-            Value::U16(v) => self.numeric_to_int::<T>(v as i64),
-            Value::U32(v) => self.numeric_to_int::<T>(v as i64),
-            Value::U64(v) => self.numeric_to_int::<T>(v as i64),
-            Value::U128(v) => self.numeric_to_int::<T>(v as i64),
-            Value::USize(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::U8(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::U16(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::U32(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::U64(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::U128(v) => self.numeric_to_int::<T>(v as i64),
+            ValueType::USize(v) => self.numeric_to_int::<T>(v as i64),
 
-            Value::F32(v) => self.float_to_int::<T>(v as f64),
-            Value::F64(v) => self.float_to_int::<T>(v),
+            ValueType::F32(v) => self.float_to_int::<T>(v as f64),
+            ValueType::F64(v) => self.float_to_int::<T>(v),
 
             _ => Err("Cannot cast non-numeric value to integer".to_string()),
         }
@@ -132,23 +132,23 @@ impl Interpreter {
     where
         T: TryFrom<u64> + 'static,
     {
-        match value {
-            Value::I8(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
-            Value::I16(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
-            Value::I32(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
-            Value::I64(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
-            Value::I128(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
-            Value::ISize(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
+        match value.inner() {
+            ValueType::I8(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
+            ValueType::I16(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
+            ValueType::I32(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
+            ValueType::I64(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
+            ValueType::I128(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
+            ValueType::ISize(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
 
-            Value::U8(v) => self.numeric_to_uint::<T>(v as u64),
-            Value::U16(v) => self.numeric_to_uint::<T>(v as u64),
-            Value::U32(v) => self.numeric_to_uint::<T>(v as u64),
-            Value::U64(v) => self.numeric_to_uint::<T>(v),
-            Value::U128(v) => self.numeric_to_uint::<T>(v as u64),
-            Value::USize(v) => self.numeric_to_uint::<T>(v as u64),
+            ValueType::U8(v) => self.numeric_to_uint::<T>(v as u64),
+            ValueType::U16(v) => self.numeric_to_uint::<T>(v as u64),
+            ValueType::U32(v) => self.numeric_to_uint::<T>(v as u64),
+            ValueType::U64(v) => self.numeric_to_uint::<T>(v),
+            ValueType::U128(v) => self.numeric_to_uint::<T>(v as u64),
+            ValueType::USize(v) => self.numeric_to_uint::<T>(v as u64),
 
-            Value::F32(v) if v >= 0.0 => self.float_to_uint::<T>(v as f64),
-            Value::F64(v) if v >= 0.0 => self.float_to_uint::<T>(v),
+            ValueType::F32(v) if v >= 0.0 => self.float_to_uint::<T>(v as f64),
+            ValueType::F64(v) if v >= 0.0 => self.float_to_uint::<T>(v),
 
             _ => Err("Cannot cast negative or non-numeric value to unsigned integer".to_string()),
         }
@@ -158,37 +158,37 @@ impl Interpreter {
     where
         T: 'static,
     {
-        match (value, std::any::TypeId::of::<T>()) {
-            (Value::F32(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v)),
-            (Value::F32(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::F64(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::F64(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v)),
+        match (value.inner(), std::any::TypeId::of::<T>()) {
+            (ValueType::F32(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v))),
+            (ValueType::F32(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::F64(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::F64(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v))),
 
-            (Value::I8(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::I8(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::I16(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::I16(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::I32(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::I32(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::I64(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::I64(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::I128(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::I128(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::ISize(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::ISize(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
+            (ValueType::I8(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::I8(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::I16(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::I16(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::I32(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::I32(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::I64(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::I64(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::I128(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::I128(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::ISize(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::ISize(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
 
-            (Value::U8(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::U8(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::U16(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::U16(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::U32(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::U32(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::U64(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::U64(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::U128(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::U128(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
-            (Value::USize(v), t) if t == std::any::TypeId::of::<f32>() => Ok(Value::F32(v as f32)),
-            (Value::USize(v), t) if t == std::any::TypeId::of::<f64>() => Ok(Value::F64(v as f64)),
+            (ValueType::U8(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::U8(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::U16(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::U16(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::U32(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::U32(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::U64(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::U64(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::U128(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::U128(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
+            (ValueType::USize(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),
+            (ValueType::USize(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
 
             _ => Err("Invalid float cast".to_string()),
         }
@@ -199,12 +199,12 @@ impl Interpreter {
         T: TryFrom<i64> + 'static,
     {
         match std::any::TypeId::of::<T>() {
-            t if t == std::any::TypeId::of::<i8>() => Ok(Value::I8(value as i8)),
-            t if t == std::any::TypeId::of::<i16>() => Ok(Value::I16(value as i16)),
-            t if t == std::any::TypeId::of::<i32>() => Ok(Value::I32(value as i32)),
-            t if t == std::any::TypeId::of::<i64>() => Ok(Value::I64(value)),
-            t if t == std::any::TypeId::of::<i128>() => Ok(Value::I128(value as i128)),
-            t if t == std::any::TypeId::of::<isize>() => Ok(Value::ISize(value as isize)),
+            t if t == std::any::TypeId::of::<i8>() => Ok(val!(ValueType::I8(value as i8))),
+            t if t == std::any::TypeId::of::<i16>() => Ok(val!(ValueType::I16(value as i16))),
+            t if t == std::any::TypeId::of::<i32>() => Ok(val!(ValueType::I32(value as i32))),
+            t if t == std::any::TypeId::of::<i64>() => Ok(val!(ValueType::I64(value))),
+            t if t == std::any::TypeId::of::<i128>() => Ok(val!(ValueType::I128(value as i128))),
+            t if t == std::any::TypeId::of::<isize>() => Ok(val!(ValueType::ISize(value as isize))),
             _ => Err("Invalid integer cast".to_string()),
         }
     }
@@ -214,12 +214,12 @@ impl Interpreter {
         T: TryFrom<u64> + 'static,
     {
         match std::any::TypeId::of::<T>() {
-            t if t == std::any::TypeId::of::<u8>() => Ok(Value::U8(value as u8)),
-            t if t == std::any::TypeId::of::<u16>() => Ok(Value::U16(value as u16)),
-            t if t == std::any::TypeId::of::<u32>() => Ok(Value::U32(value as u32)),
-            t if t == std::any::TypeId::of::<u64>() => Ok(Value::U64(value)),
-            t if t == std::any::TypeId::of::<u128>() => Ok(Value::U128(value as u128)),
-            t if t == std::any::TypeId::of::<usize>() => Ok(Value::USize(value as usize)),
+            t if t == std::any::TypeId::of::<u8>() => Ok(val!(ValueType::U8(value as u8))),
+            t if t == std::any::TypeId::of::<u16>() => Ok(val!(ValueType::U16(value as u16))),
+            t if t == std::any::TypeId::of::<u32>() => Ok(val!(ValueType::U32(value as u32))),
+            t if t == std::any::TypeId::of::<u64>() => Ok(val!(ValueType::U64(value))),
+            t if t == std::any::TypeId::of::<u128>() => Ok(val!(ValueType::U128(value as u128))),
+            t if t == std::any::TypeId::of::<usize>() => Ok(val!(ValueType::USize(value as usize))),
             _ => Err("Invalid unsigned integer cast".to_string()),
         }
     }

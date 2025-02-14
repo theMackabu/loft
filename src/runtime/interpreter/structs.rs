@@ -17,22 +17,24 @@ impl Interpreter {
         if chain.is_empty() {
             return Err("Field chain is empty; cannot update".to_string());
         }
-        match value {
-            Value::Struct { fields, .. } => {
+
+        if !value.is_mutable() {
+            return Err("Cannot modify immutable value".to_string());
+        }
+
+        match value.inner_mut() {
+            ValueType::Struct { fields, .. } => {
                 let field_name = &chain[0];
                 if chain.len() == 1 {
-                    if fields.contains_key(field_name) {
-                        fields.insert(field_name.clone(), new_value);
+                    if let Some(existing) = fields.get_mut(field_name) {
+                        *existing = new_value;
                         Ok(())
                     } else {
                         Err(format!("Field '{}' not found", field_name))
                     }
                 } else {
-                    if let Some(field_val) = fields.get_mut(field_name) {
-                        match field_val {
-                            Value::Struct { .. } => self.update_struct_field(field_val, &chain[1..], new_value),
-                            _ => Err(format!("Field '{}' is not a struct", field_name)),
-                        }
+                    if let Some(inner_value) = fields.get_mut(field_name) {
+                        self.update_struct_field(inner_value, &chain[1..], new_value)
                     } else {
                         Err(format!("Field '{}' not found", field_name))
                     }
@@ -45,11 +47,11 @@ impl Interpreter {
     pub fn handle_struct_def(&mut self, name: &str, fields: HashMap<String, (Type, bool)>) -> Result<(), String> {
         self.env.scope_resolver.declare_variable(name, false);
 
-        let struct_def = Value::StructDef {
-            fields,
+        let struct_def = val!(ValueType::StructDef {
             name: name.to_string(),
+            fields,
             methods: HashMap::new(),
-        };
+        });
 
         self.env.set_variable(name, struct_def)
     }
@@ -61,16 +63,20 @@ impl Interpreter {
             return Err(format!("Invalid impl target path: {:?}", target));
         };
 
-        let (name, fields, mut methods) = match self.env.get_variable(type_name) {
-            Some(Value::StructDef { name, fields, methods }) => (name.clone(), fields.clone(), methods.clone()),
-            _ => return Err(format!("Type '{}' not found", type_name)),
+        let (name, fields, mut methods) = match self.env.get_variable(type_name).as_ref() {
+            Some(value) => match value.inner() {
+                ValueType::StructDef { name, fields, methods } => (name.clone(), fields.clone(), methods.clone()),
+                _ => return Err(format!("Value '{}' is not a struct definition", type_name)),
+            },
+            None => return Err(format!("Type '{}' not found", type_name)),
         };
 
         for method in items {
             if let Stmt::Function { name: method_name, params, body, .. } = method {
                 let is_static = params.is_empty()
                     || !matches! {
-                        &params[0].0, Pattern::Identifier { name, .. } if name == "self"
+                        &params[0].0,
+                        Pattern::Identifier { name, .. } if name == "self"
                     };
 
                 methods.insert(
@@ -85,14 +91,17 @@ impl Interpreter {
             }
         }
 
-        let updated_struct_def = Value::StructDef { name, fields, methods };
+        let updated_struct_def = val!(ValueType::StructDef { name, fields, methods });
         self.env.set_variable(type_name, updated_struct_def)
     }
 
     pub fn evaluate_struct_init(&mut self, name: &str, fields: HashMap<String, (Expr, bool)>) -> Result<Value, String> {
         let def_fields = match self.env.find_variable(name) {
-            Some((_, Value::StructDef { fields: def_fields, .. })) => def_fields.to_owned(),
-            _ => return Err(format!("Struct definition '{}' not found", name)),
+            Some((_, value)) => match value.inner() {
+                ValueType::StructDef { fields: def_fields, .. } => def_fields,
+                _ => return Err(format!("Value '{}' is not a struct definition", name)),
+            },
+            None => return Err(format!("Struct definition '{}' not found", name)),
         };
 
         let mut field_values: HashMap<String, Value> = HashMap::new();
@@ -119,57 +128,57 @@ impl Interpreter {
             return Err(format!("Missing field '{}' in struct initialization", missing));
         }
 
-        Ok(Value::Struct {
+        Ok(val!(ValueType::Struct {
             name: name.to_owned(),
             fields: field_values,
-        })
+        }))
     }
 
-    pub fn evaluate_method_call(&mut self, object: &Value, method: &str, args: &[Expr]) -> Result<Value, String> {
-        match object {
-            Value::Struct { name, fields } => self.handle_struct_method_call(name, fields, None, method, args),
+    pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
+        match object.inner() {
+            ValueType::Struct { name, fields } => self.handle_struct_method_call(&name, &fields, None, method, args),
 
-            Value::Reference {
+            ValueType::Reference {
                 data: Some(boxed_value),
                 source_name,
                 source_scope,
-                mutable,
                 ..
-            } => match &**boxed_value {
-                Value::Struct { name, fields } => {
-                    if !mutable {
-                        return Err("Cannot call method on non-mutable reference".to_string());
-                    }
-                    let origin_info = if source_name.is_some() && source_scope.is_some() {
-                        Some((source_name.as_ref().unwrap(), source_scope.unwrap()))
-                    } else {
-                        None
-                    };
-                    self.handle_struct_method_call(name, fields, origin_info, method, args)
+            } => {
+                if !object.is_mutable() {
+                    return Err("Cannot call method on non-mutable reference".to_string());
                 }
-                _ => Err("Cannot call method on non-struct reference".to_string()),
-            },
+
+                match boxed_value.inner() {
+                    ValueType::Struct { name, fields } => {
+                        let origin_info = source_name.as_ref().zip(source_scope).map(|(name, scope)| (name, scope));
+
+                        self.handle_struct_method_call(&name, &fields, origin_info, method, args)
+                    }
+                    _ => Err("Cannot call method on non-struct reference".to_string()),
+                }
+            }
+
             _ => Err("Cannot call method on non-struct value".to_string()),
         }
     }
 
     pub fn handle_struct_method_call(&mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(&String, usize)>, method: &str, args: &[Expr]) -> Result<Value, String> {
         let methods = match self.env.get_variable(name) {
-            Some(Value::StructDef { methods, .. }) => methods.clone(),
-            _ => return Err(format!("Struct definition '{}' not found", name)),
+            Some(value) => match value.inner() {
+                ValueType::StructDef { methods, .. } => methods.clone(),
+                _ => return Err(format!("Value '{}' is not a struct definition", name)),
+            },
+            None => return Err(format!("Struct definition '{}' not found", name)),
         };
 
-        let function = match methods.get(method) {
-            Some(f) => f.clone(),
-            None => return Err(format!("Method '{}' not found on struct '{}'", method, name)),
-        };
+        let function = methods.get(method).cloned().ok_or_else(|| format!("Method '{}' not found on struct '{}'", method, name))?;
 
         self.env.enter_scope();
 
-        let self_value = Value::Struct {
+        let self_value = val!(ValueType::Struct {
             name: name.to_owned(),
             fields: fields.clone(),
-        };
+        });
 
         // Bind the self parameter
         if let Some((self_param, _ty)) = function.params.get(0) {
@@ -193,8 +202,9 @@ impl Interpreter {
             return Err("Method does not have a self parameter.".to_string());
         }
 
-        // Evaluate the remaining arguments and bind them.
+        // Evaluate and bind remaining arguments
         let evaluated_args: Vec<Value> = args.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
+
         for (i, value) in evaluated_args.into_iter().enumerate() {
             if let Some((param_pattern, _)) = function.params.get(i + 1) {
                 match param_pattern {
@@ -244,16 +254,16 @@ impl Interpreter {
             while let Some((_, value)) = self.env.find_variable(&current_name) {
                 update_chain.push((current_name.clone(), current_scope));
 
-                if let Value::Reference {
-                    source_name: Some(parent_name),
-                    source_scope: Some(parent_scope),
-                    ..
-                } = value
-                {
-                    current_name = parent_name.clone();
-                    current_scope = *parent_scope;
-                } else {
-                    break;
+                match value.inner() {
+                    ValueType::Reference {
+                        source_name: Some(parent_name),
+                        source_scope: Some(parent_scope),
+                        ..
+                    } => {
+                        current_name = parent_name.clone();
+                        current_scope = parent_scope;
+                    }
+                    _ => break,
                 }
             }
 
@@ -274,29 +284,31 @@ impl Interpreter {
     }
 
     fn merge_nested_fields(&self, parent: &mut Value, parent_origin: &str) -> Result<(), String> {
-        if let Value::Struct { fields, .. } = parent {
-            for (field_name, field_val) in fields.iter_mut() {
-                // fix using Vec<String> for origin
-                let composite_origin = format!("{}.{}", parent_origin, field_name);
+        match parent.inner_mut() {
+            ValueType::Struct { fields, .. } => {
+                for (field_name, field_val) in fields.iter_mut() {
+                    let composite_origin = format!("{}.{}", parent_origin, field_name);
+                    let mut current_origin = composite_origin.clone();
 
-                let mut current_origin = composite_origin.clone();
-                while let Some((_, updated_val)) = self.env.find_variable(&current_origin) {
-                    match updated_val {
-                        Value::Reference { source_name: Some(next_origin), .. } => {
-                            current_origin = next_origin.clone();
-                        }
-                        _ => {
-                            *field_val = updated_val.clone();
-                            break;
+                    while let Some((_, updated_val)) = self.env.find_variable(&current_origin) {
+                        match updated_val.inner() {
+                            ValueType::Reference { source_name: Some(next_origin), .. } => {
+                                current_origin = next_origin.clone();
+                            }
+                            _ => {
+                                *field_val = updated_val.clone();
+                                break;
+                            }
                         }
                     }
-                }
 
-                if let Value::Struct { .. } = field_val {
-                    self.merge_nested_fields(field_val, &composite_origin)?;
+                    if matches!(field_val.inner(), ValueType::Struct { .. }) {
+                        self.merge_nested_fields(field_val, &composite_origin)?;
+                    }
                 }
+                Ok(())
             }
+            _ => Err("Cannot merge fields of non-struct value".to_string()),
         }
-        Ok(())
     }
 }
