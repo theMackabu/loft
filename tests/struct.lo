@@ -35,6 +35,7 @@ impl Triangle {
    
    fn set_base(&mut self, base: i32) {
       self.base = base;
+      io::println(self);
    }
 }
 
@@ -52,10 +53,12 @@ fn main() {
 
    // trig2.display();
 
-   trig1.info.set_name("fourth");
+   // trig1.info.set_name("fourth");
    trig1.set_base(5000);
    
    io::println(trig1);
       
    // trig1.display();
+   
+   io::println(trig1);
 }

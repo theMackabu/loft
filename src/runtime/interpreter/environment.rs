@@ -45,9 +45,9 @@ impl Environment {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
     }
 
-    pub fn get_variable_owned(&self, name: &str) -> Option<Value> { self.get_variable(name).cloned() }
-
     pub fn get_variable_source(&self, name: &str) -> Option<(String, usize)> { self.find_variable(name).map(|(scope_index, _)| (name.to_string(), scope_index)) }
+
+    pub fn get_variable_owned(&self, name: &str) -> Option<Value> { self.get_variable(name).cloned() }
 
     /// Retrieves the value of a variable from the environment.
     ///

@@ -262,7 +262,7 @@ impl Interpreter {
 
             Expr::MethodCall { object, method, arguments } => {
                 let obj_value = self.evaluate_expression(object)?;
-                self.evaluate_method_call(obj_value, method, arguments)
+                self.evaluate_method_call(object, obj_value, method, arguments)
             }
 
             Expr::Cast { expr, target_type } => {
@@ -369,7 +369,7 @@ impl Interpreter {
             Expr::Dereference { operand } => match &**operand {
                 Expr::MethodCall { object, method, arguments } => {
                     let obj_value = self.evaluate_expression(object)?;
-                    self.evaluate_method_call(obj_value, method, arguments)
+                    self.evaluate_method_call(object, obj_value, method, arguments)
                 }
 
                 Expr::Assignment { target, value } => match target.as_ref() {
@@ -645,7 +645,7 @@ impl Interpreter {
             Expr::Assignment { target, value } => match target.as_ref() {
                 Expr::MethodCall { object, method, arguments } => {
                     let obj_value = self.evaluate_expression(object)?;
-                    self.evaluate_method_call(obj_value, method, arguments)
+                    self.evaluate_method_call(object, obj_value, method, arguments)
                 }
 
                 Expr::Identifier(name) => {
@@ -689,7 +689,7 @@ impl Interpreter {
             Expr::CompoundAssignment { target, operator, value } => match target.as_ref() {
                 Expr::MethodCall { object, method, arguments } => {
                     let obj_value = self.evaluate_expression(object)?;
-                    self.evaluate_method_call(obj_value, method, arguments)
+                    self.evaluate_method_call(object, obj_value, method, arguments)
                 }
 
                 Expr::Identifier(name) => {

@@ -4,12 +4,14 @@ impl Interpreter {
     pub fn extract_field_chain(&self, expr: &Expr) -> Result<(String, Vec<String>), String> {
         match expr {
             Expr::Identifier(name) => Ok((name.clone(), vec![])),
+
             Expr::MemberAccess { object, member } => {
                 let (base, mut chain) = self.extract_field_chain(object)?;
                 chain.push(member.clone());
                 Ok((base, chain))
             }
-            _ => Err("Invalid expression in member assignment target".to_string()),
+
+            _ => Err("Invalid expression in member access".to_string()),
         }
     }
 
@@ -103,7 +105,12 @@ impl Interpreter {
         }))
     }
 
-    pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
+    pub fn evaluate_method_call(&mut self, object_expr: &Expr, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
+        let field_chain = match self.extract_field_chain(object_expr) {
+            Ok((base, chain)) if !chain.is_empty() => Some((base, chain)),
+            _ => None,
+        };
+
         match object.inner() {
             ValueType::Struct { name, fields } => {
                 let origin_info = if let Some((source_name, source_scope)) = self.env.get_variable_source(&name) {
@@ -111,7 +118,8 @@ impl Interpreter {
                 } else {
                     None
                 };
-                self.handle_struct_method_call(&name, &fields, origin_info, method, args)
+
+                self.handle_struct_method_call(&name, &fields, origin_info, method, args, field_chain)
             }
 
             ValueType::Reference {
@@ -123,15 +131,13 @@ impl Interpreter {
                 if !object.is_mutable() {
                     return Err("Cannot call method on non-mutable reference".to_string());
                 }
-
                 match boxed_value.inner() {
                     ValueType::Struct { name, fields } => {
                         let origin_info = match (source_name, source_scope) {
                             (Some(name), Some(scope)) => Some((name.clone(), scope)),
                             _ => self.env.get_variable_source(&name).map(|(name, scope)| (name.clone(), scope)),
                         };
-
-                        self.handle_struct_method_call(&name, &fields, origin_info, method, args)
+                        self.handle_struct_method_call(&name, &fields, origin_info, method, args, field_chain)
                     }
                     _ => Err("Cannot call method on non-struct reference".to_string()),
                 }
@@ -141,7 +147,9 @@ impl Interpreter {
         }
     }
 
-    pub fn handle_struct_method_call(&mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(String, usize)>, method: &str, args: &[Expr]) -> Result<Value, String> {
+    pub fn handle_struct_method_call(
+        &mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(String, usize)>, method: &str, args: &[Expr], field_chain: Option<(String, Vec<String>)>,
+    ) -> Result<Value, String> {
         let struct_def = match self.env.get_variable(name) {
             Some(value) => match value.inner() {
                 ValueType::StructDef { methods, .. } => methods,
@@ -155,7 +163,6 @@ impl Interpreter {
         self.env.enter_scope();
 
         let mut params_to_process = Vec::new();
-        let mut original_location = None;
 
         if !function.is_static {
             let base_self_value = val!(mut ValueType::Struct {
@@ -163,11 +170,9 @@ impl Interpreter {
                 fields: fields.clone(),
             });
 
-            original_location = origin.clone().map(|(name, scope)| (name, scope));
-
-            let self_value = if let Some((source_name, scope_index)) = origin.clone() {
+            let self_value = if let Some((outer_name, scope_index)) = origin.clone() {
                 val!(mut ValueType::Reference {
-                    source_name: Some(source_name.to_string()),
+                    source_name: Some(outer_name),
                     source_scope: Some(scope_index),
                     data: Some(base_self_value)
                 })
@@ -222,20 +227,48 @@ impl Interpreter {
             self.env.set_variable(&param_name, Box::new(final_value))?;
         }
 
-        println!("Before method execution - origin: {:?}", origin.clone());
+        println!("Before method execution - origin: {:?}", origin);
         let result = self.execute(&function.body);
         println!("After method execution");
 
-        if let Some((source_name, scope_index)) = original_location.clone() {
+        if let Some((mut base_name, chain)) = field_chain {
+            // If the extracted base name is "self", substitute it with the outer variable name.
+            if base_name == "self" {
+                if let Some((outer_name, _)) = origin.clone() {
+                    base_name = outer_name;
+                }
+            }
+            println!("Attempting nested update - base: {}, chain: {:?}", base_name, chain);
+            if let Some((scope_index, base_value)) = self.env.find_variable(&base_name) {
+                // Create a mutable copy of the outer variable.
+                let mut updated_base = self.env.make_deeply_mutable(base_value.clone());
+                if let Some(modified_self) = self.env.scopes.last().and_then(|scope| scope.get("self")).cloned() {
+                    let final_value = match modified_self.inner() {
+                        ValueType::Reference { data: Some(inner), .. } => inner,
+                        _ => modified_self,
+                    };
+                    let final_value = self.env.make_deeply_mutable(final_value);
+                    println!("Nested update final value: {:?}", final_value);
+                    // Attempt to set the nested field.
+                    updated_base.set_struct_field(&chain, final_value)?;
+                    match self.env.update_scoped_variable(&base_name, updated_base, scope_index) {
+                        Ok(_) => println!("Nested update successful"),
+                        Err(e) => println!("Nested update failed: {}", e),
+                    }
+                } else {
+                    println!("No local 'self' to use for nested update");
+                }
+            } else {
+                println!("Base variable '{}' not found", base_name);
+            }
+        } else if let Some((ref source_name, scope_index)) = origin {
             println!("Attempting update - source: {}, scope: {}", source_name, scope_index);
             if let Some(modified_self) = self.env.get_variable_owned("self") {
                 println!("Modified self value: {:?}", modified_self);
-
                 let final_value = match modified_self.inner() {
                     ValueType::Reference { data: Some(inner), .. } => inner,
                     _ => modified_self,
                 };
-
                 let final_value = self.env.make_deeply_mutable(final_value);
                 println!("Final value to update: {:?}", final_value);
                 match self.env.update_scoped_variable(&source_name, final_value, scope_index) {
@@ -245,9 +278,9 @@ impl Interpreter {
             }
         }
 
-        if let Some((source_name, scope_index)) = original_location {
+        if let Some((src, scope_index)) = origin {
             if let Some(scope) = self.env.scopes.get(scope_index) {
-                if let Some(value) = scope.get(&source_name) {
+                if let Some(value) = scope.get(&src) {
                     println!("Variable after update: {:?}", value);
                 }
             }
