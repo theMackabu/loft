@@ -152,8 +152,16 @@ impl Environment {
                 }
                 ValueType::Struct { name, fields: mutable_fields }
             }
+
+            ValueType::Reference { data, source_name, source_scope } => ValueType::Reference {
+                data: data.map(|d| self.make_deeply_mutable(d)),
+                source_name,
+                source_scope,
+            },
+
             other => other,
         };
+
         Box::new(ValueEnum::Mutable(inner))
     }
 
@@ -166,8 +174,16 @@ impl Environment {
                 }
                 ValueType::Struct { name, fields: immutable_fields }
             }
+
+            ValueType::Reference { data, source_name, source_scope } => ValueType::Reference {
+                data: data.map(|d| self.make_deeply_immutable(d)),
+                source_name,
+                source_scope,
+            },
+
             other => other,
         };
+
         Box::new(ValueEnum::Immutable(inner))
     }
 }

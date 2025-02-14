@@ -125,6 +125,8 @@ impl ValueEnum {
         }
 
         match self.inner_mut() {
+            ValueType::Reference { data: Some(ref mut inner), .. } => inner.set_struct_field(chain, new_value),
+
             ValueType::Struct { fields, .. } => {
                 let field_name = &chain[0];
                 if chain.len() == 1 {
@@ -142,6 +144,7 @@ impl ValueEnum {
                     }
                 }
             }
+
             _ => Err("Target value is not a struct".to_string()),
         }
     }

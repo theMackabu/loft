@@ -42,11 +42,11 @@ impl Interpreter {
 
         for method in items {
             if let Stmt::Function { name: method_name, params, body, .. } = method {
-                let is_static = params.is_empty()
-                    || !matches! {
-                        &params[0].0,
-                        Pattern::Identifier { name, .. } if name == "self"
-                    };
+                let is_static = params.is_empty() || {
+                    let first_param = &params[0].0;
+                    !matches!(first_param, Pattern::Identifier { name, .. } if name == "self")
+                        && !matches!(first_param, Pattern::Reference { pattern, .. } if matches!(pattern.as_ref(), Pattern::Identifier { name, .. } if name == "self"))
+                };
 
                 methods.insert(
                     method_name.clone(),
@@ -113,8 +113,6 @@ impl Interpreter {
                 source_scope,
                 ..
             } => {
-                println!("{object:?}");
-
                 if !object.is_mutable() {
                     return Err("Cannot call method on non-mutable reference".to_string());
                 }
@@ -134,152 +132,90 @@ impl Interpreter {
     }
 
     pub fn handle_struct_method_call(&mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(&String, usize)>, method: &str, args: &[Expr]) -> Result<Value, String> {
-        let methods = match self.env.get_variable(name) {
+        let struct_def = match self.env.get_variable(name) {
             Some(value) => match value.inner() {
-                ValueType::StructDef { methods, .. } => methods.clone(),
-                _ => return Err(format!("Value '{}' is not a struct definition", name)),
+                ValueType::StructDef { methods, .. } => methods,
+                _ => return Err(format!("Type '{}' is not a struct definition", name)),
             },
             None => return Err(format!("Struct definition '{}' not found", name)),
         };
 
-        let function = methods.get(method).cloned().ok_or_else(|| format!("Method '{}' not found on struct '{}'", method, name))?;
+        let function = struct_def.get(method).ok_or_else(|| format!("Method '{}' not found on struct '{}'", method, name))?.clone();
 
         self.env.enter_scope();
 
-        let self_value = val!(ValueType::Struct {
-            name: name.to_owned(),
-            fields: fields.clone(),
-        });
+        let mut params_to_process = Vec::new();
 
-        // Bind the self parameter
-        if let Some((self_param, _ty)) = function.params.get(0) {
-            match self_param {
-                Pattern::Identifier { name: self_name, mutable } => {
-                    self.env.scope_resolver.declare_variable(self_name, *mutable);
-                    self.env.set_variable(self_name, self_value.clone())?;
-                }
-                Pattern::Reference { mutable: ref_mut, pattern } => {
-                    if let Pattern::Identifier { name: self_name, .. } = &**pattern {
-                        let binding_mutability = *ref_mut;
-                        self.env.scope_resolver.declare_variable(self_name, binding_mutability);
-                        self.env.set_variable(self_name, self_value.clone())?;
-                    } else {
-                        return Err("Invalid pattern for self parameter".to_string());
+        if !function.is_static {
+            let base_self_value = val!(ValueType::Struct {
+                name: name.clone(),
+                fields: fields.clone(),
+            });
+
+            let self_value = if let Some((source_name, scope_index)) = origin {
+                val!(ValueType::Reference {
+                    source_name: Some(source_name.to_string()),
+                    source_scope: Some(scope_index),
+                    data: Some(base_self_value)
+                })
+            } else {
+                base_self_value
+            };
+
+            if let Some((pattern, param_type)) = function.params.first() {
+                match pattern {
+                    Pattern::Identifier { name: param_name, mutable } if param_name == "self" => {
+                        params_to_process.push(("self".to_string(), self_value, *mutable, param_type.clone()));
                     }
-                }
-                _ => return Err("Invalid pattern for self parameter".to_string()),
-            }
-        } else {
-            return Err("Method does not have a self parameter.".to_string());
-        }
-
-        // Evaluate and bind remaining arguments
-        let evaluated_args: Vec<Value> = args.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
-
-        for (i, value) in evaluated_args.into_iter().enumerate() {
-            if let Some((param_pattern, _)) = function.params.get(i + 1) {
-                match param_pattern {
-                    Pattern::Identifier { name, mutable } => {
-                        self.env.scope_resolver.declare_variable(name, *mutable);
-                        self.env.set_variable(name, value)?;
-                    }
-                    Pattern::Reference { mutable: ref_mut, pattern } => {
-                        if let Pattern::Identifier { name, .. } = &**pattern {
-                            let binding_mutability = *ref_mut;
-                            self.env.scope_resolver.declare_variable(name, binding_mutability);
-                            self.env.set_variable(name, value)?;
-                        } else {
-                            return Err("Invalid parameter pattern encountered.".to_string());
+                    Pattern::Reference { mutable, pattern } => {
+                        if let Pattern::Identifier { name: param_name, .. } = pattern.as_ref() {
+                            if param_name != "self" {
+                                return Err("First parameter must be a form of 'self'".to_string());
+                            }
+                            let ref_value = val!(ValueType::Reference {
+                                source_name: None,
+                                source_scope: None,
+                                data: Some(self_value)
+                            });
+                            params_to_process.push(("self".to_string(), ref_value, *mutable, param_type.clone()));
                         }
                     }
-                    _ => return Err("Invalid parameter pattern encountered.".to_string()),
+                    _ => return Err("First parameter must be a form of 'self'".to_string()),
                 }
             }
         }
 
-        let result = self.execute(&function.body)?;
+        let arg_offset = if function.is_static { 0 } else { 1 };
 
-        let updated_self = if let Some((self_param, _)) = function.params.get(0) {
-            match self_param {
-                Pattern::Identifier { name, .. } => self.env.get_variable(name).cloned().ok_or_else(|| format!("Could not retrieve updated self value for '{name}'"))?,
-                Pattern::Reference { pattern, .. } => {
-                    if let Pattern::Identifier { name, .. } = &**pattern {
-                        self.env.get_variable(name).cloned().ok_or_else(|| format!("Could not retrieve updated self value for '{name}'"))?
-                    } else {
-                        self_value.clone()
-                    }
-                }
-                _ => self_value.clone(),
-            }
-        } else {
-            self_value.clone()
-        };
-
-        let mut combined_self = updated_self.clone();
-        let mut update_chain = vec![];
-
-        if let Some((origin_name, scope_index)) = origin {
-            let mut current_name = origin_name.to_string();
-            let mut current_scope = scope_index;
-
-            while let Some((_, value)) = self.env.find_variable(&current_name) {
-                update_chain.push((current_name.clone(), current_scope));
-
-                match value.inner() {
-                    ValueType::Reference {
-                        source_name: Some(parent_name),
-                        source_scope: Some(parent_scope),
-                        ..
-                    } => {
-                        current_name = parent_name.clone();
-                        current_scope = parent_scope;
-                    }
-                    _ => break,
-                }
-            }
-
-            for (update_name, update_scope) in update_chain.iter().rev() {
-                if let Some(symbol_info) = self.env.scope_resolver.resolve(update_name) {
-                    if !symbol_info.mutable {
-                        return Err(format!("Cannot assign to immutable variable '{}'", update_name));
-                    }
-
-                    self.merge_nested_fields(&mut combined_self, update_name)?;
-                    self.env.update_scoped_variable(update_name, combined_self.clone(), *update_scope)?;
-                }
+        for (i, arg) in args.iter().enumerate() {
+            if let Some((Pattern::Identifier { name: param_name, mutable }, param_type)) = function.params.get(i + arg_offset) {
+                let arg_value = self.evaluate_expression(arg)?;
+                params_to_process.push((param_name.clone(), arg_value, *mutable, param_type.clone()));
             }
         }
+
+        for (param_name, value, mutable, param_type) in params_to_process {
+            match param_type {
+                Type::Reference { mutable: ref_mutable, .. } => {
+                    self.env.scope_resolver.declare_reference(&param_name, ref_mutable);
+                    if ref_mutable && !value.is_mutable() {
+                        return Err("Cannot pass immutable value as mutable reference".to_string());
+                    }
+                }
+                _ => {
+                    self.env.scope_resolver.declare_variable(&param_name, mutable);
+                }
+            }
+
+            let final_value = if mutable { value.into_mutable() } else { value.into_immutable() };
+
+            self.env.set_variable(&param_name, Box::new(final_value))?;
+        }
+
+        let result = self.execute(&function.body);
 
         self.env.exit_scope();
-        Ok(result)
-    }
 
-    fn merge_nested_fields(&self, parent: &mut Value, parent_origin: &str) -> Result<(), String> {
-        match parent.inner_mut() {
-            ValueType::Struct { fields, .. } => {
-                for (field_name, field_val) in fields.iter_mut() {
-                    let composite_origin = format!("{}.{}", parent_origin, field_name);
-                    let mut current_origin = composite_origin.clone();
-
-                    while let Some((_, updated_val)) = self.env.find_variable(&current_origin) {
-                        match updated_val.inner() {
-                            ValueType::Reference { source_name: Some(next_origin), .. } => {
-                                current_origin = next_origin.clone();
-                            }
-                            _ => {
-                                *field_val = updated_val.clone();
-                                break;
-                            }
-                        }
-                    }
-
-                    if matches!(field_val.inner(), ValueType::Struct { .. }) {
-                        self.merge_nested_fields(field_val, &composite_origin)?;
-                    }
-                }
-                Ok(())
-            }
-            _ => Err("Cannot merge fields of non-struct value".to_string()),
-        }
+        return result;
     }
 }
