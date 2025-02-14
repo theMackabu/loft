@@ -95,7 +95,7 @@ impl Interpreter {
                 }
 
                 Stmt::Struct { name, fields, .. } => {
-                    self.handle_struct_def(name, fields)?;
+                    self.handle_struct_def(name, fields.to_owned())?;
                 }
 
                 Stmt::Module { name, body, .. } => {
@@ -246,7 +246,7 @@ impl Interpreter {
             }
 
             Expr::StructInit { struct_name, fields } => {
-                return self.evaluate_struct_init(struct_name, fields);
+                return self.evaluate_struct_init(struct_name, fields.to_owned());
             }
 
             Expr::MethodCall { object, method, arguments } => {

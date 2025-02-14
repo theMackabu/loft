@@ -42,13 +42,12 @@ impl Interpreter {
         }
     }
 
-    pub fn handle_struct_def(&mut self, name: &str, fields: &[(String, bool, Type)]) -> Result<(), String> {
+    pub fn handle_struct_def(&mut self, name: &str, fields: HashMap<String, (Type, bool)>) -> Result<(), String> {
         self.env.scope_resolver.declare_variable(name, false);
-        let fields_map = fields.iter().map(|(field_name, _, ty)| (field_name.clone(), ty.clone())).collect::<HashMap<_, _>>();
 
         let struct_def = Value::StructDef {
+            fields,
             name: name.to_string(),
-            fields: fields_map,
             methods: HashMap::new(),
         };
 
@@ -90,36 +89,34 @@ impl Interpreter {
         self.env.set_variable(type_name, updated_struct_def)
     }
 
-    pub fn evaluate_struct_init(&mut self, name: &str, fields: &[(String, Expr, bool)]) -> Result<Value, String> {
-        let def_field_names = match self.env.find_variable(name) {
-            Some((_, Value::StructDef { fields: def_fields, .. })) => def_fields.keys().cloned().collect::<Vec<_>>(),
+    pub fn evaluate_struct_init(&mut self, name: &str, fields: HashMap<String, (Expr, bool)>) -> Result<Value, String> {
+        let def_fields = match self.env.find_variable(name) {
+            Some((_, Value::StructDef { fields: def_fields, .. })) => def_fields.to_owned(),
             _ => return Err(format!("Struct definition '{}' not found", name)),
         };
 
         let mut field_values: HashMap<String, Value> = HashMap::new();
 
-        for (field_name, expr, is_shorthand) in fields {
-            if !def_field_names.iter().any(|n| n.starts_with(field_name)) {
+        for (field_name, (expr, is_shorthand)) in fields {
+            if !def_fields.contains_key(&field_name) {
                 return Err(format!("Field '{}' not found in struct '{}'", field_name, name));
             }
 
-            let value = if *is_shorthand {
-                if let Some(value) = self.env.get_variable(field_name) {
+            let value = if is_shorthand {
+                if let Some(value) = self.env.get_variable(&field_name) {
                     value.clone()
                 } else {
                     return Err(format!("Variable '{}' not found for shorthand initialization", field_name));
                 }
             } else {
-                self.evaluate_expression(expr)?
+                self.evaluate_expression(&expr)?
             };
 
-            field_values.insert(field_name.clone(), value);
+            field_values.insert(field_name, value);
         }
 
-        for def_name in def_field_names {
-            if !field_values.contains_key(&def_name) {
-                return Err(format!("Missing field '{}' in struct initialization", def_name));
-            }
+        if let Some(missing) = def_fields.keys().find(|key| !field_values.contains_key(*key)) {
+            return Err(format!("Missing field '{}' in struct initialization", missing));
         }
 
         Ok(Value::Struct {

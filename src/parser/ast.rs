@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use super::lexer::{Token, TokenInfo};
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum NumericType {
@@ -241,8 +242,7 @@ pub enum Expr {
 
     StructInit {
         struct_name: String,
-        // migrate to hashmap
-        fields: Vec<(String, Expr, bool)>,
+        fields: HashMap<String, (Expr, bool)>,
     },
 
     Loop {
@@ -292,8 +292,7 @@ pub enum Stmt {
         name: String,
         visibility: bool,
         type_params: Vec<String>,
-        // update to hashmap
-        fields: Vec<(String, bool, Type)>, // field_name, expr, is_shorthand
+        fields: HashMap<String, (Type, bool)>,
         attributes: Vec<Attribute>,
     },
 

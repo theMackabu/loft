@@ -33,7 +33,7 @@ pub enum Value {
 
     StructDef {
         name: String,
-        fields: HashMap<String, Type>,
+        fields: HashMap<String, (Type, bool)>,
         methods: HashMap<String, Function>,
     },
 

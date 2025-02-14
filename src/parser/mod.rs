@@ -5,7 +5,7 @@ use ast::*;
 use lexer::*;
 
 use crate::util;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 enum DeclarationKind {
     Const,
@@ -254,7 +254,7 @@ impl Parser {
 
         self.expect(Token::LeftBrace)?;
 
-        let mut fields = Vec::new();
+        let mut fields = HashMap::new();
 
         while self.current.token != Token::RightBrace {
             if !fields.is_empty() {
@@ -276,7 +276,7 @@ impl Parser {
             self.expect(Token::Colon)?;
             let field_type = self.parse_type()?;
 
-            fields.push((field_name, field_visibility, field_type));
+            fields.insert(field_name, (field_type, field_visibility));
         }
 
         self.expect(Token::RightBrace)?;
@@ -1868,8 +1868,8 @@ impl Parser {
         Ok(tokens)
     }
 
-    fn parse_struct_init_fields(&mut self) -> Result<Vec<(String, Expr, bool)>, ParseError> {
-        let mut fields = Vec::new();
+    fn parse_struct_init_fields(&mut self) -> Result<HashMap<String, (Expr, bool)>, ParseError> {
+        let mut fields = HashMap::new();
 
         while self.current.token != Token::RightBrace {
             if !fields.is_empty() {
@@ -1890,7 +1890,7 @@ impl Parser {
                 (Expr::Identifier(field_name.clone()), true)
             };
 
-            fields.push((field_name, field_value, is_shorthand));
+            fields.insert(field_name, (field_value, is_shorthand));
         }
 
         Ok(fields)
