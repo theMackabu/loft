@@ -870,7 +870,8 @@ impl Interpreter {
                             }
 
                             let mut updated_base = base_value.clone();
-                            self.update_struct_field(&mut updated_base, &chain, right_val)?;
+
+                            updated_base.set_struct_field(&chain, right_val)?;
                             self.env.update_scoped_variable(&base_name, updated_base, scope_index)?;
                             Ok(ValueEnum::unit())
                         } else {

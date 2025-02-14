@@ -13,37 +13,6 @@ impl Interpreter {
         }
     }
 
-    pub fn update_struct_field(&self, value: &mut Value, chain: &[String], new_value: Value) -> Result<(), String> {
-        if chain.is_empty() {
-            return Err("Field chain is empty; cannot update".to_string());
-        }
-
-        if !value.is_mutable() {
-            return Err("Cannot modify immutable value".to_string());
-        }
-
-        match value.inner_mut() {
-            ValueType::Struct { fields, .. } => {
-                let field_name = &chain[0];
-                if chain.len() == 1 {
-                    if let Some(existing) = fields.get_mut(field_name) {
-                        *existing = new_value;
-                        Ok(())
-                    } else {
-                        Err(format!("Field '{}' not found", field_name))
-                    }
-                } else {
-                    if let Some(inner_value) = fields.get_mut(field_name) {
-                        self.update_struct_field(inner_value, &chain[1..], new_value)
-                    } else {
-                        Err(format!("Field '{}' not found", field_name))
-                    }
-                }
-            }
-            _ => Err("Target value is not a struct".to_string()),
-        }
-    }
-
     pub fn handle_struct_def(&mut self, name: &str, fields: HashMap<String, (Type, bool)>) -> Result<(), String> {
         self.env.scope_resolver.declare_variable(name, false);
 
@@ -144,6 +113,8 @@ impl Interpreter {
                 source_scope,
                 ..
             } => {
+                println!("{object:?}");
+
                 if !object.is_mutable() {
                     return Err("Cannot call method on non-mutable reference".to_string());
                 }

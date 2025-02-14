@@ -71,16 +71,21 @@ impl Environment {
     /// Ensures the variable exists before setting its value. Returns an error if
     /// the variable is not declared or if no active scope exists.
     pub fn set_variable(&mut self, name: &str, value: Value) -> Result<(), String> {
-        match self.scope_resolver.resolve(name) {
-            Some(_) => {
-                if let Some(scope) = self.scopes.last_mut() {
-                    scope.insert(name.to_string(), value);
-                    Ok(())
-                } else {
-                    Err("No active scope".to_string())
-                }
+        if let Some(symbol_info) = self.scope_resolver.resolve(name) {
+            let final_value = if symbol_info.mutable {
+                self.make_deeply_mutable(value)
+            } else {
+                self.make_deeply_immutable(value)
+            };
+
+            if let Some(scope) = self.scopes.last_mut() {
+                scope.insert(name.to_string(), final_value);
+                Ok(())
+            } else {
+                Err("No active scope".to_string())
             }
-            None => Err(format!("Variable '{}' not declared", name)),
+        } else {
+            Err(format!("Variable '{}' not found", name))
         }
     }
 
@@ -137,4 +142,32 @@ impl Environment {
 
     /// Returns the current scope (e.g., the index of the current scope).
     pub fn get_current_scope(&self) -> usize { self.scopes.len() - 1 }
+
+    fn make_deeply_mutable(&self, value: Value) -> Value {
+        let inner = match value.inner() {
+            ValueType::Struct { name, fields } => {
+                let mut mutable_fields = HashMap::new();
+                for (field_name, field_value) in fields {
+                    mutable_fields.insert(field_name, self.make_deeply_mutable(field_value));
+                }
+                ValueType::Struct { name, fields: mutable_fields }
+            }
+            other => other,
+        };
+        Box::new(ValueEnum::Mutable(inner))
+    }
+
+    fn make_deeply_immutable(&self, value: Value) -> Value {
+        let inner = match value.inner() {
+            ValueType::Struct { name, fields } => {
+                let mut immutable_fields = HashMap::new();
+                for (field_name, field_value) in fields {
+                    immutable_fields.insert(field_name, self.make_deeply_immutable(field_value));
+                }
+                ValueType::Struct { name, fields: immutable_fields }
+            }
+            other => other,
+        };
+        Box::new(ValueEnum::Immutable(inner))
+    }
 }

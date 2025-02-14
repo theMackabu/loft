@@ -115,7 +115,7 @@ impl ValueEnum {
         }
     }
 
-    pub fn set_field(&mut self, chain: &[String], new_value: Value) -> Result<(), String> {
+    pub fn set_struct_field(&mut self, chain: &[String], new_value: Value) -> Result<(), String> {
         if chain.is_empty() {
             return Err("Field chain is empty; cannot update".to_string());
         }
@@ -136,7 +136,7 @@ impl ValueEnum {
                     }
                 } else {
                     if let Some(inner_value) = fields.get_mut(field_name) {
-                        inner_value.set_field(&chain[1..], new_value)
+                        inner_value.set_struct_field(&chain[1..], new_value)
                     } else {
                         Err(format!("Field '{}' not found", field_name))
                     }
