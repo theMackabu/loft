@@ -314,7 +314,7 @@ impl Interpreter {
             }
 
             Expr::Identifier(name) => {
-                if let Some((scope_index, value)) = self.env.find_variable(name) {
+                if let Some((_, value)) = self.env.find_variable(name) {
                     if matches!(value.inner(), ValueType::Reference { .. }) {
                         return Ok(value.clone());
                     }
@@ -322,12 +322,7 @@ impl Interpreter {
                     let is_mutable = self.env.scope_resolver.resolve(name).map(|info| info.mutable).unwrap_or(false);
 
                     if is_mutable {
-                        Ok(val!(mut ValueType::Reference {
-                            source_name: Some(name.clone()),
-                            source_scope: Some(scope_index),
-                            // IMPORTANT!!! the current binding is cloned and wrapped.
-                            data: Some(value.clone())
-                        }))
+                        Ok(Box::new(value.as_ref().clone().into_mutable()))
                     } else {
                         Ok(value.clone())
                     }
@@ -804,7 +799,7 @@ impl Interpreter {
                         self.env.enter_scope();
 
                         for ((param, param_type), value) in params.iter().zip(arg_values) {
-                            if let Pattern::Identifier { name, mutable } = param {
+                            if let Pattern::Identifier { name, .. } = param {
                                 match param_type {
                                     Type::Reference { mutable: ref_mutable, .. } => {
                                         self.env.scope_resolver.declare_reference(name, *ref_mutable);
@@ -815,6 +810,10 @@ impl Interpreter {
                                                     source_name: source_name.clone(),
                                                     data: data.clone(),
                                                 };
+
+                                                if *ref_mutable && !value.is_mutable() {
+                                                    return Err("Cannot pass immutable reference as mutable".to_string());
+                                                }
 
                                                 let ref_value = if *ref_mutable && value.is_mutable() {
                                                     val! { mut reference }
@@ -830,8 +829,9 @@ impl Interpreter {
                                         }
                                     }
                                     _ => {
-                                        self.env.scope_resolver.declare_variable(name, *mutable);
-                                        self.env.set_variable(name, value)?;
+                                        self.env.scope_resolver.declare_variable(name, false);
+                                        let value_copy = value.clone().into_immutable();
+                                        self.env.set_variable(name, Box::new(value_copy))?;
                                     }
                                 }
                             }
