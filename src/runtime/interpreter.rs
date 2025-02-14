@@ -896,12 +896,35 @@ impl Interpreter {
                         .map(|(_, value)| value.clone())
                         .ok_or_else(|| format!("Field '{}' not found", member)),
 
-                    Value::Reference { data: Some(boxed_value), .. } => match &*boxed_value {
-                        Value::Struct { fields, .. } => fields
-                            .iter()
-                            .find(|(field_name, _)| field_name == member)
-                            .map(|(_, value)| value.clone())
-                            .ok_or_else(|| format!("Field '{}' not found", member)),
+                    Value::Reference {
+                        mutable,
+                        source_name,
+                        source_scope,
+                        data: Some(ref boxed_value),
+                        ..
+                    } => match &**boxed_value {
+                        Value::Struct { fields, .. } => {
+                            if let Some((_, field_value)) = fields.iter().find(|(field_name, _)| field_name == member) {
+                                let composite_origin = match source_name {
+                                    Some(parent_name) => format!("{}.{}", parent_name, member),
+                                    None => member.to_owned(),
+                                };
+
+                                if self.env.scope_resolver.resolve(&composite_origin).is_none() {
+                                    self.env.scope_resolver.declare_variable(&composite_origin, mutable);
+                                    self.env.set_variable(&composite_origin, field_value.clone())?;
+                                }
+
+                                Ok(Value::Reference {
+                                    mutable,
+                                    source_scope,
+                                    source_name: Some(composite_origin),
+                                    data: Some(Box::new(field_value.clone())),
+                                })
+                            } else {
+                                Err(format!("Field '{}' not found", member))
+                            }
+                        }
                         _ => Err("Cannot access member of non-struct reference".to_string()),
                     },
                     _ => Err("Cannot access member of non-struct value".to_string()),

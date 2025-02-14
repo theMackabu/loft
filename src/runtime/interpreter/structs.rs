@@ -129,10 +129,8 @@ impl Interpreter {
 
     pub fn evaluate_method_call(&mut self, object: &Value, method: &str, args: &[Expr]) -> Result<Value, String> {
         match object {
-            Value::Struct { name, fields } => {
-                // No origin, so we call the non-mutating branch.
-                self.handle_struct_method_call(name, fields, None, method, args)
-            }
+            Value::Struct { name, fields } => self.handle_struct_method_call(name, fields, None, method, args),
+
             Value::Reference {
                 data: Some(boxed_value),
                 source_name,
@@ -232,11 +230,33 @@ impl Interpreter {
             self_value.clone()
         };
 
+        let mut combined_self = updated_self.clone();
+
         if let Some((origin_name, scope_index)) = origin {
-            self.env.update_scoped_variable(origin_name, updated_self.clone(), scope_index)?;
+            // fix using Vec<String> for origin
+            if let Some(symbol_info) = self.env.scope_resolver.resolve(origin_name) {
+                if !symbol_info.mutable {
+                    return Err(format!("Cannot assign to immutable variable '{}'", origin_name));
+                }
+                self.merge_nested_fields(&mut combined_self, origin_name)?;
+                self.env.update_scoped_variable(origin_name, combined_self.clone(), scope_index)?;
+            }
         }
 
         self.env.exit_scope();
         Ok(result)
+    }
+
+    fn merge_nested_fields(&self, parent: &mut Value, parent_origin: &String) -> Result<(), String> {
+        if let Value::Struct { fields, .. } = parent {
+            for (field_name, field_val) in fields.iter_mut() {
+                // fix using Vec<String> for origin
+                let composite_origin = format!("{}.{}", parent_origin, field_name);
+                if let Some((_, updated_val)) = self.env.find_variable(&composite_origin) {
+                    *field_val = updated_val.clone();
+                }
+            }
+        }
+        Ok(())
     }
 }

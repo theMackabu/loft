@@ -1,3 +1,9 @@
+struct Triangle {
+   base: f64, 
+   height: f64,
+   info: Info
+}
+
 struct Info {
    id: u8,
    name: &str, 
@@ -13,9 +19,37 @@ impl Info {
    }
 }
 
+impl Triangle {
+   fn new(base: f64, height: f64, name: &str, id: u8) -> Self {
+      Self { base, height, info: Info { name, id } }
+   }
+   
+   fn display(&mut self) {
+      self.info.set_name("third");
+      self.set_base(2);
+      
+      io::println(self.base);
+      io::println(self.info.id);
+      io::println(self.info.get_name());
+   }
+   
+   fn set_base(&mut self, base: i32) {
+      self.base = base;
+   }
+}
+
 fn main() {
-    let mut info = Info { id: 1, name: "first" };
-    io::println(info.get_name());
-    info.set_name("third");
-    io::println(info.get_name());
+   let mut trig1 = Triangle::new(10.7, 5.3, "first", 1);
+   
+   let mut trig2 = Triangle { 
+      base: 9.0, 
+      height: 1.4, 
+      info: Info { 
+         name: "second", 
+         id: 2 
+      }
+   };
+      
+   trig1.display();
+   trig2.display();
 }
