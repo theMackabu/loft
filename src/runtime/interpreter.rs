@@ -904,12 +904,19 @@ impl Interpreter {
                         ..
                     } => match &**boxed_value {
                         Value::Struct { fields, .. } => {
-                            if let Some((_, field_value)) = fields.iter().find(|(field_name, _)| field_name == member) {
-                                let composite_origin = match source_name {
-                                    Some(parent_name) => format!("{}.{}", parent_name, member),
-                                    None => member.to_owned(),
-                                };
+                            let composite_origin = match source_name {
+                                Some(parent_name) => format!("{}.{}", parent_name, member),
+                                None => member.to_owned(),
+                            };
 
+                            if let Some((_, updated_value)) = self.env.find_variable(&composite_origin) {
+                                Ok(Value::Reference {
+                                    mutable,
+                                    source_scope,
+                                    source_name: Some(composite_origin),
+                                    data: Some(Box::new(updated_value.clone())),
+                                })
+                            } else if let Some((_, field_value)) = fields.iter().find(|(field_name, _)| field_name == member) {
                                 if self.env.scope_resolver.resolve(&composite_origin).is_none() {
                                     self.env.scope_resolver.declare_variable(&composite_origin, mutable);
                                     self.env.set_variable(&composite_origin, field_value.clone())?;

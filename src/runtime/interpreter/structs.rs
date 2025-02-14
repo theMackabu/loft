@@ -231,15 +231,37 @@ impl Interpreter {
         };
 
         let mut combined_self = updated_self.clone();
+        let mut update_chain = vec![];
 
         if let Some((origin_name, scope_index)) = origin {
-            // fix using Vec<String> for origin
-            if let Some(symbol_info) = self.env.scope_resolver.resolve(origin_name) {
-                if !symbol_info.mutable {
-                    return Err(format!("Cannot assign to immutable variable '{}'", origin_name));
+            let mut current_name = origin_name.to_string();
+            let mut current_scope = scope_index;
+
+            while let Some((_, value)) = self.env.find_variable(&current_name) {
+                update_chain.push((current_name.clone(), current_scope));
+
+                if let Value::Reference {
+                    source_name: Some(parent_name),
+                    source_scope: Some(parent_scope),
+                    ..
+                } = value
+                {
+                    current_name = parent_name.clone();
+                    current_scope = *parent_scope;
+                } else {
+                    break;
                 }
-                self.merge_nested_fields(&mut combined_self, origin_name)?;
-                self.env.update_scoped_variable(origin_name, combined_self.clone(), scope_index)?;
+            }
+
+            for (update_name, update_scope) in update_chain.iter().rev() {
+                if let Some(symbol_info) = self.env.scope_resolver.resolve(update_name) {
+                    if !symbol_info.mutable {
+                        return Err(format!("Cannot assign to immutable variable '{}'", update_name));
+                    }
+
+                    self.merge_nested_fields(&mut combined_self, update_name)?;
+                    self.env.update_scoped_variable(update_name, combined_self.clone(), *update_scope)?;
+                }
             }
         }
 
@@ -247,13 +269,27 @@ impl Interpreter {
         Ok(result)
     }
 
-    fn merge_nested_fields(&self, parent: &mut Value, parent_origin: &String) -> Result<(), String> {
+    fn merge_nested_fields(&self, parent: &mut Value, parent_origin: &str) -> Result<(), String> {
         if let Value::Struct { fields, .. } = parent {
             for (field_name, field_val) in fields.iter_mut() {
                 // fix using Vec<String> for origin
                 let composite_origin = format!("{}.{}", parent_origin, field_name);
-                if let Some((_, updated_val)) = self.env.find_variable(&composite_origin) {
-                    *field_val = updated_val.clone();
+
+                let mut current_origin = composite_origin.clone();
+                while let Some((_, updated_val)) = self.env.find_variable(&current_origin) {
+                    match updated_val {
+                        Value::Reference { source_name: Some(next_origin), .. } => {
+                            current_origin = next_origin.clone();
+                        }
+                        _ => {
+                            *field_val = updated_val.clone();
+                            break;
+                        }
+                    }
+                }
+
+                if let Value::Struct { .. } = field_val {
+                    self.merge_nested_fields(field_val, &composite_origin)?;
                 }
             }
         }
