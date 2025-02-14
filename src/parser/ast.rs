@@ -241,6 +241,7 @@ pub enum Expr {
 
     StructInit {
         struct_name: String,
+        // migrate to hashmap
         fields: Vec<(String, Expr, bool)>,
     },
 
@@ -291,6 +292,7 @@ pub enum Stmt {
         name: String,
         visibility: bool,
         type_params: Vec<String>,
+        // update to hashmap
         fields: Vec<(String, bool, Type)>, // field_name, expr, is_shorthand
         attributes: Vec<Attribute>,
     },

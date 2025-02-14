@@ -24,9 +24,7 @@ impl Triangle {
       Self { base, height, info: Info { name, id } }
    }
    
-   fn display(&mut self) {
-      self.info.set_name("third");
-      
+   fn display(&mut self) {      
       io::println(self.base);
       io::println(self.info.id);
       io::println(self.info.get_name());
@@ -49,8 +47,8 @@ fn main() {
       }
    };
 
-   // trig1.info.set_name("third");
-   // trig1.set_base(2);
+   trig1.info.set_name("third");
+   trig1.set_base(2);
       
    trig1.display();
    trig2.display();

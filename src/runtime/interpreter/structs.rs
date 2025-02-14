@@ -21,14 +21,14 @@ impl Interpreter {
             Value::Struct { fields, .. } => {
                 let field_name = &chain[0];
                 if chain.len() == 1 {
-                    if let Some((_, field_val)) = fields.iter_mut().find(|(name, _)| name == field_name) {
-                        *field_val = new_value;
+                    if fields.contains_key(field_name) {
+                        fields.insert(field_name.clone(), new_value);
                         Ok(())
                     } else {
                         Err(format!("Field '{}' not found", field_name))
                     }
                 } else {
-                    if let Some((_, field_val)) = fields.iter_mut().find(|(name, _)| name == field_name) {
+                    if let Some(field_val) = fields.get_mut(field_name) {
                         match field_val {
                             Value::Struct { .. } => self.update_struct_field(field_val, &chain[1..], new_value),
                             _ => Err(format!("Field '{}' is not a struct", field_name)),
@@ -44,10 +44,11 @@ impl Interpreter {
 
     pub fn handle_struct_def(&mut self, name: &str, fields: &[(String, bool, Type)]) -> Result<(), String> {
         self.env.scope_resolver.declare_variable(name, false);
+        let fields_map = fields.iter().map(|(field_name, _, ty)| (field_name.clone(), ty.clone())).collect::<HashMap<_, _>>();
 
         let struct_def = Value::StructDef {
             name: name.to_string(),
-            fields: fields.iter().map(|(name, _, ty)| (name.clone(), ty.clone())).collect(),
+            fields: fields_map,
             methods: HashMap::new(),
         };
 
@@ -91,11 +92,11 @@ impl Interpreter {
 
     pub fn evaluate_struct_init(&mut self, name: &str, fields: &[(String, Expr, bool)]) -> Result<Value, String> {
         let def_field_names = match self.env.find_variable(name) {
-            Some((_, Value::StructDef { fields: def_fields, .. })) => def_fields.iter().map(|(n, _)| n.to_string()).collect::<Vec<_>>(),
+            Some((_, Value::StructDef { fields: def_fields, .. })) => def_fields.keys().cloned().collect::<Vec<_>>(),
             _ => return Err(format!("Struct definition '{}' not found", name)),
         };
 
-        let mut field_values = Vec::new();
+        let mut field_values: HashMap<String, Value> = HashMap::new();
 
         for (field_name, expr, is_shorthand) in fields {
             if !def_field_names.iter().any(|n| n.starts_with(field_name)) {
@@ -112,17 +113,17 @@ impl Interpreter {
                 self.evaluate_expression(expr)?
             };
 
-            field_values.push((field_name.clone(), value));
+            field_values.insert(field_name.clone(), value);
         }
 
         for def_name in def_field_names {
-            if !field_values.iter().any(|(name, _)| def_name == *name) {
+            if !field_values.contains_key(&def_name) {
                 return Err(format!("Missing field '{}' in struct initialization", def_name));
             }
         }
 
         Ok(Value::Struct {
-            name: name.to_string(),
+            name: name.to_owned(),
             fields: field_values,
         })
     }
@@ -151,7 +152,7 @@ impl Interpreter {
         }
     }
 
-    fn handle_struct_method_call(&mut self, name: &String, fields: &Vec<(String, Value)>, origin: Option<(&String, usize)>, method: &str, args: &[Expr]) -> Result<Value, String> {
+    pub fn handle_struct_method_call(&mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(&String, usize)>, method: &str, args: &[Expr]) -> Result<Value, String> {
         let methods = match self.env.get_variable(name) {
             Some(Value::StructDef { methods, .. }) => methods.clone(),
             _ => return Err(format!("Struct definition '{}' not found", name)),

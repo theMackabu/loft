@@ -381,7 +381,7 @@ impl Interpreter {
                             }
 
                             if let Value::Struct { fields, .. } = &mut *boxed_value {
-                                if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                                if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| *field_name == member) {
                                     *field_value = new_value;
                                     Ok(Value::Unit)
                                 } else {
@@ -648,7 +648,7 @@ impl Interpreter {
 
                 Expr::MemberAccess { object, member } => {
                     if let Value::Struct { mut fields, .. } = self.evaluate_expression(object)? {
-                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| *field_name == member) {
                             let right_val = self.evaluate_expression(value)?;
                             *field_value = right_val;
                             Ok(Value::Unit)
@@ -688,7 +688,7 @@ impl Interpreter {
 
                 Expr::MemberAccess { object, member } => {
                     if let Value::Struct { mut fields, .. } = self.evaluate_expression(object)? {
-                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                        if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| *field_name == member) {
                             let right_val = self.evaluate_expression(value)?;
                             let result = self.evaluate_compound_assignment(field_value, operator, &right_val)?;
                             *field_value = result;
@@ -869,7 +869,7 @@ impl Interpreter {
                                     return Err("Cannot assign through immutable reference".to_string());
                                 }
                                 if let Value::Struct { ref mut fields, .. } = &mut *boxed_value {
-                                    if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| field_name == member) {
+                                    if let Some((_, field_value)) = fields.iter_mut().find(|(field_name, _)| *field_name == member) {
                                         *field_value = right_val;
                                         self.env
                                             .update_scoped_variable(&source_name.expect("Missing source name"), *boxed_value, source_scope.expect("Missing source scope"))?;
@@ -892,7 +892,7 @@ impl Interpreter {
                 match obj_value {
                     Value::Struct { fields, .. } => fields
                         .iter()
-                        .find(|(field_name, _)| field_name == member)
+                        .find(|(field_name, _)| *field_name == member)
                         .map(|(_, value)| value.clone())
                         .ok_or_else(|| format!("Field '{}' not found", member)),
 
@@ -916,7 +916,7 @@ impl Interpreter {
                                     source_name: Some(composite_origin),
                                     data: Some(Box::new(updated_value.clone())),
                                 })
-                            } else if let Some((_, field_value)) = fields.iter().find(|(field_name, _)| field_name == member) {
+                            } else if let Some((_, field_value)) = fields.iter().find(|(field_name, _)| *field_name == member) {
                                 if self.env.scope_resolver.resolve(&composite_origin).is_none() {
                                     self.env.scope_resolver.declare_variable(&composite_origin, mutable);
                                     self.env.set_variable(&composite_origin, field_value.clone())?;

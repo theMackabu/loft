@@ -28,12 +28,12 @@ pub enum Value {
 
     Struct {
         name: String,
-        fields: Vec<(String, Value)>,
+        fields: HashMap<String, Value>,
     },
 
     StructDef {
         name: String,
-        fields: Vec<(String, Type)>,
+        fields: HashMap<String, Type>,
         methods: HashMap<String, Function>,
     },
 
@@ -41,6 +41,12 @@ pub enum Value {
         enum_type: String,
         variant: String,
         data: Option<Vec<Value>>,
+    },
+
+    FieldRef {
+        base: Box<Value>,
+        chain: Vec<String>,
+        mutable: bool,
     },
 
     Reference {
@@ -57,6 +63,34 @@ pub enum Value {
     },
 
     Unit,
+}
+
+impl Value {
+    pub fn set_field(&mut self, chain: &[String], new_value: Value) -> Result<(), String> {
+        if chain.is_empty() {
+            return Err("Field chain is empty; cannot update".to_string());
+        }
+        match self {
+            Value::Struct { fields, .. } => {
+                let field_name = &chain[0];
+                if chain.len() == 1 {
+                    if let Some(existing) = fields.get_mut(field_name) {
+                        *existing = new_value;
+                        Ok(())
+                    } else {
+                        Err(format!("Field '{}' not found", field_name))
+                    }
+                } else {
+                    if let Some(inner_value) = fields.get_mut(field_name) {
+                        inner_value.set_field(&chain[1..], new_value)
+                    } else {
+                        Err(format!("Field '{}' not found", field_name))
+                    }
+                }
+            }
+            _ => Err("Target value is not a struct".to_string()),
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -103,6 +137,17 @@ impl fmt::Display for Value {
                     }
                 }
                 write!(f, ")")
+            }
+
+            Value::FieldRef { base, chain, mutable } => {
+                if *mutable {
+                    write!(f, "&mut ")?;
+                }
+                write!(f, "{base}")?;
+                for field in chain {
+                    write!(f, ".{field}")?;
+                }
+                Ok(())
             }
 
             Value::Reference { source_name, data, mutable, .. } => {
