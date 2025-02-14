@@ -143,8 +143,12 @@ impl Interpreter {
                     if !mutable {
                         return Err("Cannot call method on non-mutable reference".to_string());
                     }
-                    let origin_info = (source_name.as_ref().ok_or("Missing source variable name")?, source_scope.ok_or("Missing source scope")?);
-                    self.handle_struct_method_call(name, fields, Some(origin_info), method, args)
+                    let origin_info = if source_name.is_some() && source_scope.is_some() {
+                        Some((source_name.as_ref().unwrap(), source_scope.unwrap()))
+                    } else {
+                        None
+                    };
+                    self.handle_struct_method_call(name, fields, origin_info, method, args)
                 }
                 _ => Err("Cannot call method on non-struct reference".to_string()),
             },
@@ -170,6 +174,7 @@ impl Interpreter {
             fields: fields.clone(),
         };
 
+        // Bind the self parameter
         if let Some((self_param, _ty)) = function.params.get(0) {
             match self_param {
                 Pattern::Identifier { name: self_name, mutable } => {
@@ -191,6 +196,7 @@ impl Interpreter {
             return Err("Method does not have a self parameter.".to_string());
         }
 
+        // Evaluate the remaining arguments and bind them.
         let evaluated_args: Vec<Value> = args.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
         for (i, value) in evaluated_args.into_iter().enumerate() {
             if let Some((param_pattern, _)) = function.params.get(i + 1) {

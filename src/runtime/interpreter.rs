@@ -890,44 +890,23 @@ impl Interpreter {
             Expr::MemberAccess { object, member } => {
                 let obj_value = self.evaluate_expression(object)?;
                 match obj_value {
-                    Value::Struct { fields, .. } => fields
-                        .iter()
-                        .find(|(field_name, _)| *field_name == member)
-                        .map(|(_, value)| value.clone())
-                        .ok_or_else(|| format!("Field '{}' not found", member)),
+                    Value::Struct { ref fields, .. } => fields.get(member).cloned().ok_or_else(|| format!("Field '{}' not found", member)),
 
                     Value::Reference {
-                        mutable,
-                        source_name,
-                        source_scope,
-                        data: Some(ref boxed_value),
-                        ..
+                        mutable, data: Some(ref boxed_value), ..
                     } => match &**boxed_value {
                         Value::Struct { fields, .. } => {
-                            let composite_origin = match source_name {
-                                Some(parent_name) => format!("{}.{}", parent_name, member),
-                                None => member.to_owned(),
-                            };
-
-                            if let Some((_, updated_value)) = self.env.find_variable(&composite_origin) {
-                                Ok(Value::Reference {
-                                    mutable,
-                                    source_scope,
-                                    source_name: Some(composite_origin),
-                                    data: Some(Box::new(updated_value.clone())),
-                                })
-                            } else if let Some((_, field_value)) = fields.iter().find(|(field_name, _)| *field_name == member) {
-                                if self.env.scope_resolver.resolve(&composite_origin).is_none() {
-                                    self.env.scope_resolver.declare_variable(&composite_origin, mutable);
-                                    self.env.set_variable(&composite_origin, field_value.clone())?;
+                            if let Some(field_value) = fields.get(member) {
+                                if mutable {
+                                    Ok(Value::Reference {
+                                        mutable,
+                                        source_name: None,
+                                        source_scope: None,
+                                        data: Some(Box::new(field_value.clone())),
+                                    })
+                                } else {
+                                    Ok(field_value.clone())
                                 }
-
-                                Ok(Value::Reference {
-                                    mutable,
-                                    source_scope,
-                                    source_name: Some(composite_origin),
-                                    data: Some(Box::new(field_value.clone())),
-                                })
                             } else {
                                 Err(format!("Field '{}' not found", member))
                             }
