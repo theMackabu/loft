@@ -129,6 +129,8 @@ impl Interpreter {
     }
 
     pub fn handle_struct_method_call(&mut self, live_obj: Value, name: &String, method: &str, args: &[Expr]) -> Result<Value, String> {
+        crate::dbg_ptr!("Parameter 'self'", live_obj);
+
         let struct_def = match self.env.get_variable(name) {
             Some(value) => match value.borrow().inner() {
                 ValueType::StructDef { methods, .. } => methods,
@@ -183,6 +185,7 @@ impl Interpreter {
         }
 
         let result = self.execute(&function.body)?;
+        crate::dbg_ptr!("Parameter 'self' after result", live_obj);
 
         self.env.exit_scope();
         Ok(result)

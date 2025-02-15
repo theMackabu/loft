@@ -331,7 +331,7 @@ impl Interpreter {
 
             Expr::Identifier(name) => {
                 if let Some((_scope_index, value)) = self.env.find_variable(name) {
-                    crate::dbg_ptr!(format!("Identifier {} lookup", name), value);
+                    println!("Identifier {} lookup pointer: {:p}", name, Rc::as_ptr(&value));
                     Ok(value.clone())
                 } else {
                     Err(format!("Undefined variable: {}", name))
@@ -417,6 +417,7 @@ impl Interpreter {
                             ValueType::Struct { fields, .. } => {
                                 let field_ref = fields.get(member).ok_or_else(|| format!("Field '{}' not found", member))?;
                                 *field_ref.borrow_mut() = new_value.borrow().clone();
+                                crate::dbg_ptr!("Member field", field_ref);
                                 Ok(ValueEnum::unit())
                             }
                             _ => Err("Cannot assign to field of non-struct reference".to_string()),
@@ -670,6 +671,7 @@ impl Interpreter {
                             if let Some(field_ref) = fields.get(member) {
                                 let right_val = self.evaluate_expression(value)?;
                                 *field_ref.borrow_mut() = right_val.borrow().clone();
+                                crate::dbg_ptr!("Member field", field_ref);
                                 Ok(ValueEnum::unit())
                             } else {
                                 Err(format!("Field '{}' not found", member))
@@ -738,6 +740,7 @@ impl Interpreter {
                     let result = self.evaluate_compound_assignment(&current_val, operator, &right_val)?;
 
                     *field_ref.borrow_mut() = result.borrow().clone();
+                    crate::dbg_ptr!("Member field", field_ref);
                     Ok(ValueEnum::unit())
                 }
 
@@ -910,6 +913,7 @@ impl Interpreter {
                                 ValueType::Struct { ref fields, .. } => {
                                     if let Some(field_ref) = get_nested_field_ref(fields, &chain) {
                                         *field_ref.borrow_mut() = right_val.borrow().clone();
+                                        crate::dbg_ptr!("Member field", field_ref);
                                         Ok(val!(ValueType::Unit))
                                     } else {
                                         Err(format!("Invalid field chain: {:?}", chain))
@@ -928,6 +932,7 @@ impl Interpreter {
                                     };
                                     if let Some(field_ref) = result {
                                         *field_ref.borrow_mut() = right_val.borrow().clone();
+                                        crate::dbg_ptr!("Member field", field_ref);
                                         Ok(val!(ValueType::Unit))
                                     } else {
                                         Err("Cannot access field of non-struct value".to_string())
@@ -957,6 +962,7 @@ impl Interpreter {
                             ValueType::Struct { ref fields, .. } => {
                                 if let Some(field_ref) = fields.get(member) {
                                     *field_ref.borrow_mut() = right_val.borrow().clone();
+                                    crate::dbg_ptr!("Member field", field_ref);
                                     Ok(val!(ValueType::Unit))
                                 } else {
                                     Err(format!("Field '{}' not found", member))
@@ -967,6 +973,7 @@ impl Interpreter {
                                 if let ValueType::Struct { ref fields, .. } = inner_value {
                                     if let Some(field_ref) = fields.get(member) {
                                         *field_ref.borrow_mut() = right_val.borrow().clone();
+                                        crate::dbg_ptr!("Member field", field_ref);
                                         Ok(val!(ValueType::Unit))
                                     } else {
                                         Err(format!("Field '{}' not found", member))
@@ -1002,6 +1009,8 @@ impl Interpreter {
                     }
                     _ => return Err("Cannot access member of non-struct value".to_string()),
                 };
+
+                crate::dbg_ptr!("Member field", field_ref);
 
                 Ok(field_ref)
             }
