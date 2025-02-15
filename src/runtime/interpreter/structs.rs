@@ -115,22 +115,30 @@ impl Interpreter {
     pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
         match object.borrow().inner() {
             ValueType::Struct { name, .. } => self.handle_struct_method_call(object.clone(), &name, method, args),
-            ValueType::Reference { data: Some(boxed_value), .. } => {
+
+            ValueType::Reference { original_ptr, .. } => {
+                if original_ptr.is_null() {
+                    return Err("Reference contains null pointer".to_string());
+                }
+
                 if !object.borrow().is_mutable() {
                     return Err("Cannot call method on non-mutable reference".to_string());
                 }
-                match boxed_value.borrow().inner() {
-                    ValueType::Struct { name, .. } => self.handle_struct_method_call(object.clone(), &name, method, args),
-                    _ => Err("Cannot call method on non-struct reference".to_string()),
+
+                unsafe {
+                    let cell_ref = &*original_ptr;
+                    match cell_ref.borrow().inner() {
+                        ValueType::Struct { name, .. } => self.handle_struct_method_call(object.clone(), &name, method, args),
+                        _ => Err("Cannot call method on non-struct reference".to_string()),
+                    }
                 }
             }
+
             _ => Err("Cannot call method on non-struct value".to_string()),
         }
     }
 
     pub fn handle_struct_method_call(&mut self, live_obj: Value, name: &String, method: &str, args: &[Expr]) -> Result<Value, String> {
-        crate::dbg_ptr!("Parameter 'self'", live_obj);
-
         let struct_def = match self.env.get_variable(name) {
             Some(value) => match value.borrow().inner() {
                 ValueType::StructDef { methods, .. } => methods,
@@ -172,6 +180,12 @@ impl Interpreter {
         }
 
         for (param_name, value, mutable, param_type) in params_to_process {
+            if param_name == "self" && Rc::ptr_eq(&live_obj, &value) {
+                self.env.scope_resolver.declare_variable(&param_name, mutable);
+                self.env.set_variable_raw(&param_name, live_obj.clone())?;
+                continue;
+            }
+
             match param_type {
                 Type::Reference { mutable: ref_mutable, .. } => {
                     self.env.scope_resolver.declare_reference(&param_name, ref_mutable);
@@ -185,9 +199,8 @@ impl Interpreter {
         }
 
         let result = self.execute(&function.body)?;
-        crate::dbg_ptr!("Parameter 'self' after result", live_obj);
-
         self.env.exit_scope();
+
         Ok(result)
     }
 }

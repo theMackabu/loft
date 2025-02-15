@@ -59,7 +59,8 @@ pub enum ValueType {
     Reference {
         source_name: Option<String>,
         source_scope: Option<usize>,
-        data: Option<Value>,
+        original_ptr: *const RefCell<ValueEnum>,
+        _undropped: Rc<RefCell<ValueEnum>>,
     },
 
     StaticMethod {
@@ -69,11 +70,6 @@ pub enum ValueType {
     },
 
     Unit,
-}
-
-pub trait ValueExt {
-    fn get_struct_field(&self, chain: &[String]) -> Option<Value>;
-    fn set_struct_field(&self, chain: &[String], new_value: Value) -> Result<(), String>;
 }
 
 impl ValueEnum {
@@ -128,67 +124,16 @@ impl ValueEnum {
     }
 
     pub fn into_reference(self, source_name: Option<String>, source_scope: Option<usize>) -> ValueEnum {
+        let rc = Rc::new(RefCell::new(self));
+        let ptr = Rc::as_ptr(&rc);
+
         ValueEnum::Mutable(ValueType::Reference {
             source_name,
             source_scope,
-            data: Some(Rc::new(RefCell::new(self))),
+
+            original_ptr: ptr,
+            _undropped: rc,
         })
-    }
-}
-
-impl ValueExt for Value {
-    fn get_struct_field(&self, chain: &[String]) -> Option<Value> {
-        if chain.is_empty() {
-            return None;
-        }
-
-        let borrowed = self.borrow();
-        match &*borrowed {
-            ValueEnum::Immutable(inner) | ValueEnum::Mutable(inner) => match inner {
-                ValueType::Reference { data: Some(inner), .. } => inner.get_struct_field(chain),
-
-                ValueType::Struct { fields, .. } => {
-                    let field_name = &chain[0];
-                    fields
-                        .get(field_name)
-                        .and_then(|field_value| if chain.len() == 1 { Some(field_value.clone()) } else { field_value.get_struct_field(&chain[1..]) })
-                }
-                _ => None,
-            },
-        }
-    }
-
-    fn set_struct_field(&self, chain: &[String], new_value: Value) -> Result<(), String> {
-        if chain.is_empty() {
-            return Err("Field chain is empty; cannot update".to_string());
-        }
-
-        {
-            let borrowed = self.borrow();
-            if !matches!(*borrowed, ValueEnum::Mutable(_)) {
-                return Err("Cannot modify immutable value".to_string());
-            }
-        }
-
-        let mut borrowed = self.borrow_mut();
-        match borrowed.inner_mut() {
-            ValueType::Reference { data: Some(inner), .. } => inner.set_struct_field(chain, new_value),
-
-            ValueType::Struct { fields, .. } => {
-                let field_name = &chain[0];
-                if let Some(field_rc) = fields.get(field_name) {
-                    if chain.len() == 1 {
-                        *field_rc.borrow_mut() = new_value.borrow().clone();
-                        Ok(())
-                    } else {
-                        field_rc.set_struct_field(&chain[1..], new_value)
-                    }
-                } else {
-                    Err(format!("Field '{}' not found", field_name))
-                }
-            }
-            _ => Err("Target value is not a struct".to_string()),
-        }
     }
 }
 
@@ -260,9 +205,9 @@ impl fmt::Display for ValueEnum {
                 Ok(())
             }
 
-            ValueType::Reference { source_name, data, .. } => {
-                if let Some(value) = data {
-                    write!(f, "{}", value.borrow())
+            ValueType::Reference { source_name, original_ptr, .. } => {
+                if !original_ptr.is_null() {
+                    unsafe { write!(f, "{}", (*original_ptr).borrow()) }
                 } else if let Some(name) = source_name {
                     if self.is_mutable() {
                         write!(f, "&mut {name}")

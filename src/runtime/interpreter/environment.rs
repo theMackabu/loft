@@ -1,6 +1,5 @@
 use super::*;
 use crate::runtime::scope::Scope;
-use std::{cell::RefCell, rc::Rc};
 
 /// Manages the runtime environment with scoped variable storage.
 pub struct Environment {
@@ -42,39 +41,21 @@ impl Environment {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
     }
 
-    // pub fn get_variable(&self, name: &str) -> Option<&Value> {
-    //     let mut value = self.get_variable_ref(name)?;
-    //     while let ValueType::Reference {
-    //         source_name: Some(ref s_name),
-    //         source_scope: Some(scope_idx),
-    //         ..
-    //     } = value.borrow().inner()
-    //     {
-    //         if let Some(scope) = self.scopes.get(scope_idx) {
-    //             if let Some(next_value) = scope.get(s_name) {
-    //                 value = next_value;
-    //                 continue;
-    //             }
-    //         }
-    //         break;
-    //     }
-    //     Some(value)
-    // }
-
     /// Sets the value of a declared variable in the current scope.
     pub fn set_variable(&mut self, name: &str, value: Value) -> Result<(), String> {
         if let Some(symbol_info) = self.scope_resolver.resolve(name) {
-            let final_value = if symbol_info.mutable {
-                self.make_deeply_mutable(value)
+            if symbol_info.mutable {
+                self.make_deeply_mutable(value.clone())
             } else {
-                self.make_deeply_immutable(value)
+                self.make_deeply_immutable(value.clone())
             };
 
             if let Some(scope) = self.scopes.last_mut() {
                 if let Some(existing) = scope.get(name) {
-                    *existing.borrow_mut() = final_value.borrow().clone();
+                    let new_val = value.borrow().clone();
+                    *existing.borrow_mut() = new_val;
                 } else {
-                    scope.insert(name.to_string(), final_value);
+                    scope.insert(name.to_string(), value);
                 }
                 Ok(())
             } else {
@@ -82,6 +63,20 @@ impl Environment {
             }
         } else {
             Err(format!("Variable '{}' not found", name))
+        }
+    }
+
+    /// Sets the value of a declared variable without changing mutability in the current scope.
+    pub fn set_variable_raw(&mut self, name: &str, value: Value) -> Result<(), String> {
+        if let Some(scope) = self.scopes.last_mut() {
+            if let Some(existing) = scope.get(name) {
+                *existing.borrow_mut() = value.borrow().clone();
+            } else {
+                scope.insert(name.to_string(), value);
+            }
+            Ok(())
+        } else {
+            Err("No active scope".to_string())
         }
     }
 
@@ -137,49 +132,5 @@ impl Environment {
         let name = format!("__ref_{}", self.next_ref_id);
         self.next_ref_id += 1;
         name
-    }
-
-    /// Recursively converts a value and its inner fields to mutable.
-    pub fn make_deeply_mutable(&self, value: Value) -> Value {
-        let inner = match value.borrow().inner() {
-            ValueType::Struct { name, fields } => {
-                let mut mutable_fields = HashMap::new();
-                for (field_name, field_value) in fields.into_iter() {
-                    let mutable_value = self.make_deeply_mutable(field_value);
-                    mutable_fields.insert(field_name, mutable_value);
-                }
-                ValueType::Struct { name, fields: mutable_fields }
-            }
-            ValueType::Reference { data, source_name, source_scope } => ValueType::Reference {
-                data: data.map(|d| self.make_deeply_mutable(d)),
-                source_name,
-                source_scope,
-            },
-            other => other,
-        };
-
-        val!(mut inner)
-    }
-
-    /// Recursively converts a value and its inner fields to immutable.
-    pub fn make_deeply_immutable(&self, value: Value) -> Value {
-        let inner = match value.borrow().inner() {
-            ValueType::Struct { name, fields } => {
-                let mut immutable_fields = HashMap::new();
-                for (field_name, field_value) in fields.into_iter() {
-                    let immutable_value = self.make_deeply_immutable(field_value);
-                    immutable_fields.insert(field_name, immutable_value);
-                }
-                ValueType::Struct { name, fields: immutable_fields }
-            }
-            ValueType::Reference { data, source_name, source_scope } => ValueType::Reference {
-                data: data.map(|d| self.make_deeply_immutable(d)),
-                source_name,
-                source_scope,
-            },
-            other => other,
-        };
-
-        val!(inner)
     }
 }

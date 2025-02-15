@@ -1,6 +1,7 @@
 mod assign;
 mod cast;
 mod environment;
+mod pointer;
 mod structs;
 
 use super::value::{Value, ValueEnum, ValueType};
@@ -315,11 +316,17 @@ impl Interpreter {
                 _ => unreachable!(), // cannot hit this
             })),
 
-            Expr::String(value) => Ok(val!(ValueType::Reference {
-                source_name: None,
-                source_scope: None,
-                data: Some(val!(ValueType::Str(value.to_owned())))
-            })),
+            Expr::String(value) => {
+                let rc = val!(ValueType::Str(value.to_owned()));
+
+                Ok(val!(ValueType::Reference {
+                    source_name: None,
+                    source_scope: None,
+
+                    original_ptr: Rc::as_ptr(&rc),
+                    _undropped: rc,
+                }))
+            }
 
             Expr::Tuple(expressions) => {
                 let mut values = Vec::new();
@@ -331,7 +338,6 @@ impl Interpreter {
 
             Expr::Identifier(name) => {
                 if let Some((_scope_index, value)) = self.env.find_variable(name) {
-                    println!("Identifier {} lookup pointer: {:p}", name, Rc::as_ptr(&value));
                     Ok(value.clone())
                 } else {
                     Err(format!("Undefined variable: {}", name))
@@ -400,24 +406,28 @@ impl Interpreter {
                             return Err("Cannot assign through immutable reference".to_string());
                         }
 
-                        let target = {
+                        let target_ptr = {
                             let borrow = ref_value.borrow();
                             match borrow.inner() {
-                                ValueType::Reference { data: Some(target), .. } => target.clone(),
-                                _ => return Err("Reference contains no value".to_string()),
+                                ValueType::Reference { original_ptr, .. } => {
+                                    if original_ptr.is_null() {
+                                        return Err("Reference contains null pointer".to_string());
+                                    }
+                                    original_ptr
+                                }
+                                _ => return Err("Invalid reference".to_string()),
                             }
                         };
 
-                        let target_inner = {
-                            let borrowed = target.borrow();
-                            borrowed.inner()
+                        let target_inner = unsafe {
+                            let cell_ref = &*target_ptr;
+                            cell_ref.borrow().inner()
                         };
 
                         match target_inner {
                             ValueType::Struct { fields, .. } => {
                                 let field_ref = fields.get(member).ok_or_else(|| format!("Field '{}' not found", member))?;
                                 *field_ref.borrow_mut() = new_value.borrow().clone();
-                                crate::dbg_ptr!("Member field", field_ref);
                                 Ok(ValueEnum::unit())
                             }
                             _ => Err("Cannot assign to field of non-struct reference".to_string()),
@@ -515,7 +525,15 @@ impl Interpreter {
                                 Err(format!("Scope {} not found", scope_index))
                             }
                         }
-                        ValueType::Reference { data: Some(inner_value), .. } => Ok(inner_value.clone()),
+
+                        ValueType::Reference { original_ptr, .. } => {
+                            if original_ptr.is_null() {
+                                Err("Reference contains null pointer".to_string())
+                            } else {
+                                unsafe { Ok(Rc::from_raw(original_ptr)) }
+                            }
+                        }
+
                         _ => Err("Cannot dereference a non-reference value".to_string()),
                     }
                 }
@@ -525,14 +543,16 @@ impl Interpreter {
                 Expr::Identifier(name) => {
                     if let Some((scope_index, existing)) = self.env.find_variable(name) {
                         if matches!(existing.borrow().inner(), ValueType::Reference { .. }) {
-                            crate::dbg_ptr!(format!("Ref Identifier {} lookup", name), existing);
                             return Ok(existing.clone());
                         }
+
                         let reference = ValueType::Reference {
                             source_name: Some(name.clone()),
                             source_scope: Some(scope_index),
-                            data: Some(existing.clone()),
+                            original_ptr: Rc::as_ptr(existing),
+                            _undropped: existing.clone(),
                         };
+
                         Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                     } else {
                         Err(format!("Variable '{}' not found", name))
@@ -544,11 +564,14 @@ impl Interpreter {
                     if matches!(value.borrow().inner(), ValueType::Reference { .. }) {
                         return Ok(value.clone());
                     }
+
                     let reference = ValueType::Reference {
                         source_name: None,
                         source_scope: None,
-                        data: Some(value),
+                        original_ptr: Rc::as_ptr(&value),
+                        _undropped: value.clone(),
                     };
+
                     Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                 }
             },
@@ -671,7 +694,6 @@ impl Interpreter {
                             if let Some(field_ref) = fields.get(member) {
                                 let right_val = self.evaluate_expression(value)?;
                                 *field_ref.borrow_mut() = right_val.borrow().clone();
-                                crate::dbg_ptr!("Member field", field_ref);
                                 Ok(ValueEnum::unit())
                             } else {
                                 Err(format!("Field '{}' not found", member))
@@ -740,7 +762,6 @@ impl Interpreter {
                     let result = self.evaluate_compound_assignment(&current_val, operator, &right_val)?;
 
                     *field_ref.borrow_mut() = result.borrow().clone();
-                    crate::dbg_ptr!("Member field", field_ref);
                     Ok(ValueEnum::unit())
                 }
 
@@ -913,15 +934,19 @@ impl Interpreter {
                                 ValueType::Struct { ref fields, .. } => {
                                     if let Some(field_ref) = get_nested_field_ref(fields, &chain) {
                                         *field_ref.borrow_mut() = right_val.borrow().clone();
-                                        crate::dbg_ptr!("Member field", field_ref);
                                         Ok(val!(ValueType::Unit))
                                     } else {
                                         Err(format!("Invalid field chain: {:?}", chain))
                                     }
                                 }
-                                ValueType::Reference { data: Some(ref inner), .. } => {
-                                    let result = {
-                                        let inner_val = inner.borrow();
+                                ValueType::Reference { original_ptr, .. } => {
+                                    if original_ptr.is_null() {
+                                        return Err("Reference contains null pointer".to_string());
+                                    }
+
+                                    let result = unsafe {
+                                        let cell_ref = &*original_ptr;
+                                        let inner_val = cell_ref.borrow();
                                         match inner_val.inner() {
                                             ValueType::Struct { ref fields, .. } => {
                                                 let fields_clone = fields.clone();
@@ -930,9 +955,9 @@ impl Interpreter {
                                             _ => None,
                                         }
                                     };
+
                                     if let Some(field_ref) = result {
                                         *field_ref.borrow_mut() = right_val.borrow().clone();
-                                        crate::dbg_ptr!("Member field", field_ref);
                                         Ok(val!(ValueType::Unit))
                                     } else {
                                         Err("Cannot access field of non-struct value".to_string())
@@ -962,24 +987,30 @@ impl Interpreter {
                             ValueType::Struct { ref fields, .. } => {
                                 if let Some(field_ref) = fields.get(member) {
                                     *field_ref.borrow_mut() = right_val.borrow().clone();
-                                    crate::dbg_ptr!("Member field", field_ref);
                                     Ok(val!(ValueType::Unit))
                                 } else {
                                     Err(format!("Field '{}' not found", member))
                                 }
                             }
-                            ValueType::Reference { data: Some(ref struct_val), .. } => {
-                                let inner_value = struct_val.borrow().inner();
-                                if let ValueType::Struct { ref fields, .. } = inner_value {
-                                    if let Some(field_ref) = fields.get(member) {
-                                        *field_ref.borrow_mut() = right_val.borrow().clone();
-                                        crate::dbg_ptr!("Member field", field_ref);
-                                        Ok(val!(ValueType::Unit))
+
+                            ValueType::Reference { original_ptr, .. } => {
+                                if original_ptr.is_null() {
+                                    return Err("Reference contains null pointer".to_string());
+                                }
+
+                                unsafe {
+                                    let cell_ref = &*original_ptr;
+                                    let inner_value = cell_ref.borrow().inner();
+                                    if let ValueType::Struct { ref fields, .. } = inner_value {
+                                        if let Some(field_ref) = fields.get(member) {
+                                            *field_ref.borrow_mut() = right_val.borrow().clone();
+                                            Ok(val!(ValueType::Unit))
+                                        } else {
+                                            Err(format!("Field '{}' not found", member))
+                                        }
                                     } else {
-                                        Err(format!("Field '{}' not found", member))
+                                        Err("Cannot assign to field of non-struct reference".to_string())
                                     }
-                                } else {
-                                    Err("Cannot assign to field of non-struct reference".to_string())
                                 }
                             }
                             _ => Err("Invalid target for member assignment".to_string()),
@@ -999,18 +1030,22 @@ impl Interpreter {
                 let field_ref = match obj_inner {
                     ValueType::Struct { ref fields, .. } => fields.get(member).ok_or_else(|| format!("Field '{}' not found", member))?.clone(),
 
-                    ValueType::Reference { data: Some(ref inner), .. } => {
-                        let inner_inner = inner.borrow().inner();
+                    ValueType::Reference { original_ptr, .. } => {
+                        if original_ptr.is_null() {
+                            return Err("Reference contains null pointer".to_string());
+                        }
 
-                        match inner_inner {
-                            ValueType::Struct { ref fields, .. } => fields.get(member).ok_or_else(|| format!("Field '{}' not found", member))?.clone(),
-                            _ => return Err("Cannot access member of non-struct reference".to_string()),
+                        unsafe {
+                            let cell_ref = &*original_ptr;
+                            let inner_inner = cell_ref.borrow().inner();
+                            match inner_inner {
+                                ValueType::Struct { ref fields, .. } => fields.get(member).ok_or_else(|| format!("Field '{}' not found", member))?.clone(),
+                                _ => return Err("Cannot access member of non-struct reference".to_string()),
+                            }
                         }
                     }
                     _ => return Err("Cannot access member of non-struct value".to_string()),
                 };
-
-                crate::dbg_ptr!("Member field", field_ref);
 
                 Ok(field_ref)
             }
@@ -1111,14 +1146,14 @@ impl Interpreter {
                 };
 
                 match inner_value {
-                    ValueType::Reference { data, .. } => {
+                    ValueType::Reference { original_ptr, .. } => {
                         if *mutable && !value.borrow().is_mutable() {
                             return Ok(false);
                         }
-                        if let Some(inner_val) = data {
-                            self.pattern_matches(pattern, &inner_val)
-                        } else {
+                        if original_ptr.is_null() {
                             Ok(false)
+                        } else {
+                            unsafe { self.pattern_matches(pattern, &Rc::from_raw(original_ptr)) }
                         }
                     }
                     _ => self.pattern_matches(pattern, value),

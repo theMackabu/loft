@@ -11,33 +11,44 @@ impl Interpreter {
                 };
 
                 match value_inner {
-                    ValueType::Reference { source_name, source_scope, data } => {
+                    ValueType::Reference {
+                        source_name,
+                        source_scope,
+                        original_ptr,
+                        _undropped,
+                    } => {
+                        if original_ptr.is_null() {
+                            return Err("Reference contains null pointer".to_string());
+                        }
+
                         if let (Some(src_name), Some(src_scope)) = (source_name.clone(), source_scope) {
                             let scope = self.env.scopes.get(src_scope).ok_or_else(|| format!("Reference scope {} not found", src_scope))?;
                             let inner_value = scope.get(&src_name).ok_or_else(|| format!("Reference source '{}' not found", src_name))?;
-
                             let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
                             self.env.update_scoped_variable(&src_name, casted_inner.clone(), src_scope)?;
 
                             let reference = ValueType::Reference {
                                 source_name: Some(src_name),
                                 source_scope: Some(src_scope),
-                                data: Some(casted_inner),
-                            };
-
-                            Ok(if *mutable { val!(mut reference) } else { val!(reference) })
-                        } else if let Some(inner_value) = data.clone() {
-                            let casted_inner = self.perform_cast(inner_value, inner)?;
-
-                            let reference = ValueType::Reference {
-                                source_name: None,
-                                source_scope: None,
-                                data: Some(casted_inner),
+                                original_ptr: Rc::as_ptr(&casted_inner),
+                                _undropped: casted_inner.clone(),
                             };
 
                             Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                         } else {
-                            Err("Invalid reference: missing both source and data".to_string())
+                            unsafe {
+                                let original_rc = Rc::from_raw(original_ptr);
+                                let casted_inner = self.perform_cast(original_rc, inner)?;
+
+                                let reference = ValueType::Reference {
+                                    source_name: None,
+                                    source_scope: None,
+                                    original_ptr: Rc::as_ptr(&casted_inner),
+                                    _undropped: casted_inner.clone(),
+                                };
+
+                                Ok(if *mutable { val!(mut reference) } else { val!(reference) })
+                            }
                         }
                     }
 
@@ -45,13 +56,13 @@ impl Interpreter {
                         let casted = self.perform_cast(value, inner)?;
                         let temp_name = self.env.generate_temp_reference_name();
                         let current_scope = self.env.get_current_scope();
-
                         self.env.update_scoped_variable(&temp_name, casted.clone(), current_scope)?;
 
                         let reference = ValueType::Reference {
                             source_name: Some(temp_name),
                             source_scope: Some(current_scope),
-                            data: Some(casted.clone()),
+                            original_ptr: Rc::as_ptr(&casted),
+                            _undropped: casted.clone(),
                         };
 
                         Ok(if *mutable { val!(mut reference) } else { val!(reference) })
@@ -66,7 +77,16 @@ impl Interpreter {
                         borrowed.inner()
                     };
                     match inner_val {
-                        ValueType::Reference { source_name, source_scope, data } => {
+                        ValueType::Reference {
+                            source_name,
+                            source_scope,
+                            original_ptr,
+                            _undropped,
+                        } => {
+                            if original_ptr.is_null() {
+                                return Err("Reference contains null pointer".to_string());
+                            }
+
                             if let (Some(src_name), Some(src_scope)) = (source_name.clone(), source_scope) {
                                 if let Some(scope) = self.env.scopes.get(src_scope) {
                                     if let Some(val) = scope.get(&src_name) {
@@ -77,12 +97,11 @@ impl Interpreter {
                                 } else {
                                     return Err(format!("Reference scope {} not found", src_scope));
                                 }
-                            } else if let Some(inner_value) = data.clone() {
-                                inner_value
                             } else {
-                                return Err("Invalid reference: missing both source and data".to_string());
+                                unsafe { Rc::from_raw(original_ptr) }
                             }
                         }
+
                         _ => value.clone(),
                     }
                 };
