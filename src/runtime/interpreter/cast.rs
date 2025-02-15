@@ -1,4 +1,5 @@
 use super::*;
+use std::mem;
 
 impl Interpreter {
     pub fn perform_cast(&mut self, value: Value, target_type: &Type) -> Result<Value, String> {
@@ -38,7 +39,10 @@ impl Interpreter {
                         } else {
                             unsafe {
                                 let original_rc = Rc::from_raw(original_ptr);
-                                let casted_inner = self.perform_cast(original_rc, inner)?;
+                                let original_rc_clone = original_rc.clone();
+                                mem::forget(original_rc);
+
+                                let casted_inner = self.perform_cast(original_rc_clone, inner)?;
 
                                 let reference = ValueType::Reference {
                                     source_name: None,
@@ -98,7 +102,12 @@ impl Interpreter {
                                     return Err(format!("Reference scope {} not found", src_scope));
                                 }
                             } else {
-                                unsafe { Rc::from_raw(original_ptr) }
+                                unsafe {
+                                    let original_rc = Rc::from_raw(original_ptr);
+                                    let original_rc_clone = original_rc.clone();
+                                    mem::forget(original_rc);
+                                    original_rc_clone
+                                }
                             }
                         }
 
@@ -108,6 +117,8 @@ impl Interpreter {
 
                 let type_name = &path.segments[0].ident;
                 match type_name.as_str() {
+                    "bool" => self.cast_to_bool::<bool>(new_value),
+
                     "i8" => self.cast_to_int::<i8>(new_value),
                     "i16" => self.cast_to_int::<i16>(new_value),
                     "i32" => self.cast_to_int::<i32>(new_value),
@@ -130,6 +141,41 @@ impl Interpreter {
             }
 
             _ => Err("Invalid cast target type".to_string()),
+        }
+    }
+
+    fn cast_to_bool<T>(&self, value: Value) -> Result<Value, String>
+    where
+        T: TryFrom<bool> + 'static,
+    {
+        let inner_value = {
+            let borrowed = value.borrow();
+            borrowed.inner()
+        };
+
+        match inner_value {
+            ValueType::Boolean(b) => Ok(val!(ValueType::Boolean(b))),
+
+            ValueType::I8(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::I16(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::I32(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::I64(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::I128(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::ISize(v) => Ok(val!(ValueType::Boolean(v != 0))),
+
+            ValueType::U8(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::U16(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::U32(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::U64(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::U128(v) => Ok(val!(ValueType::Boolean(v != 0))),
+            ValueType::USize(v) => Ok(val!(ValueType::Boolean(v != 0))),
+
+            ValueType::F32(v) => Ok(val!(ValueType::Boolean(v != 0.0))),
+            ValueType::F64(v) => Ok(val!(ValueType::Boolean(v != 0.0))),
+
+            ValueType::Str(ref s) => Ok(val!(ValueType::Boolean(!s.is_empty()))),
+
+            _ => Err("Cannot cast value to bool".to_string()),
         }
     }
 

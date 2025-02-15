@@ -22,7 +22,7 @@ use testing::util;
 #[path="other/another.lo"]
 use another;
 
-const MAX_VALUE: i64 = 100;
+const MAX_VALUE: &i64 = 100;
 static GREETING: &str = "Hello";
 
 // Type error: TypeMismatch { expected: "&str", found: "i32", location: "in function main" }
@@ -102,11 +102,11 @@ fn test_assignment(val: &mut i32) {
 fn main() -> Result<(), ()> {
    test_enums();
    test_patterns();
-   
-   let big_num: &i64 = &50;
+      
+   let big_num: &i64 = 50;
    let mut value = 5;
    
-   if *big_num < MAX_VALUE {
+   if *big_num < *MAX_VALUE {
       io::println(big_num);
    } else {
       return "failed!";

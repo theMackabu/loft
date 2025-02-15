@@ -11,24 +11,29 @@ macro_rules! val {
 #[macro_export]
 macro_rules! impl_binary_ops {
     (($left_val:expr, $operator:expr, $right_val:expr), $($type:ident),*) => {
-        match ($left_val.borrow().inner(), $operator, $right_val.borrow().inner()) {
-            $(
-                (ValueType::$type(l), Token::Plus, ValueType::$type(r)) => Ok(val!(ValueType::$type(l + r))),
-                (ValueType::$type(l), Token::Minus, ValueType::$type(r)) => Ok(val!(ValueType::$type(l - r))),
-                (ValueType::$type(l), Token::Star, ValueType::$type(r)) => Ok(val!(ValueType::$type(l * r))),
-                (ValueType::$type(l), Token::Slash, ValueType::$type(r)) => Ok(val!(ValueType::$type(l / r))),
-            )*
+        {
+            let left = unwrap_value(&$left_val);
+            let right = unwrap_value(&$right_val);
 
-            $(
-            (ValueType::$type(l), Token::LeftAngle, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l < r))),
-            (ValueType::$type(l), Token::RightAngle, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l > r))),
-            (ValueType::$type(l), Token::LessEquals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l <= r))),
-            (ValueType::$type(l), Token::GreaterEquals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l >= r))),
-            (ValueType::$type(l), Token::Equals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l == r))),
-            (ValueType::$type(l), Token::NotEquals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l != r))),
-            )*
+            let left_borrowed = left.borrow();
+            let right_borrowed = right.borrow();
 
-            _ => Err(format!("Invalid binary operation: {:?} {:?} {:?}", $left_val, $operator, $right_val)),
+            match (left_borrowed.inner(), $operator, right_borrowed.inner()) {
+                $(
+                    (ValueType::$type(l), Token::Plus, ValueType::$type(r)) => Ok(val!(ValueType::$type(l + r))),
+                    (ValueType::$type(l), Token::Minus, ValueType::$type(r)) => Ok(val!(ValueType::$type(l - r))),
+                    (ValueType::$type(l), Token::Star, ValueType::$type(r)) => Ok(val!(ValueType::$type(l * r))),
+                    (ValueType::$type(l), Token::Slash, ValueType::$type(r)) => Ok(val!(ValueType::$type(l / r))),
+
+                    (ValueType::$type(l), Token::LeftAngle, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l < r))),
+                    (ValueType::$type(l), Token::RightAngle, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l > r))),
+                    (ValueType::$type(l), Token::LessEquals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l <= r))),
+                    (ValueType::$type(l), Token::GreaterEquals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l >= r))),
+                    (ValueType::$type(l), Token::Equals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l == r))),
+                    (ValueType::$type(l), Token::NotEquals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l != r))),
+                )*
+                _ => Err(format!("Invalid binary operation: {:?} {:?} {:?}", left_borrowed.inner(), $operator, right_borrowed.inner())),
+            }
         }
     }
 }
@@ -36,34 +41,39 @@ macro_rules! impl_binary_ops {
 #[macro_export]
 macro_rules! impl_promote_to_type {
     (($value:expr, $target:expr), $(($Value:ident, $type:ident)),*) => {
-        match ($value.borrow().inner(), $target.borrow().inner()) {
-            $(
-                (ValueType::I8(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
-                (ValueType::U8(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
-                (ValueType::I16(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
-                (ValueType::U16(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
-                (ValueType::I32(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
-                (ValueType::U32(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
-                (ValueType::ISize(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
-                (ValueType::USize(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
-            )*
+        {
+            let value_ref = $value.borrow();
+            let target_ref = $target.borrow();
 
-            (ValueType::I8(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
-            (ValueType::U8(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
-            (ValueType::I16(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
-            (ValueType::I32(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
-            (ValueType::ISize(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
-            (ValueType::USize(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
+            match (value_ref.inner(), target_ref.inner()) {
+                $(
+                    (ValueType::I8(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
+                    (ValueType::U8(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
+                    (ValueType::I16(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
+                    (ValueType::U16(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
+                    (ValueType::I32(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
+                    (ValueType::U32(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
+                    (ValueType::ISize(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
+                    (ValueType::USize(x), ValueType::$Value(_)) => Ok(val!(ValueType::$Value(x as $type))),
+                )*
 
-            (ValueType::I8(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
-            (ValueType::U8(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
-            (ValueType::I16(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
-            (ValueType::I32(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
-            (ValueType::F32(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
-            (ValueType::ISize(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
-            (ValueType::USize(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
+                (ValueType::I8(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
+                (ValueType::U8(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
+                (ValueType::I16(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
+                (ValueType::I32(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
+                (ValueType::ISize(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
+                (ValueType::USize(x), ValueType::F32(_)) => Ok(val!(ValueType::F32(x as f32))),
 
-            _ => Err(format!("Cannot promote {:?} to type of {:?}", $value, $target)),
+                (ValueType::I8(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
+                (ValueType::U8(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
+                (ValueType::I16(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
+                (ValueType::I32(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
+                (ValueType::F32(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
+                (ValueType::ISize(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
+                (ValueType::USize(x), ValueType::F64(_)) => Ok(val!(ValueType::F64(x as f64))),
+
+                _ => Err(format!("Cannot promote {:?} to type of {:?}", value_ref.inner(), target_ref.inner())),
+            }
         }
     }
 }

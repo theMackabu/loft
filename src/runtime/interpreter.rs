@@ -22,6 +22,24 @@ pub struct Interpreter {
     fnc: HashMap<String, Stmt>,
 }
 
+fn unwrap_value(val: &Value) -> Value {
+    let mut current = val.clone();
+
+    loop {
+        let borrowed = current.borrow();
+        match &borrowed.inner() {
+            ValueType::Reference { _undropped, .. } => {
+                let next = _undropped.clone();
+                drop(borrowed);
+                current = next;
+            }
+            _ => break,
+        }
+    }
+
+    current
+}
+
 impl Interpreter {
     pub fn new(ast: &Vec<Stmt>) -> Result<Self, String> {
         let fnc = ast
@@ -93,16 +111,24 @@ impl Interpreter {
     fn declare_globals(&mut self, statements: &[Stmt]) -> Result<(), String> {
         for stmt in statements {
             match stmt {
-                Stmt::Const { name, initializer, .. } => {
+                Stmt::Const {
+                    name, initializer, type_annotation, ..
+                } => {
                     let value = self.evaluate_expression(initializer)?;
+                    let value = self.perform_cast(value.clone(), type_annotation.as_ref().expect("expected op level types")).unwrap_or(value);
+
                     self.env.scope_resolver.declare_variable(name, false);
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
                 }
 
-                Stmt::Static { name, initializer, .. } => {
+                Stmt::Static {
+                    name, initializer, type_annotation, ..
+                } => {
                     let value = self.evaluate_expression(initializer)?;
+                    let value = self.perform_cast(value.clone(), type_annotation.as_ref().expect("expected op level types")).unwrap_or(value);
+
                     self.env.scope_resolver.declare_variable(name, false);
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
@@ -580,6 +606,17 @@ impl Interpreter {
                 let left_val = self.evaluate_expression(left)?;
                 let right_val = self.evaluate_expression(right)?;
 
+                let result = impl_binary_ops! {
+                    (left_val, operator, right_val),
+                    I8, U8, I16, U16, I32, U32, F32,
+                    I64, U64, F64, I128, U128,
+                    ISize, USize
+                };
+
+                if result.is_ok() {
+                    return result;
+                }
+
                 if let Ok(promoted) = impl_promote_to_type! {
                     (right_val, left_val),
                     (I16, i16),
@@ -617,6 +654,7 @@ impl Interpreter {
                         ISize, USize
                     };
                 }
+
                 Err(format!("Cannot perform operation between {:?} and {:?}", left_val, right_val))
             }
 
