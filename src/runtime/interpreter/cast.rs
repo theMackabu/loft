@@ -13,33 +13,31 @@ impl Interpreter {
                 match value_inner {
                     ValueType::Reference { source_name, source_scope, data } => {
                         if let (Some(src_name), Some(src_scope)) = (source_name.clone(), source_scope) {
-                            if let Some(scope) = self.env.scopes.get(src_scope) {
-                                if let Some(inner_value) = scope.get(&src_name) {
-                                    let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
-                                    self.env.update_scoped_variable(&src_name, casted_inner, src_scope)?;
+                            let scope = self.env.scopes.get(src_scope).ok_or_else(|| format!("Reference scope {} not found", src_scope))?;
+                            let inner_value = scope.get(&src_name).ok_or_else(|| format!("Reference source '{}' not found", src_name))?;
 
-                                    let reference = ValueType::Reference {
-                                        source_name: Some(src_name),
-                                        source_scope: Some(src_scope),
-                                        data: None,
-                                    };
-                                    return Ok(if *mutable { val!(mut reference) } else { val!(reference) });
-                                } else {
-                                    return Err(format!("Reference source '{}' not found", src_name));
-                                }
-                            } else {
-                                return Err(format!("Reference scope {} not found", src_scope));
-                            }
+                            let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
+                            self.env.update_scoped_variable(&src_name, casted_inner.clone(), src_scope)?;
+
+                            let reference = ValueType::Reference {
+                                source_name: Some(src_name),
+                                source_scope: Some(src_scope),
+                                data: Some(casted_inner),
+                            };
+
+                            Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                         } else if let Some(inner_value) = data.clone() {
                             let casted_inner = self.perform_cast(inner_value, inner)?;
+
                             let reference = ValueType::Reference {
                                 source_name: None,
                                 source_scope: None,
                                 data: Some(casted_inner),
                             };
-                            return Ok(if *mutable { val!(mut reference) } else { val!(reference) });
+
+                            Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                         } else {
-                            return Err("Invalid reference: missing both source and data".to_string());
+                            Err("Invalid reference: missing both source and data".to_string())
                         }
                     }
 
@@ -47,14 +45,16 @@ impl Interpreter {
                         let casted = self.perform_cast(value, inner)?;
                         let temp_name = self.env.generate_temp_reference_name();
                         let current_scope = self.env.get_current_scope();
-                        self.env.update_scoped_variable(&temp_name, casted, current_scope)?;
+
+                        self.env.update_scoped_variable(&temp_name, casted.clone(), current_scope)?;
 
                         let reference = ValueType::Reference {
                             source_name: Some(temp_name),
                             source_scope: Some(current_scope),
-                            data: None,
+                            data: Some(casted.clone()),
                         };
-                        return Ok(if *mutable { val!(mut reference) } else { val!(reference) });
+
+                        Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                     }
                 }
             }
