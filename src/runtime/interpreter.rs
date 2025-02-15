@@ -847,16 +847,19 @@ impl Interpreter {
                                             if *ref_mutable && !value.borrow().is_mutable() {
                                                 return Err("Cannot pass immutable reference as mutable".to_string());
                                             }
+
                                             value.clone()
                                         } else {
+                                            if *ref_mutable && !value.borrow().is_mutable() {
+                                                return Err("Cannot pass immutable reference as mutable".to_string());
+                                            }
+
                                             let new_ref = ValueType::Reference {
                                                 source_name: Some(name.clone()),
                                                 source_scope: None,
                                                 data: Some(value.clone()),
                                             };
-                                            if *ref_mutable && !value.borrow().is_mutable() {
-                                                return Err("Cannot pass immutable reference as mutable".to_string());
-                                            }
+
                                             val!(new_ref)
                                         };
 
