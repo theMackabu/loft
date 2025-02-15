@@ -2,6 +2,24 @@ use super::*;
 use crate::impl_compound_assignment;
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub};
 
+fn unwrap_value<'a>(env: &'a Environment, mut val: &'a Value) -> &'a Value {
+    while let ValueType::Reference {
+        source_name: Some(ref s_name),
+        source_scope: Some(scope_idx),
+        ..
+    } = val.borrow().inner()
+    {
+        if let Some(scope) = env.scopes.get(scope_idx) {
+            if let Some(next) = scope.get(s_name) {
+                val = next;
+                continue;
+            }
+        }
+        break;
+    }
+    val
+}
+
 impl Interpreter {
     pub fn evaluate_compound_assignment(&self, left: &Value, operator: &Token, right: &Value) -> Result<Value, String> {
         match operator {

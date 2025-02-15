@@ -73,121 +73,118 @@ macro_rules! impl_compound_assignment {
     ($env:expr, $left:expr, $right:expr, $op:expr, {
         $(($type:ident, $rust_type:ty, $method:ident)),* $(,)?
     }) => {
-        match (
-            ($left).borrow().inner(),
-            ($right).borrow().inner()
-        ) {
-            $(
-                (ValueType::$type(l), ValueType::$type(r)) => {
-                    Ok(val!(ValueType::$type(l.$method(r))))
-                },
-            )*
+        {
+            let left_inner = unwrap_value(&$env, &$left).borrow().inner();
+            let right_inner = unwrap_value(&$env, &$right).borrow().inner();
 
-            $(
+            match (left_inner, right_inner) {
+                $(
+                    (ValueType::$type(l), ValueType::$type(r)) => {
+                        Ok(val!(ValueType::$type(l.$method(r))))
+                    },
+                )*
+
+                $(
+                    (
+                        ValueType::Reference { source_name, source_scope, .. },
+                        ValueType::$type(r)
+                    ) => {
+                        if !$left.borrow().is_mutable() {
+                            return Err(format!("Cannot modify immutable reference"));
+                        }
+                        if let Some(scope) = $env.scopes.get(source_scope.expect("HANDLE THIS")) {
+                            if let Some(value) = scope.get(&source_name.clone().expect("HANDLE THIS")) {
+                                if let ValueType::$type(l) = value.borrow().inner() {
+                                    Ok(val!(ValueType::$type(l.$method(r))))
+                                } else {
+                                    Err(format!(
+                                        "Cannot perform {:?} operation between {:?} and {:?}",
+                                        $op, $left, $right
+                                    ))
+                                }
+                            } else {
+                                Err(format!(
+                                    "Cannot perform {:?} operation between {:?} and {:?}",
+                                    $op, $left, $right
+                                ))
+                            }
+                        } else {
+                            Err(format!("Reference scope not found"))
+                        }
+                    },
+                )*
+
+                $(
+                    (
+                        ValueType::$type(l),
+                        ValueType::Reference { source_name, source_scope, .. }
+                    ) => {
+                        if let Some(scope) = $env.scopes.get(source_scope.expect("HANDLE THIS")) {
+                            if let Some(value) = scope.get(&source_name.clone().expect("HANDLE THIS")) {
+                                if let ValueType::$type(r) = value.borrow().inner() {
+                                    Ok(val!(ValueType::$type(l.$method(r))))
+                                } else {
+                                    Err(format!(
+                                        "Cannot perform {:?} operation between {:?} and {:?}",
+                                        $op, $left, $right
+                                    ))
+                                }
+                            } else {
+                                Err(format!(
+                                    "Cannot perform {:?} operation between {:?} and {:?}",
+                                    $op, $left, $right
+                                ))
+                            }
+                        } else {
+                            Err(format!("Reference scope not found"))
+                        }
+                    },
+                )*
+
                 (
-                    ValueType::Reference { source_name, source_scope, .. },
-                    ValueType::$type(r)
+                    ValueType::Reference {
+                        source_name: left_name,
+                        source_scope: left_scope,
+                        ..
+                    },
+                    ValueType::Reference {
+                        source_name: right_name,
+                        source_scope: right_scope,
+                        ..
+                    }
                 ) => {
-                    if !($left).borrow().is_mutable() {
+                    if !$left.borrow().is_mutable() {
                         return Err(format!("Cannot modify immutable reference"));
                     }
-                    if let Some(scope) = $env.scopes.get(source_scope.expect("HANDLE THIS")) {
-                        if let Some(value) =
-                            scope.get(&source_name.clone().expect("HANDLE THIS"))
-                        {
-                            if let ValueType::$type(l) = value.borrow().inner() {
-                                Ok(val!(ValueType::$type(l.$method(r))))
-                            } else {
-                                Err(format!(
-                                    "Cannot perform {:?} operation between {:?} and {:?}",
-                                    $op, $left, $right
-                                ))
-                            }
-                        } else {
-                            Err(format!(
-                                "Cannot perform {:?} operation between {:?} and {:?}",
-                                $op, $left, $right
-                            ))
-                        }
-                    } else {
-                        Err(format!("Reference scope not found"))
-                    }
-                },
-            )*
-
-            $(
-                (
-                    ValueType::$type(l),
-                    ValueType::Reference { source_name, source_scope, .. }
-                ) => {
-                    if let Some(scope) = $env.scopes.get(source_scope.expect("HANDLE THIS")) {
-                        if let Some(value) =
-                            scope.get(&source_name.clone().expect("HANDLE THIS"))
-                        {
-                            if let ValueType::$type(r) = value.borrow().inner() {
-                                Ok(val!(ValueType::$type(l.$method(r))))
-                            } else {
-                                Err(format!(
-                                    "Cannot perform {:?} operation between {:?} and {:?}",
-                                    $op, $left, $right
-                                ))
-                            }
-                        } else {
-                            Err(format!(
-                                "Cannot perform {:?} operation between {:?} and {:?}",
-                                $op, $left, $right
-                            ))
-                        }
-                    } else {
-                        Err(format!("Reference scope not found"))
-                    }
-                },
-            )*
-
-            (
-                ValueType::Reference {
-                    source_name: left_name,
-                    source_scope: left_scope,
-                    ..
-                },
-                ValueType::Reference {
-                    source_name: right_name,
-                    source_scope: right_scope,
-                    ..
-                }
-            ) => {
-                if !($left).borrow().is_mutable() {
-                    return Err(format!("Cannot modify immutable reference"));
-                }
-                if let (Some(left_scope), Some(right_scope)) = (
-                    $env.scopes.get(left_scope.expect("HANDLE THIS")),
-                    $env.scopes.get(right_scope.expect("HANDLE THIS"))
-                ) {
-                    match (
-                        left_scope.get(&left_name.clone().expect("HANDLE THIS"))
-                            .map(|v| v.borrow().inner()),
-                        right_scope.get(&right_name.clone().expect("HANDLE THIS"))
-                            .map(|v| v.borrow().inner())
+                    if let (Some(left_sc), Some(right_sc)) = (
+                        $env.scopes.get(left_scope.expect("HANDLE THIS")),
+                        $env.scopes.get(right_scope.expect("HANDLE THIS"))
                     ) {
-                        $(
-                            (Some(ValueType::$type(l)), Some(ValueType::$type(r))) => {
-                                Ok(val!(ValueType::$type(l.$method(r))))
-                            },
-                        )*
-                        _ => Err(format!(
-                            "Cannot perform {:?} operation between {:?} and {:?}",
-                            $op, $left, $right
-                        ))
+                        match (
+                            left_sc.get(&left_name.clone().expect("HANDLE THIS"))
+                                .map(|v| v.borrow().inner()),
+                            right_sc.get(&right_name.clone().expect("HANDLE THIS"))
+                                .map(|v| v.borrow().inner())
+                        ) {
+                            $(
+                                (Some(ValueType::$type(l)), Some(ValueType::$type(r))) => {
+                                    Ok(val!(ValueType::$type(l.$method(r))))
+                                },
+                            )*
+                            _ => Err(format!(
+                                "Cannot perform {:?} operation between {:?} and {:?}",
+                                $op, $left, $right
+                            ))
+                        }
+                    } else {
+                        Err(format!("Reference scope not found"))
                     }
-                } else {
-                    Err(format!("Reference scope not found"))
-                }
-            },
-
-            _ => Err(format!(
-                "Cannot perform {:?} operation between {:?} and {:?}",
-                $op, $left, $right
-            ))
+                },
+                _ => Err(format!(
+                    "Cannot perform {:?} operation between {:?} and {:?}",
+                    $op, $left, $right
+                ))
+            }
         }
     }
 }

@@ -19,7 +19,7 @@ impl Interpreter {
     }
 
     pub fn handle_struct_def(&mut self, name: &str, fields: HashMap<String, (Type, bool)>) -> Result<(), String> {
-        self.env.scope_resolver.declare_variable(name, false);
+        self.env.scope_resolver.declare_variable(name, true);
 
         let struct_def = val!(ValueType::StructDef {
             name: name.to_string(),
@@ -37,36 +37,40 @@ impl Interpreter {
             return Err(format!("Invalid impl target path: {:?}", target));
         };
 
-        let (name, fields, mut methods) = match self.env.get_variable(type_name).as_ref() {
-            Some(value) => match value.borrow().inner() {
-                ValueType::StructDef { name, fields, methods } => (name.clone(), fields.clone(), methods.clone()),
-                _ => return Err(format!("Value '{}' is not a struct definition", type_name)),
-            },
-            None => return Err(format!("Type '{}' not found", type_name)),
-        };
+        if let Some(value) = self.env.get_variable(type_name) {
+            let mut cell = value.borrow_mut();
 
-        for method in items {
-            if let Stmt::Function { name: method_name, params, body, .. } = method {
-                let is_static = params.is_empty() || {
-                    let first_param = &params[0].0;
-                    !matches!(first_param, Pattern::Identifier { name, .. } if name == "self")
-                        && !matches!(first_param, Pattern::Reference { pattern, .. } if matches!(pattern.as_ref(), Pattern::Identifier { name, .. } if name == "self"))
-                };
+            match cell.inner_mut() {
+                ValueType::StructDef { ref mut methods, .. } => {
+                    for method_stmt in items {
+                        if let Stmt::Function { name: method_name, params, body, .. } = method_stmt {
+                            let is_static = params.is_empty() || {
+                                let first_param = &params[0].0;
+                                !matches!(first_param, Pattern::Identifier { name, .. } if name == "self")
+                                    && !matches!(first_param, Pattern::Reference { pattern, .. }
+                                        if matches!(pattern.as_ref(), Pattern::Identifier { name, .. } if name == "self"))
+                            };
 
-                methods.insert(
-                    method_name.clone(),
-                    Function {
-                        params: params.clone(),
-                        body: body.clone(),
-                        is_method: true,
-                        is_static,
-                    },
-                );
+                            methods.insert(
+                                method_name.clone(),
+                                Function {
+                                    params: params.clone(),
+                                    body: body.clone(),
+                                    is_method: true,
+                                    is_static,
+                                },
+                            );
+                        }
+                    }
+                }
+                _ => {
+                    return Err(format!("Value '{}' is not a struct definition", type_name));
+                }
             }
+        } else {
+            return Err(format!("Type '{}' not found", type_name));
         }
-
-        let updated_struct_def = val!(ValueType::StructDef { name, fields, methods });
-        self.env.set_variable(type_name, updated_struct_def)
+        Ok(())
     }
 
     pub fn evaluate_struct_init(&mut self, name: &str, fields: HashMap<String, (Expr, bool)>) -> Result<Value, String> {
