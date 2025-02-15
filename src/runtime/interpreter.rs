@@ -278,7 +278,7 @@ impl Interpreter {
 
             Expr::MethodCall { object, method, arguments } => {
                 let obj_value = self.evaluate_expression(object)?;
-                self.evaluate_method_call(object, obj_value, method, arguments)
+                self.evaluate_method_call(obj_value, method, arguments)
             }
 
             Expr::Cast { expr, target_type } => {
@@ -330,33 +330,8 @@ impl Interpreter {
             }
 
             Expr::Identifier(name) => {
-                if let Some((scope_index, value)) = self.env.find_variable(name) {
-                    if matches!(value.borrow().inner(), ValueType::Reference { .. }) {
-                        return Ok(value.clone());
-                    }
-
-                    let is_mutable = self.env.scope_resolver.resolve(name).map(|info| info.mutable).unwrap_or(false);
-
-                    match value.borrow().inner() {
-                        ValueType::Struct { .. } => {
-                            let mut val = value.clone();
-                            if is_mutable {
-                                val = self.env.make_deeply_mutable(val);
-                            }
-                            Ok(val!(mut ValueType::Reference {
-                                source_name: Some(name.to_string()),
-                                source_scope: Some(scope_index),
-                                data: Some(val),
-                            }))
-                        }
-                        _ => {
-                            if is_mutable {
-                                Ok(Rc::new(RefCell::new(value.borrow().clone().into_mutable())))
-                            } else {
-                                Ok(value.clone())
-                            }
-                        }
-                    }
+                if let Some((_scope_index, value)) = self.env.find_variable(name) {
+                    Ok(value.clone())
                 } else {
                     Err(format!("Undefined variable: {}", name))
                 }
@@ -385,7 +360,7 @@ impl Interpreter {
             Expr::Dereference { operand } => match &**operand {
                 Expr::MethodCall { object, method, arguments } => {
                     let obj_value = self.evaluate_expression(object)?;
-                    self.evaluate_method_call(object, obj_value, method, arguments)
+                    self.evaluate_method_call(obj_value, method, arguments)
                 }
 
                 Expr::Assignment { target, value } => match target.as_ref() {
@@ -685,7 +660,7 @@ impl Interpreter {
             Expr::Assignment { target, value } => match target.as_ref() {
                 Expr::MethodCall { object, method, arguments } => {
                     let obj_value = self.evaluate_expression(object)?;
-                    self.evaluate_method_call(object, obj_value, method, arguments)
+                    self.evaluate_method_call(obj_value, method, arguments)
                 }
 
                 Expr::Identifier(name) => {
@@ -733,7 +708,7 @@ impl Interpreter {
             Expr::CompoundAssignment { target, operator, value } => match target.as_ref() {
                 Expr::MethodCall { object, method, arguments } => {
                     let obj_value = self.evaluate_expression(object)?;
-                    self.evaluate_method_call(object, obj_value, method, arguments)
+                    self.evaluate_method_call(obj_value, method, arguments)
                 }
 
                 Expr::Identifier(name) => {
@@ -946,6 +921,8 @@ impl Interpreter {
                         }
 
                         if let Some((_, base_value)) = self.env.find_variable(&base_name) {
+                            println!("DEBUG: MemberAssignment - base_name: {}, chain: {:?}, base_value: {}", base_name, chain, base_value.borrow());
+
                             if let Some(symbol_info) = self.env.scope_resolver.resolve(&base_name) {
                                 if !symbol_info.mutable {
                                     return Err(format!("Cannot assign to immutable variable '{}'", base_name));
@@ -953,6 +930,10 @@ impl Interpreter {
                             } else {
                                 return Err(format!("Variable '{}' not found", base_name));
                             }
+
+                            // Instead of matching only on Struct, allow unwrapping references.
+                            let base_inner = base_value.borrow().inner();
+                            println!("DEBUG: MemberAssignment - base_inner: {:?}", base_inner);
 
                             match base_value.borrow().inner() {
                                 ValueType::Struct { ref fields, .. } => {
@@ -963,6 +944,24 @@ impl Interpreter {
                                         Err(format!("Invalid field chain: {:?}", chain))
                                     }
                                 }
+                                ValueType::Reference { data: Some(ref inner), .. } => {
+                                    let result = {
+                                        let inner_val = inner.borrow();
+                                        match inner_val.inner() {
+                                            ValueType::Struct { ref fields, .. } => {
+                                                let fields_clone = fields.clone();
+                                                get_nested_field_ref(&fields_clone, &chain)
+                                            }
+                                            _ => None,
+                                        }
+                                    };
+                                    if let Some(field_ref) = result {
+                                        *field_ref.borrow_mut() = right_val.borrow().clone();
+                                        Ok(val!(ValueType::Unit))
+                                    } else {
+                                        Err("Cannot access field of non-struct value".to_string())
+                                    }
+                                }
                                 _ => Err("Cannot access field of non-struct value".to_string()),
                             }
                         } else {
@@ -971,6 +970,7 @@ impl Interpreter {
                     }
 
                     Err(_) => {
+                        // ... other branch handling assignment via a direct evaluation.
                         let target = self.evaluate_expression(object)?;
 
                         if !target.borrow().is_mutable() {
@@ -992,7 +992,8 @@ impl Interpreter {
                                 }
                             }
                             ValueType::Reference { data: Some(ref struct_val), .. } => {
-                                if let ValueType::Struct { ref fields, .. } = struct_val.borrow().inner() {
+                                let inner_value = struct_val.borrow().inner();
+                                if let ValueType::Struct { ref fields, .. } = inner_value {
                                     if let Some(field_ref) = fields.get(member) {
                                         *field_ref.borrow_mut() = right_val.borrow().clone();
                                         Ok(val!(ValueType::Unit))
@@ -1216,13 +1217,25 @@ fn get_nested_field_ref(fields: &HashMap<String, Value>, chain: &[String]) -> Op
     }
 
     let mut current_ref = fields.get(&chain[0])?.clone();
+    println!("DEBUG: get_nested_field_ref - starting with field '{}' = {}", &chain[0], current_ref.borrow());
 
     for field_name in &chain[1..] {
         let next_ref = {
             let current_value = current_ref.borrow();
+            println!("DEBUG: get_nested_field_ref - current value before field '{}': {}", field_name, current_value);
             match current_value.inner() {
-                ValueType::Struct { fields: next_fields, .. } => next_fields.get(field_name)?.clone(),
-                _ => return None,
+                ValueType::Struct { fields: next_fields, .. } => {
+                    if let Some(next_value) = next_fields.get(field_name) {
+                        next_value.clone()
+                    } else {
+                        println!("DEBUG: get_nested_field_ref - field '{}' not found!", field_name);
+                        return None;
+                    }
+                }
+                _ => {
+                    println!("DEBUG: get_nested_field_ref - value is not a struct when trying to access field '{}'", field_name);
+                    return None;
+                }
             }
         };
         current_ref = next_ref;

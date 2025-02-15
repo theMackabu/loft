@@ -1,5 +1,4 @@
 use super::*;
-use crate::runtime::value::ValueExt;
 use std::{cell::RefCell, rc::Rc};
 
 impl Interpreter {
@@ -109,34 +108,17 @@ impl Interpreter {
         }))
     }
 
-    pub fn evaluate_method_call(&mut self, object_expr: &Expr, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
-        let field_chain = match self.extract_field_chain(object_expr) {
-            Ok((base, chain)) if !chain.is_empty() => Some((base, chain)),
-            _ => None,
-        };
+    pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
+        println!("DEBUG: evaluate_method_call - Object = {}", object.borrow());
 
         match object.borrow().inner() {
-            ValueType::Struct { name, fields } => {
-                let origin_info = self.env.get_variable_source(&name);
-                self.handle_struct_method_call(&name, &fields, origin_info, method, args, field_chain)
-            }
-            ValueType::Reference {
-                data: Some(boxed_value),
-                source_name,
-                source_scope,
-                ..
-            } => {
+            ValueType::Struct { name, .. } => self.handle_struct_method_call(object.clone(), &name, method, args),
+            ValueType::Reference { data: Some(boxed_value), .. } => {
                 if !object.borrow().is_mutable() {
                     return Err("Cannot call method on non-mutable reference".to_string());
                 }
                 match boxed_value.borrow().inner() {
-                    ValueType::Struct { name, fields } => {
-                        let origin_info = match (source_name, source_scope) {
-                            (Some(name), Some(scope)) => Some((name.clone(), scope)),
-                            _ => self.env.get_variable_source(&name).map(|(n, s)| (n.clone(), s)),
-                        };
-                        self.handle_struct_method_call(&name, &fields, origin_info, method, args, field_chain)
-                    }
+                    ValueType::Struct { name, .. } => self.handle_struct_method_call(object.clone(), &name, method, args),
                     _ => Err("Cannot call method on non-struct reference".to_string()),
                 }
             }
@@ -144,9 +126,7 @@ impl Interpreter {
         }
     }
 
-    pub fn handle_struct_method_call(
-        &mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(String, usize)>, method: &str, args: &[Expr], field_chain: Option<(String, Vec<String>)>,
-    ) -> Result<Value, String> {
+    pub fn handle_struct_method_call(&mut self, live_obj: Value, name: &String, method: &str, args: &[Expr]) -> Result<Value, String> {
         let struct_def = match self.env.get_variable(name) {
             Some(value) => match value.borrow().inner() {
                 ValueType::StructDef { methods, .. } => methods,
@@ -160,52 +140,20 @@ impl Interpreter {
         self.env.enter_scope();
         let mut params_to_process = Vec::new();
 
-        let effective_origin = self.env.resolve_effective_origin("self", &origin);
-
-        let live_self_value = if let Some((base_name, chain)) = &field_chain {
-            if let Some((_, base_value)) = self.env.find_variable(base_name) {
-                base_value.get_struct_field(chain).ok_or_else(|| format!("Failed to get field with chain {:?}", chain))?
-            } else {
-                return Err(format!("Base variable '{}' not found", base_name));
-            }
-        } else if !effective_origin.0.is_empty() {
-            self.env
-                .get_variable(&effective_origin.0)
-                .ok_or_else(|| format!("Variable '{}' not found", effective_origin.0))?
-                .clone()
-        } else {
-            val!(ValueType::Struct {
-                name: name.clone(),
-                fields: fields.iter().map(|(k, v)| (k.clone(), Rc::clone(v))).collect(),
-            })
-        };
-
-        let self_value = if !function.is_static {
-            if origin.is_some() {
-                live_self_value
-            } else {
-                val!(ValueType::Reference {
-                    source_name: None,
-                    source_scope: None,
-                    data: Some(live_self_value)
-                })
-            }
-        } else {
-            live_self_value
-        };
+        println!("DEBUG: handle_struct_method_call - live_self_value = {}", live_obj.borrow());
 
         if !function.is_static {
             if let Some((pattern, param_type)) = function.params.first() {
                 match pattern {
                     Pattern::Identifier { name: param_name, mutable } if param_name == "self" => {
-                        params_to_process.push(("self".to_owned(), self_value, *mutable, param_type.clone()));
+                        params_to_process.push(("self".to_owned(), live_obj.clone(), *mutable, param_type.clone()));
                     }
                     Pattern::Reference { mutable, pattern } => {
                         if let Pattern::Identifier { name: param_name, .. } = pattern.as_ref() {
                             if param_name != "self" {
                                 return Err("First parameter must be a form of 'self'".to_string());
                             }
-                            params_to_process.push(("self".to_owned(), self_value, *mutable, param_type.clone()));
+                            params_to_process.push(("self".to_owned(), live_obj.clone(), *mutable, param_type.clone()));
                         }
                     }
                     _ => return Err("First parameter must be a form of 'self'".to_string()),
