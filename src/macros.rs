@@ -1,10 +1,10 @@
 #[macro_export]
 macro_rules! val {
     (mut $inner:expr) => {
-        Box::new(ValueEnum::Mutable($inner))
+        Rc::new(RefCell::new(ValueEnum::Mutable($inner)))
     };
     ($inner:expr) => {
-        Box::new(ValueEnum::Immutable($inner))
+        Rc::new(RefCell::new(ValueEnum::Immutable($inner)))
     };
 }
 

@@ -1,8 +1,7 @@
 use crate::parser::ast::{Function, Type};
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-pub type Value = Box<ValueEnum>;
-pub type RcValue = Rc<RefCell<Value>>;
+pub type Value = Rc<RefCell<ValueEnum>>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueEnum {
@@ -37,7 +36,7 @@ pub enum ValueType {
 
     Struct {
         name: String,
-        fields: HashMap<String, RcValue>,
+        fields: HashMap<String, Value>,
     },
 
     StructDef {
@@ -72,8 +71,15 @@ pub enum ValueType {
     Unit,
 }
 
+pub trait ValueExt {
+    fn get_struct_field(&self, chain: &[String]) -> Option<Value>;
+    fn set_struct_field(&self, chain: &[String], new_value: Value) -> Result<(), String>;
+}
+
 impl ValueEnum {
-    pub fn unit() -> Value { Box::new(ValueEnum::Immutable(ValueType::Unit)) }
+    pub fn unit() -> Value { Rc::new(RefCell::new(ValueEnum::Immutable(ValueType::Unit))) }
+
+    pub fn is_mutable(&self) -> bool { matches!(self, ValueEnum::Mutable(_)) }
 
     pub fn set_mutable(&mut self, mutable: bool) {
         *self = match self {
@@ -81,12 +87,6 @@ impl ValueEnum {
             ValueEnum::Mutable(inner) if !mutable => ValueEnum::Immutable(inner.clone()),
             _ => return,
         };
-    }
-
-    pub fn is_mutable(&self) -> bool {
-        matches! {
-            self, ValueEnum::Mutable(_)
-        }
     }
 
     pub fn into_mutable(self) -> ValueEnum {
@@ -105,7 +105,7 @@ impl ValueEnum {
 
     pub fn inner(&self) -> ValueType {
         match self {
-            ValueEnum::Mutable(inner) | ValueEnum::Immutable(inner) => inner.to_owned(),
+            ValueEnum::Mutable(inner) | ValueEnum::Immutable(inner) => inner.clone(),
         }
     }
 
@@ -131,100 +131,110 @@ impl ValueEnum {
         ValueEnum::Mutable(ValueType::Reference {
             source_name,
             source_scope,
-            data: Some(Box::new(self)),
+            data: Some(Rc::new(RefCell::new(self))),
         })
     }
+}
 
-    pub fn get_struct_field(&self, chain: &[String]) -> Option<Value> {
+impl ValueExt for Value {
+    fn get_struct_field(&self, chain: &[String]) -> Option<Value> {
         if chain.is_empty() {
             return None;
         }
 
-        match self.inner() {
-            ValueType::Reference { data: Some(inner), .. } => inner.get_struct_field(chain),
+        let borrowed = self.borrow();
+        match &*borrowed {
+            ValueEnum::Immutable(inner) | ValueEnum::Mutable(inner) => match inner {
+                ValueType::Reference { data: Some(inner), .. } => inner.get_struct_field(chain),
 
-            ValueType::Struct { fields, .. } => {
-                let field_name = &chain[0];
-                if let Some(field_ref) = fields.get(field_name) {
-                    let field_value = field_ref.borrow().clone();
-                    if chain.len() == 1 {
-                        Some(field_value)
-                    } else {
-                        field_value.get_struct_field(&chain[1..])
-                    }
-                } else {
-                    None
+                ValueType::Struct { fields, .. } => {
+                    let field_name = &chain[0];
+                    fields
+                        .get(field_name)
+                        .and_then(|field_value| if chain.len() == 1 { Some(field_value.clone()) } else { field_value.get_struct_field(&chain[1..]) })
                 }
-            }
-            _ => None,
+                _ => None,
+            },
         }
     }
 
-    pub fn set_struct_field(&mut self, chain: &[String], new_value: Value) -> Result<(), String> {
-        println!("\nset_struct_field Debug:");
-        println!("Chain: {:?}", chain);
-        println!("New value: {:?}", new_value);
-        println!("Current value: {:?}", self);
-
+    fn set_struct_field(&self, chain: &[String], new_value: Value) -> Result<(), String> {
         if chain.is_empty() {
             return Err("Field chain is empty; cannot update".to_string());
         }
 
-        if !self.is_mutable() {
-            return Err("Cannot modify immutable value".to_string());
+        {
+            let borrowed = self.borrow();
+            if !matches!(*borrowed, ValueEnum::Mutable(_)) {
+                return Err("Cannot modify immutable value".to_string());
+            }
         }
 
-        match self.inner_mut() {
-            ValueType::Reference { data: Some(ref mut inner), .. } => inner.set_struct_field(chain, new_value),
+        let mut borrowed = self.borrow_mut();
+        match borrowed.inner_mut() {
+            ValueType::Reference { data: Some(inner), .. } => inner.set_struct_field(chain, new_value),
 
             ValueType::Struct { fields, .. } => {
                 let field_name = &chain[0];
-
-                if let Some(field_ref) = fields.get(field_name) {
+                if let Some(field_rc) = fields.get(field_name) {
                     if chain.len() == 1 {
-                        *field_ref.borrow_mut() = new_value;
+                        *field_rc.borrow_mut() = new_value.borrow().clone();
                         Ok(())
                     } else {
-                        let mut field_value = field_ref.borrow_mut();
-                        field_value.set_struct_field(&chain[1..], new_value)
+                        field_rc.set_struct_field(&chain[1..], new_value)
                     }
                 } else {
                     Err(format!("Field '{}' not found", field_name))
                 }
             }
-
             _ => Err("Target value is not a struct".to_string()),
         }
     }
 }
 
-impl fmt::Display for Value {
+impl fmt::Display for ValueEnum {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value_type = self.inner();
 
         match value_type {
             ValueType::I8(v) => write!(f, "{v}"),
+
             ValueType::I16(v) => write!(f, "{v}"),
+
             ValueType::I32(v) => write!(f, "{v}"),
+
             ValueType::I64(v) => write!(f, "{v}"),
+
             ValueType::I128(v) => write!(f, "{v}"),
+
             ValueType::ISize(v) => write!(f, "{v}"),
 
             ValueType::U8(v) => write!(f, "{v}"),
+
             ValueType::U16(v) => write!(f, "{v}"),
+
             ValueType::U32(v) => write!(f, "{v}"),
+
             ValueType::U64(v) => write!(f, "{v}"),
+
             ValueType::U128(v) => write!(f, "{v}"),
+
             ValueType::USize(v) => write!(f, "{v}"),
 
             ValueType::F32(v) => write!(f, "{v}"),
+
             ValueType::F64(v) => write!(f, "{v}"),
 
             ValueType::Unit => write!(f, "()"),
+
             ValueType::Str(v) => write!(f, "{}", v),
+
             ValueType::Boolean(v) => write!(f, "{}", v),
-            ValueType::Return(v) => write!(f, "{v}"),
+
+            ValueType::Return(v) => write!(f, "{}", v.borrow()),
+
             ValueType::StructDef { name, .. } => write!(f, "<struct {name}>"),
+
             ValueType::StaticMethod { struct_name, method, .. } => write!(f, "{}::{}", struct_name, method),
 
             ValueType::Tuple(values) => {
@@ -234,7 +244,7 @@ impl fmt::Display for Value {
                         write!(f, ", ")?;
                     }
                     // add quotes
-                    write!(f, "{value}")?;
+                    write!(f, "{}", value.borrow())?;
                 }
                 write!(f, ")")
             }
@@ -243,7 +253,7 @@ impl fmt::Display for Value {
                 if self.is_mutable() {
                     write!(f, "&mut ")?;
                 }
-                write!(f, "{base}")?;
+                write!(f, "{}", base.borrow())?;
                 for field in chain {
                     write!(f, ".{field}")?;
                 }
@@ -252,7 +262,7 @@ impl fmt::Display for Value {
 
             ValueType::Reference { source_name, data, .. } => {
                 if let Some(value) = data {
-                    write!(f, "{value}")
+                    write!(f, "{}", value.borrow())
                 } else if let Some(name) = source_name {
                     if self.is_mutable() {
                         write!(f, "&mut {name}")
@@ -285,7 +295,7 @@ impl fmt::Display for Value {
                             write!(f, ", ")?;
                         }
                         // add quotes
-                        write!(f, "{value}")?;
+                        write!(f, "{}", value.borrow())?;
                     }
                     write!(f, ")")
                 } else {
