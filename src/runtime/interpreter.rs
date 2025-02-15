@@ -40,7 +40,12 @@ impl Interpreter {
         let main_func = self.find_function("main").ok_or("No main function found")?;
         let result = self.execute_statement(&main_func.to_owned())?;
 
-        match result.inner() {
+        let result_inner = {
+            let borrowed = result.borrow();
+            borrowed.inner()
+        };
+
+        match result_inner {
             ValueType::Enum { enum_type, variant, data } if enum_type == "Result" => match variant.as_str() {
                 "Ok" => match data {
                     Some(values) if !values.is_empty() => Ok(values[0].clone()),
@@ -48,7 +53,7 @@ impl Interpreter {
                 },
 
                 "Err" => match data {
-                    Some(values) if !values.is_empty() => Err(values[0].to_string()),
+                    Some(values) if !values.is_empty() => Err(values[0].borrow().to_string()),
                     _ => Err("Unknown error".to_string()),
                 },
 
@@ -68,7 +73,12 @@ impl Interpreter {
         for stmt in statements {
             let result = self.execute_statement(stmt)?;
 
-            match result.inner() {
+            let inner_value = {
+                let borrowed = result.borrow();
+                borrowed.inner()
+            };
+
+            match inner_value {
                 ValueType::Return(val) => return Ok(val.clone()),
                 _ => last_value = result,
             }
@@ -159,8 +169,11 @@ impl Interpreter {
 
                 if let Pattern::Identifier { name, mutable } = pattern {
                     self.env.scope_resolver.declare_variable(name, *mutable);
-                    let value = if *mutable { value.into_mutable() } else { value.into_immutable() };
-                    self.env.set_variable(name, Box::new(value))?;
+                    {
+                        let mut value_ref = value.borrow_mut();
+                        *value_ref = if *mutable { value_ref.clone().into_mutable() } else { value_ref.clone().into_immutable() };
+                    }
+                    self.env.set_variable(name, value)?;
                 }
 
                 Ok(ValueEnum::unit())
@@ -204,12 +217,14 @@ impl Interpreter {
                         }
                     }
                 }
-
                 let result = self.execute(body)?;
 
-                let return_val = match result.inner() {
-                    ValueType::Return(val) => val,
-                    _ => result,
+                let return_val = {
+                    let borrowed = result.borrow();
+                    match borrowed.inner() {
+                        ValueType::Return(val) => val.clone(),
+                        _ => result.clone(),
+                    }
                 };
 
                 self.env.exit_scope();
@@ -228,14 +243,14 @@ impl Interpreter {
                     let method_name = &path.segments[1].ident;
 
                     if let Some(value) = self.env.get_variable(type_name) {
-                        match value.inner() {
+                        match value.borrow().inner() {
                             ValueType::StructDef { methods, .. } => {
                                 if let Some(function) = methods.get(method_name) {
-                                    return Ok(Box::new(ValueEnum::Immutable(ValueType::StaticMethod {
+                                    return Ok(val!(ValueType::StaticMethod {
                                         struct_name: type_name.to_string(),
                                         method: method_name.to_string(),
                                         function: function.clone(),
-                                    })));
+                                    }));
                                 }
                             }
                             _ => {}
@@ -316,13 +331,13 @@ impl Interpreter {
 
             Expr::Identifier(name) => {
                 if let Some((scope_index, value)) = self.env.find_variable(name) {
-                    if matches!(value.inner(), ValueType::Reference { .. }) {
+                    if matches!(value.borrow().inner(), ValueType::Reference { .. }) {
                         return Ok(value.clone());
                     }
 
                     let is_mutable = self.env.scope_resolver.resolve(name).map(|info| info.mutable).unwrap_or(false);
 
-                    match value.inner() {
+                    match value.borrow().inner() {
                         ValueType::Struct { .. } => {
                             let mut val = value.clone();
                             if is_mutable {
@@ -331,12 +346,12 @@ impl Interpreter {
                             Ok(val!(mut ValueType::Reference {
                                 source_name: Some(name.to_string()),
                                 source_scope: Some(scope_index),
-                                data: Some(val)
+                                data: Some(val),
                             }))
                         }
                         _ => {
                             if is_mutable {
-                                Ok(Box::new(value.as_ref().clone().into_mutable()))
+                                Ok(Rc::new(RefCell::new(value.borrow().clone().into_mutable())))
                             } else {
                                 Ok(value.clone())
                             }
@@ -352,7 +367,7 @@ impl Interpreter {
 
                 for stmt in statements {
                     let result = self.execute_statement(stmt)?;
-                    if matches!(result.inner(), ValueType::Return(_)) {
+                    if matches!(result.borrow().inner(), ValueType::Return(_)) {
                         self.env.exit_scope();
                         return Ok(result);
                     }
@@ -376,50 +391,59 @@ impl Interpreter {
                 Expr::Assignment { target, value } => match target.as_ref() {
                     Expr::Identifier(identifier) => {
                         let new_value = self.evaluate_expression(value)?;
+                        let var_ref = self.env.get_variable_ref(identifier).ok_or_else(|| format!("Variable '{}' not found", identifier))?;
 
-                        let (source_name, source_scope) = match self.env.get_variable_ref(identifier) {
-                            Some(value) => match value.inner() {
+                        let (source_name, source_scope) = {
+                            let borrow = var_ref.borrow();
+                            match borrow.inner() {
                                 ValueType::Reference { source_name, source_scope, .. } => {
-                                    if !value.is_mutable() {
+                                    if !var_ref.borrow().is_mutable() {
                                         return Err(format!("Cannot assign through immutable reference '{}'", identifier));
                                     }
-                                    (source_name.clone(), source_scope.clone())
+                                    (
+                                        source_name.clone().ok_or_else(|| format!("Reference for '{}' is missing its source name", identifier))?,
+                                        source_scope.clone().ok_or_else(|| format!("Reference for '{}' is missing its source scope", identifier))?,
+                                    )
                                 }
                                 _ => return Err(format!("Variable '{}' is not a reference", identifier)),
-                            },
-                            None => return Err(format!("Variable '{}' not found", identifier)),
+                            }
                         };
 
-                        self.env.update_scoped_variable(&source_name.expect("HANDLE THIS"), new_value, source_scope.expect("HANDLE THIS"))?;
-
+                        self.env.update_scoped_variable(&source_name, new_value, source_scope)?;
                         Ok(ValueEnum::unit())
                     }
 
                     Expr::MemberAccess { object, member } => {
                         let new_value = self.evaluate_expression(value)?;
-                        match self.evaluate_expression(object)? {
-                            ref_value if matches!(ref_value.inner(), ValueType::Reference { .. }) => {
-                                if !ref_value.is_mutable() {
-                                    return Err("Cannot assign through immutable reference".to_string());
-                                }
+                        let ref_value = self.evaluate_expression(object)?;
 
-                                if let ValueType::Reference { data: Some(target), .. } = ref_value.inner() {
-                                    match target.inner() {
-                                        ValueType::Struct { fields, .. } => {
-                                            if let Some(field_ref) = fields.get(member) {
-                                                *field_ref.borrow_mut() = new_value;
-                                                Ok(ValueEnum::unit())
-                                            } else {
-                                                Err(format!("Field '{}' not found", member))
-                                            }
-                                        }
-                                        _ => Err("Cannot assign to field of non-struct reference".to_string()),
-                                    }
-                                } else {
-                                    Err("Reference contains no value".to_string())
-                                }
+                        if !matches!(ref_value.borrow().inner(), ValueType::Reference { .. }) {
+                            return Err("Cannot dereference non-reference value".to_string());
+                        }
+                        if !ref_value.borrow().is_mutable() {
+                            return Err("Cannot assign through immutable reference".to_string());
+                        }
+
+                        let target = {
+                            let borrow = ref_value.borrow();
+                            match borrow.inner() {
+                                ValueType::Reference { data: Some(target), .. } => target.clone(),
+                                _ => return Err("Reference contains no value".to_string()),
                             }
-                            _ => Err("Cannot dereference non-reference value".to_string()),
+                        };
+
+                        let target_inner = {
+                            let borrowed = target.borrow();
+                            borrowed.inner()
+                        };
+
+                        match target_inner {
+                            ValueType::Struct { fields, .. } => {
+                                let field_ref = fields.get(member).ok_or_else(|| format!("Field '{}' not found", member))?;
+                                *field_ref.borrow_mut() = new_value.borrow().clone();
+                                Ok(ValueEnum::unit())
+                            }
+                            _ => Err("Cannot assign to field of non-struct reference".to_string()),
                         }
                     }
 
@@ -437,23 +461,28 @@ impl Interpreter {
 
                     let ref_info = if let Some(symbol_info) = self.env.scope_resolver.resolve(&identifier) {
                         if let Some((scope_index, current_value)) = self.env.find_variable(&identifier) {
-                            match current_value.inner() {
+                            match current_value.borrow().inner() {
                                 ValueType::Reference { source_name, source_scope, .. } => {
-                                    if !current_value.is_mutable() {
+                                    if !current_value.borrow().is_mutable() {
                                         return Err(format!("Cannot assign to immutable reference '{}'", identifier));
                                     }
-                                    if let Some(scope) = self.env.scopes.get(source_scope.expect("HANDLE THIS")) {
-                                        if let Some(inner_value) = scope.get(&source_name.clone().expect("HANDLE THIS")) {
-                                            Some(Either::Left((source_name.clone(), source_scope, inner_value.clone())))
+
+                                    let source_name = source_name.clone().ok_or_else(|| format!("Reference for '{}' is missing its source name", identifier))?;
+
+                                    let source_scope = source_scope.clone().ok_or_else(|| format!("Reference for '{}' is missing its source scope", identifier))?;
+
+                                    if let Some(scope) = self.env.scopes.get(source_scope) {
+                                        if let Some(inner_value) = scope.get(&source_name) {
+                                            Some(Either::Left((source_name, source_scope, inner_value.clone())))
                                         } else {
-                                            return Err(format!("Reference source '{}' not found", source_name.clone().expect("HANDLE THIS")));
+                                            return Err(format!("Reference source '{}' not found", source_name));
                                         }
                                     } else {
-                                        return Err(format!("Reference scope {} not found", source_scope.expect("HANDLE THIS")));
+                                        return Err(format!("Reference scope {} not found", source_scope));
                                     }
                                 }
                                 _ => {
-                                    if !symbol_info.mutable && !matches!(current_value.inner(), ValueType::Unit) {
+                                    if !symbol_info.mutable && !matches!(current_value.borrow().inner(), ValueType::Unit) {
                                         return Err(format!("Cannot assign to immutable variable '{}'", identifier));
                                     }
                                     Some(Either::Right((scope_index, current_value.clone())))
@@ -474,8 +503,7 @@ impl Interpreter {
 
                     match ref_info {
                         Some(Either::Left((ref_source_name, ref_source_scope, _))) => {
-                            self.env
-                                .update_scoped_variable(&ref_source_name.expect("HANDLE THIS"), result_value, ref_source_scope.expect("HANDLE THIS"))?;
+                            self.env.update_scoped_variable(&ref_source_name, result_value, ref_source_scope)?;
                         }
                         Some(Either::Right((scope_index, _))) => {
                             self.env.update_scoped_variable(&identifier, result_value, scope_index)?;
@@ -489,7 +517,12 @@ impl Interpreter {
                 other => {
                     let reference = self.evaluate_expression(other)?;
 
-                    match reference.inner() {
+                    let reference_inner = {
+                        let borrowed = reference.borrow();
+                        borrowed.inner()
+                    };
+
+                    match reference_inner {
                         ValueType::Reference {
                             source_name: Some(name),
                             source_scope: Some(scope_index),
@@ -505,9 +538,7 @@ impl Interpreter {
                                 Err(format!("Scope {} not found", scope_index))
                             }
                         }
-
                         ValueType::Reference { data: Some(inner_value), .. } => Ok(inner_value.clone()),
-
                         _ => Err("Cannot dereference a non-reference value".to_string()),
                     }
                 }
@@ -516,10 +547,10 @@ impl Interpreter {
             Expr::Reference { mutable, operand } => match &**operand {
                 Expr::Identifier(name) => {
                     if let Some((scope_index, existing)) = self.env.find_variable(name) {
-                        let reference = match existing.inner() {
+                        let reference = match existing.borrow().inner() {
                             ValueType::Reference { source_name, source_scope, data, .. } => ValueType::Reference {
-                                source_scope,
                                 source_name: source_name.clone(),
+                                source_scope: source_scope.clone(),
                                 data: data.clone(),
                             },
                             _ => ValueType::Reference {
@@ -538,21 +569,24 @@ impl Interpreter {
                 other => {
                     let value = self.evaluate_expression(&*other)?;
 
-                    match value.inner() {
+                    let value_inner = {
+                        let borrowed = value.borrow();
+                        borrowed.inner()
+                    };
+
+                    match value_inner {
                         ValueType::Reference { ref source_name, source_scope, .. } => {
-                            if *mutable && !value.is_mutable() {
+                            if *mutable && !value.borrow().is_mutable() {
                                 return Err("Cannot create a mutable reference to an immutable value".to_string());
                             }
-
                             let reference = ValueType::Reference {
                                 source_name: source_name.clone(),
-                                source_scope,
+                                source_scope: source_scope.clone(),
                                 data: Some(value),
                             };
 
                             Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                         }
-
                         _ => {
                             let reference = ValueType::Reference {
                                 source_name: None,
@@ -613,7 +647,12 @@ impl Interpreter {
             Expr::If { condition, then_branch, else_branch } => {
                 let cond_value = self.evaluate_expression(condition)?;
 
-                match cond_value.inner() {
+                let cond_inner = {
+                    let borrowed = cond_value.borrow();
+                    borrowed.inner()
+                };
+
+                match cond_inner {
                     ValueType::Boolean(true) => self.evaluate_expression(then_branch),
                     ValueType::Boolean(false) => {
                         if let Some(else_expr) = else_branch {
@@ -666,14 +705,19 @@ impl Interpreter {
                 Expr::MemberAccess { object, member } => {
                     let obj_value = self.evaluate_expression(object)?;
 
-                    match obj_value.inner() {
+                    let obj_value_inner = {
+                        let borrowed = obj_value.borrow();
+                        borrowed.inner()
+                    };
+
+                    match obj_value_inner {
                         ValueType::Struct { fields, .. } => {
+                            if !obj_value.borrow().is_mutable() {
+                                return Err("Cannot modify field of immutable struct".to_string());
+                            }
                             if let Some(field_ref) = fields.get(member) {
-                                if !obj_value.is_mutable() {
-                                    return Err("Cannot modify field of immutable struct".to_string());
-                                }
                                 let right_val = self.evaluate_expression(value)?;
-                                *field_ref.borrow_mut() = right_val;
+                                *field_ref.borrow_mut() = right_val.borrow().clone();
                                 Ok(ValueEnum::unit())
                             } else {
                                 Err(format!("Field '{}' not found", member))
@@ -712,24 +756,37 @@ impl Interpreter {
                 Expr::MemberAccess { object, member } => {
                     let obj_value = self.evaluate_expression(object)?;
 
-                    match obj_value.inner() {
-                        ValueType::Struct { fields, .. } => {
-                            if let Some(field_ref) = fields.get(member) {
-                                if !obj_value.is_mutable() {
+                    {
+                        let borrowed = obj_value.borrow();
+                        match borrowed.inner() {
+                            ValueType::Struct { fields, .. } => {
+                                if !obj_value.borrow().is_mutable() {
                                     return Err("Cannot modify field of immutable struct".to_string());
                                 }
-
-                                let right_val = self.evaluate_expression(value)?;
-                                let current_val = field_ref.borrow().clone();
-                                let result = self.evaluate_compound_assignment(&current_val, operator, &right_val)?;
-                                *field_ref.borrow_mut() = result;
-                                Ok(ValueEnum::unit())
-                            } else {
-                                Err(format!("Field '{}' not found", member))
+                                if !fields.contains_key(member) {
+                                    return Err(format!("Field '{}' not found", member));
+                                }
                             }
+                            _ => return Err("Cannot modify field of non-struct value".to_string()),
                         }
-                        _ => Err("Cannot modify field of non-struct value".to_string()),
                     }
+
+                    let right_val = self.evaluate_expression(value)?;
+
+                    let field_ref = {
+                        let borrowed = obj_value.borrow();
+                        if let ValueType::Struct { fields, .. } = borrowed.inner() {
+                            fields.get(member).unwrap().clone()
+                        } else {
+                            unreachable!()
+                        }
+                    };
+
+                    let current_val = field_ref.clone();
+                    let result = self.evaluate_compound_assignment(&current_val, operator, &right_val)?;
+
+                    *field_ref.borrow_mut() = result.borrow().clone();
+                    Ok(ValueEnum::unit())
                 }
 
                 _ => Err("Invalid assignment target".to_string()),
@@ -746,7 +803,7 @@ impl Interpreter {
                         if path.segments[0].ident == "io" && path.segments[1].ident == "println" {
                             if let Some(arg) = arguments.first() {
                                 let value = self.evaluate_expression(arg)?;
-                                println!("{value}");
+                                println!("{}", value.borrow());
                                 return Ok(ValueEnum::unit());
                             } else {
                                 return Err("io::println requires an argument".to_string());
@@ -757,30 +814,36 @@ impl Interpreter {
                         let method_name = &path.segments[1].ident;
 
                         if let Some((scope_idx, value)) = self.env.find_variable(type_name) {
-                            if let ValueType::StructDef { methods, .. } = value.inner() {
-                                if let Some(method_fn) = methods.get(method_name) {
-                                    let function = method_fn.clone();
+                            let methods = {
+                                let borrowed = value.borrow();
+                                match borrowed.inner() {
+                                    ValueType::StructDef { methods, .. } => methods.clone(),
+                                    _ => return Err(format!("Type '{}' is not a struct definition", type_name)),
+                                }
+                            };
 
-                                    let mut evaluated_args = Vec::new();
-                                    for arg in arguments {
-                                        evaluated_args.push(self.evaluate_expression(arg)?);
-                                    }
+                            if let Some(method_fn) = methods.get(method_name) {
+                                let function = method_fn.clone();
 
-                                    self.env.enter_scope();
+                                let mut evaluated_args = Vec::new();
+                                for arg in arguments {
+                                    evaluated_args.push(self.evaluate_expression(arg)?);
+                                }
 
-                                    for (i, value) in evaluated_args.iter().enumerate() {
-                                        if let Some((param_pattern, _)) = function.params.get(i) {
-                                            if let Pattern::Identifier { name, mutable } = param_pattern {
-                                                self.env.set_scoped_variable(name, value.clone(), scope_idx, *mutable)?;
-                                            }
+                                self.env.enter_scope();
+
+                                for (i, arg_val) in evaluated_args.iter().enumerate() {
+                                    if let Some((param_pattern, _)) = function.params.get(i) {
+                                        if let Pattern::Identifier { name, mutable } = param_pattern {
+                                            self.env.set_scoped_variable(name, arg_val.clone(), scope_idx, *mutable)?;
                                         }
                                     }
-
-                                    let result = self.execute(&function.body)?;
-                                    self.env.exit_scope();
-
-                                    return Ok(result);
                                 }
+
+                                let result = self.execute(&function.body)?;
+                                self.env.exit_scope();
+
+                                return Ok(result);
                             }
                         }
 
@@ -819,23 +882,19 @@ impl Interpreter {
                                 match param_type {
                                     Type::Reference { mutable: ref_mutable, .. } => {
                                         self.env.scope_resolver.declare_reference(name, *ref_mutable);
-                                        match value.inner() {
+                                        match value.borrow().inner() {
                                             ValueType::Reference { source_name, source_scope, data, .. } => {
                                                 let reference = ValueType::Reference {
-                                                    source_scope,
+                                                    source_scope: source_scope.clone(),
                                                     source_name: source_name.clone(),
                                                     data: data.clone(),
                                                 };
 
-                                                if *ref_mutable && !value.is_mutable() {
+                                                if *ref_mutable && !value.borrow().is_mutable() {
                                                     return Err("Cannot pass immutable reference as mutable".to_string());
                                                 }
 
-                                                let ref_value = if *ref_mutable && value.is_mutable() {
-                                                    val! { mut reference }
-                                                } else {
-                                                    val! { reference }
-                                                };
+                                                let ref_value = if *ref_mutable && value.borrow().is_mutable() { val!(mut reference) } else { val!(reference) };
 
                                                 if let Some(scope) = self.env.scopes.last_mut() {
                                                     scope.insert(name.to_string(), ref_value);
@@ -846,8 +905,8 @@ impl Interpreter {
                                     }
                                     _ => {
                                         self.env.scope_resolver.declare_variable(name, false);
-                                        let value_copy = value.clone().into_immutable();
-                                        self.env.set_variable(name, Box::new(value_copy))?;
+                                        let value_copy = value.borrow().clone().into_immutable();
+                                        self.env.set_variable(name, Rc::new(RefCell::new(value_copy)))?;
                                     }
                                 }
                             }
@@ -885,11 +944,11 @@ impl Interpreter {
                                 return Err(format!("Variable '{}' not found", base_name));
                             }
 
-                            match base_value.inner() {
-                                ValueType::Struct { fields, .. } => {
-                                    if let Some(field_ref) = get_nested_field_ref(&fields, &chain) {
-                                        *field_ref.borrow_mut() = right_val;
-                                        Ok(ValueEnum::unit())
+                            match base_value.borrow().inner() {
+                                ValueType::Struct { ref fields, .. } => {
+                                    if let Some(field_ref) = get_nested_field_ref(fields, &chain) {
+                                        *field_ref.borrow_mut() = right_val.borrow().clone();
+                                        Ok(val!(ValueType::Unit))
                                     } else {
                                         Err(format!("Invalid field chain: {:?}", chain))
                                     }
@@ -903,24 +962,30 @@ impl Interpreter {
 
                     Err(_) => {
                         let target = self.evaluate_expression(object)?;
-                        if !target.is_mutable() {
+
+                        if !target.borrow().is_mutable() {
                             return Err("Cannot assign through immutable reference".to_string());
                         }
 
-                        match target.inner() {
-                            ValueType::Struct { fields, .. } => {
+                        let target_inner = {
+                            let borrowed = target.borrow();
+                            borrowed.inner()
+                        };
+
+                        match target_inner {
+                            ValueType::Struct { ref fields, .. } => {
                                 if let Some(field_ref) = fields.get(member) {
-                                    *field_ref.borrow_mut() = right_val;
-                                    Ok(ValueEnum::unit())
+                                    *field_ref.borrow_mut() = right_val.borrow().clone();
+                                    Ok(val!(ValueType::Unit))
                                 } else {
                                     Err(format!("Field '{}' not found", member))
                                 }
                             }
-                            ValueType::Reference { data: Some(struct_val), .. } => {
-                                if let ValueType::Struct { fields, .. } = struct_val.inner() {
+                            ValueType::Reference { data: Some(ref struct_val), .. } => {
+                                if let ValueType::Struct { ref fields, .. } = struct_val.borrow().inner() {
                                     if let Some(field_ref) = fields.get(member) {
-                                        *field_ref.borrow_mut() = right_val;
-                                        Ok(ValueEnum::unit())
+                                        *field_ref.borrow_mut() = right_val.borrow().clone();
+                                        Ok(val!(ValueType::Unit))
                                     } else {
                                         Err(format!("Field '{}' not found", member))
                                     }
@@ -936,30 +1001,39 @@ impl Interpreter {
 
             Expr::MemberAccess { object, member } => {
                 let obj_value = self.evaluate_expression(object)?;
+                let obj_inner = obj_value.borrow().inner();
 
-                let (field_ref, is_mutable, source_info) = match obj_value.inner() {
-                    ValueType::Struct { fields, .. } => {
+                let (field_ref, is_mutable, source_info) = match obj_inner {
+                    ValueType::Struct { ref fields, .. } => {
                         if let Some(field_ref) = fields.get(member) {
-                            (Rc::clone(field_ref), obj_value.is_mutable(), None)
+                            (Rc::clone(field_ref), obj_value.borrow().is_mutable(), None)
                         } else {
                             return Err(format!("Field '{}' not found", member));
                         }
                     }
+
                     ValueType::Reference {
                         data: Some(ref inner),
-                        source_name,
+                        ref source_name,
                         source_scope,
                         ..
-                    } => match inner.inner() {
-                        ValueType::Struct { fields, .. } => {
-                            if let Some(field_ref) = fields.get(member) {
-                                (Rc::clone(field_ref), obj_value.is_mutable() && inner.is_mutable(), source_name.as_ref().cloned().zip(source_scope))
-                            } else {
-                                return Err(format!("Field '{}' not found", member));
+                    } => {
+                        let inner_inner = inner.borrow().inner();
+                        match inner_inner {
+                            ValueType::Struct { ref fields, .. } => {
+                                if let Some(field_ref) = fields.get(member) {
+                                    (
+                                        Rc::clone(field_ref),
+                                        obj_value.borrow().is_mutable() && inner.borrow().is_mutable(),
+                                        source_name.as_ref().cloned().zip(source_scope),
+                                    )
+                                } else {
+                                    return Err(format!("Field '{}' not found", member));
+                                }
                             }
+                            _ => return Err("Cannot access member of non-struct reference".to_string()),
                         }
-                        _ => return Err("Cannot access member of non-struct reference".to_string()),
-                    },
+                    }
                     _ => return Err("Cannot access member of non-struct value".to_string()),
                 };
 
@@ -973,10 +1047,10 @@ impl Interpreter {
                     Ok(val!(mut ValueType::Reference {
                         source_name,
                         source_scope,
-                        data: Some(field_ref.borrow().clone()),
+                        data: Some(field_ref),
                     }))
                 } else {
-                    Ok(field_ref.borrow().clone())
+                    Ok(field_ref)
                 }
             }
 
@@ -988,13 +1062,29 @@ impl Interpreter {
         match (pattern, value) {
             (Pattern::Literal(expr), value) => {
                 let pattern_value = self.evaluate_expression(expr)?;
-                Ok(pattern_value.inner() == value.inner())
+
+                let pattern_inner = {
+                    let borrowed = pattern_value.borrow();
+                    borrowed.inner()
+                };
+
+                let value_inner = {
+                    let borrowed = value.borrow();
+                    borrowed.inner()
+                };
+
+                Ok(pattern_inner == value_inner)
             }
 
             (Pattern::Path(path), value) => {
-                if let ValueType::Enum { variant, data, enum_type } = value.inner() {
+                let inner_value = {
+                    let borrowed = value.borrow();
+                    borrowed.inner()
+                };
+
+                if let ValueType::Enum { variant, data, enum_type } = inner_value {
                     if path.segments.len() == 2 {
-                        Ok(path.segments[0].ident == *enum_type && path.segments[1].ident == *variant && data.as_ref().map_or(true, |v| v.is_empty()))
+                        Ok(path.segments[0].ident == enum_type && path.segments[1].ident == variant && data.as_ref().map_or(true, |v| v.is_empty()))
                     } else {
                         Ok(false)
                     }
@@ -1004,7 +1094,12 @@ impl Interpreter {
             }
 
             (Pattern::TupleStruct { path, elements }, value) => {
-                if let ValueType::Enum { variant, data, enum_type } = value.inner() {
+                let inner_value = {
+                    let borrowed = value.borrow();
+                    borrowed.inner()
+                };
+
+                if let ValueType::Enum { variant, data, enum_type } = inner_value {
                     if path.segments.len() == 2 && path.segments[0].ident == *enum_type && path.segments[1].ident == *variant {
                         match data {
                             Some(values) if elements.len() == values.len() => {
@@ -1027,10 +1122,15 @@ impl Interpreter {
             }
 
             (Pattern::Tuple(elements), value) => {
-                if let ValueType::Enum { data: Some(values), .. } = value.inner() {
+                let inner_value = {
+                    let borrowed = value.borrow();
+                    borrowed.inner()
+                };
+
+                if let ValueType::Enum { data: Some(values), .. } = inner_value {
                     if elements.len() == values.len() {
-                        for (element, value) in elements.iter().zip(values.iter()) {
-                            if !self.pattern_matches(element, value)? {
+                        for (element, field_val) in elements.iter().zip(values.iter()) {
+                            if !self.pattern_matches(element, field_val)? {
                                 return Ok(false);
                             }
                         }
@@ -1043,21 +1143,26 @@ impl Interpreter {
                 }
             }
 
-            (Pattern::Reference { mutable, pattern }, value) => match value.inner() {
-                ValueType::Reference { data, .. } => {
-                    if *mutable && !value.is_mutable() {
-                        return Ok(false);
-                    }
+            (Pattern::Reference { mutable, pattern }, value) => {
+                let inner_value = {
+                    let borrowed = value.borrow();
+                    borrowed.inner()
+                };
 
-                    if let Some(inner_value) = data {
-                        self.pattern_matches(pattern, &inner_value)
-                    } else {
-                        Ok(false)
+                match inner_value {
+                    ValueType::Reference { data, .. } => {
+                        if *mutable && !value.borrow().is_mutable() {
+                            return Ok(false);
+                        }
+                        if let Some(inner_val) = data {
+                            self.pattern_matches(pattern, &inner_val)
+                        } else {
+                            Ok(false)
+                        }
                     }
+                    _ => self.pattern_matches(pattern, value),
                 }
-
-                _ => self.pattern_matches(pattern, value),
-            },
+            }
 
             (Pattern::Or(patterns), value) => {
                 for pattern in patterns {
@@ -1081,14 +1186,21 @@ impl Interpreter {
     }
 
     fn evaluate_guard(&mut self, guard: &Expr) -> Result<bool, String> {
-        match self.evaluate_expression(guard)?.inner() {
+        let eval_value = self.evaluate_expression(guard)?;
+
+        let inner_value = {
+            let borrowed = eval_value.borrow();
+            borrowed.inner()
+        };
+
+        match inner_value {
             ValueType::Boolean(b) => Ok(b),
             _ => Err("Guard expression must evaluate to a boolean".to_string()),
         }
     }
 }
 
-fn get_nested_field_ref(fields: &HashMap<String, Rc<RefCell<Value>>>, chain: &[String]) -> Option<Rc<RefCell<Value>>> {
+fn get_nested_field_ref(fields: &HashMap<String, Value>, chain: &[String]) -> Option<Value> {
     if chain.is_empty() {
         return None;
     }

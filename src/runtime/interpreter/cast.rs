@@ -3,101 +3,113 @@ use super::*;
 impl Interpreter {
     pub fn perform_cast(&mut self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {
-            // it cannot cast references like
-            // let big_num: &i64 = 50;
-            Type::Reference { mutable, inner } => match value.inner() {
-                ValueType::Reference { source_name, source_scope, data } => {
-                    if let (Some(source_name), Some(source_scope)) = (source_name.clone(), source_scope) {
-                        if let Some(scope) = self.env.scopes.get(source_scope) {
-                            if let Some(inner_value) = scope.get(&source_name) {
-                                let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
-                                self.env.update_scoped_variable(&source_name, casted_inner, source_scope)?;
+            // it cannot cast references like: let big_num: &i64 = 50;
+            Type::Reference { mutable, inner } => {
+                let value_inner = {
+                    let borrowed = value.borrow();
+                    borrowed.inner()
+                };
 
-                                let reference = ValueType::Reference {
-                                    source_name: Some(source_name),
-                                    source_scope: Some(source_scope),
-                                    data: None,
-                                };
-                                Ok(if *mutable { val!(mut reference) } else { val!(reference) })
-                            } else {
-                                Err(format!("Reference source '{}' not found", source_name))
-                            }
-                        } else {
-                            Err(format!("Reference scope {} not found", source_scope))
-                        }
-                    } else if let Some(inner_value) = data {
-                        let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
-                        let reference = ValueType::Reference {
-                            source_name: None,
-                            source_scope: None,
-                            data: Some(casted_inner),
-                        };
-                        Ok(if *mutable { val!(mut reference) } else { val!(reference) })
-                    } else {
-                        Err("Invalid reference: missing both source and data".to_string())
-                    }
-                }
-
-                _ => {
-                    let casted = self.perform_cast(value, inner)?;
-                    let temp_name = self.env.generate_temp_reference_name();
-                    let current_scope = self.env.get_current_scope();
-                    self.env.update_scoped_variable(&temp_name, casted, current_scope)?;
-
-                    let reference = ValueType::Reference {
-                        source_name: Some(temp_name),
-                        source_scope: Some(current_scope),
-                        data: None,
-                    };
-                    Ok(if *mutable { val!(mut reference) } else { val!(reference) })
-                }
-            },
-
-            Type::Path(path) if path.segments.len() == 1 => {
-                let value = match value.inner() {
+                match value_inner {
                     ValueType::Reference { source_name, source_scope, data } => {
-                        if let (Some(source_name), Some(source_scope)) = (source_name.clone(), source_scope) {
-                            if let Some(scope) = self.env.scopes.get(source_scope) {
-                                if let Some(val) = scope.get(&source_name) {
-                                    val.clone()
+                        if let (Some(src_name), Some(src_scope)) = (source_name.clone(), source_scope) {
+                            if let Some(scope) = self.env.scopes.get(src_scope) {
+                                if let Some(inner_value) = scope.get(&src_name) {
+                                    let casted_inner = self.perform_cast(inner_value.clone(), inner)?;
+                                    self.env.update_scoped_variable(&src_name, casted_inner, src_scope)?;
+
+                                    let reference = ValueType::Reference {
+                                        source_name: Some(src_name),
+                                        source_scope: Some(src_scope),
+                                        data: None,
+                                    };
+                                    return Ok(if *mutable { val!(mut reference) } else { val!(reference) });
                                 } else {
-                                    return Err(format!("Reference source '{}' not found", source_name));
+                                    return Err(format!("Reference source '{}' not found", src_name));
                                 }
                             } else {
-                                return Err(format!("Reference scope {} not found", source_scope));
+                                return Err(format!("Reference scope {} not found", src_scope));
                             }
-                        } else if let Some(inner_value) = data {
-                            inner_value.clone()
+                        } else if let Some(inner_value) = data.clone() {
+                            let casted_inner = self.perform_cast(inner_value, inner)?;
+                            let reference = ValueType::Reference {
+                                source_name: None,
+                                source_scope: None,
+                                data: Some(casted_inner),
+                            };
+                            return Ok(if *mutable { val!(mut reference) } else { val!(reference) });
                         } else {
                             return Err("Invalid reference: missing both source and data".to_string());
                         }
                     }
-                    _ => value,
+
+                    _ => {
+                        let casted = self.perform_cast(value, inner)?;
+                        let temp_name = self.env.generate_temp_reference_name();
+                        let current_scope = self.env.get_current_scope();
+                        self.env.update_scoped_variable(&temp_name, casted, current_scope)?;
+
+                        let reference = ValueType::Reference {
+                            source_name: Some(temp_name),
+                            source_scope: Some(current_scope),
+                            data: None,
+                        };
+                        return Ok(if *mutable { val!(mut reference) } else { val!(reference) });
+                    }
+                }
+            }
+
+            Type::Path(path) if path.segments.len() == 1 => {
+                let new_value = {
+                    let inner_val = {
+                        let borrowed = value.borrow();
+                        borrowed.inner()
+                    };
+                    match inner_val {
+                        ValueType::Reference { source_name, source_scope, data } => {
+                            if let (Some(src_name), Some(src_scope)) = (source_name.clone(), source_scope) {
+                                if let Some(scope) = self.env.scopes.get(src_scope) {
+                                    if let Some(val) = scope.get(&src_name) {
+                                        val.clone()
+                                    } else {
+                                        return Err(format!("Reference source '{}' not found", src_name));
+                                    }
+                                } else {
+                                    return Err(format!("Reference scope {} not found", src_scope));
+                                }
+                            } else if let Some(inner_value) = data.clone() {
+                                inner_value
+                            } else {
+                                return Err("Invalid reference: missing both source and data".to_string());
+                            }
+                        }
+                        _ => value.clone(),
+                    }
                 };
 
                 let type_name = &path.segments[0].ident;
-
                 match type_name.as_str() {
-                    "i8" => self.cast_to_int::<i8>(value),
-                    "i16" => self.cast_to_int::<i16>(value),
-                    "i32" => self.cast_to_int::<i32>(value),
-                    "i64" => self.cast_to_int::<i64>(value),
-                    "i128" => self.cast_to_int::<i128>(value),
-                    "isize" => self.cast_to_int::<isize>(value),
+                    "i8" => self.cast_to_int::<i8>(new_value),
+                    "i16" => self.cast_to_int::<i16>(new_value),
+                    "i32" => self.cast_to_int::<i32>(new_value),
+                    "i64" => self.cast_to_int::<i64>(new_value),
+                    "i128" => self.cast_to_int::<i128>(new_value),
+                    "isize" => self.cast_to_int::<isize>(new_value),
 
-                    "u8" => self.cast_to_uint::<u8>(value),
-                    "u16" => self.cast_to_uint::<u16>(value),
-                    "u32" => self.cast_to_uint::<u32>(value),
-                    "u64" => self.cast_to_uint::<u64>(value),
-                    "u128" => self.cast_to_uint::<u128>(value),
-                    "usize" => self.cast_to_uint::<usize>(value),
+                    "u8" => self.cast_to_uint::<u8>(new_value),
+                    "u16" => self.cast_to_uint::<u16>(new_value),
+                    "u32" => self.cast_to_uint::<u32>(new_value),
+                    "u64" => self.cast_to_uint::<u64>(new_value),
+                    "u128" => self.cast_to_uint::<u128>(new_value),
+                    "usize" => self.cast_to_uint::<usize>(new_value),
 
-                    "f32" => self.cast_to_float::<f32>(value),
-                    "f64" => self.cast_to_float::<f64>(value),
+                    "f32" => self.cast_to_float::<f32>(new_value),
+                    "f64" => self.cast_to_float::<f64>(new_value),
 
                     _ => Err(format!("Unsupported cast to type: {}", type_name)),
                 }
             }
+
             _ => Err("Invalid cast target type".to_string()),
         }
     }
@@ -106,7 +118,12 @@ impl Interpreter {
     where
         T: TryFrom<i64> + TryFrom<u64> + 'static,
     {
-        match value.inner() {
+        let inner_value = {
+            let borrowed = value.borrow();
+            borrowed.inner()
+        };
+
+        match inner_value {
             ValueType::I8(v) => self.numeric_to_int::<T>(v as i64),
             ValueType::I16(v) => self.numeric_to_int::<T>(v as i64),
             ValueType::I32(v) => self.numeric_to_int::<T>(v as i64),
@@ -132,7 +149,12 @@ impl Interpreter {
     where
         T: TryFrom<u64> + 'static,
     {
-        match value.inner() {
+        let inner_value = {
+            let borrowed = value.borrow();
+            borrowed.inner()
+        };
+
+        match inner_value {
             ValueType::I8(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
             ValueType::I16(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
             ValueType::I32(v) if v >= 0 => self.numeric_to_uint::<T>(v as u64),
@@ -158,7 +180,12 @@ impl Interpreter {
     where
         T: 'static,
     {
-        match (value.inner(), std::any::TypeId::of::<T>()) {
+        let inner_value = {
+            let borrowed = value.borrow();
+            borrowed.inner()
+        };
+
+        match (inner_value, std::any::TypeId::of::<T>()) {
             (ValueType::F32(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v))),
             (ValueType::F32(v), t) if t == std::any::TypeId::of::<f64>() => Ok(val!(ValueType::F64(v as f64))),
             (ValueType::F64(v), t) if t == std::any::TypeId::of::<f32>() => Ok(val!(ValueType::F32(v as f32))),

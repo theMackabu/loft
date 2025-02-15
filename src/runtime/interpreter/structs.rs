@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::value::ValueExt;
 use std::{cell::RefCell, rc::Rc};
 
 impl Interpreter {
@@ -38,7 +39,7 @@ impl Interpreter {
         };
 
         let (name, fields, mut methods) = match self.env.get_variable(type_name).as_ref() {
-            Some(value) => match value.inner() {
+            Some(value) => match value.borrow().inner() {
                 ValueType::StructDef { name, fields, methods } => (name.clone(), fields.clone(), methods.clone()),
                 _ => return Err(format!("Value '{}' is not a struct definition", type_name)),
             },
@@ -71,14 +72,14 @@ impl Interpreter {
 
     pub fn evaluate_struct_init(&mut self, name: &str, fields: HashMap<String, (Expr, bool)>) -> Result<Value, String> {
         let def_fields = match self.env.find_variable(name) {
-            Some((_, value)) => match value.inner() {
+            Some((_, value)) => match value.borrow().inner() {
                 ValueType::StructDef { fields: def_fields, .. } => def_fields,
                 _ => return Err(format!("Value '{}' is not a struct definition", name)),
             },
             None => return Err(format!("Struct definition '{}' not found", name)),
         };
 
-        let mut field_values: HashMap<String, Rc<RefCell<Value>>> = HashMap::new();
+        let mut field_values: HashMap<String, Value> = HashMap::new();
 
         for (field_name, (expr, is_shorthand)) in fields {
             if !def_fields.contains_key(&field_name) {
@@ -86,8 +87,8 @@ impl Interpreter {
             }
 
             let value = if is_shorthand {
-                if let Some(value) = self.env.get_variable(&field_name) {
-                    value.clone()
+                if let Some(var_value) = self.env.get_variable(&field_name) {
+                    var_value.clone()
                 } else {
                     return Err(format!("Variable '{}' not found for shorthand initialization", field_name));
                 }
@@ -95,7 +96,7 @@ impl Interpreter {
                 self.evaluate_expression(&expr)?
             };
 
-            field_values.insert(field_name, Rc::new(RefCell::new(value)));
+            field_values.insert(field_name, value);
         }
 
         if let Some(missing) = def_fields.keys().find(|key| !field_values.contains_key(*key)) {
@@ -114,47 +115,40 @@ impl Interpreter {
             _ => None,
         };
 
-        match object.inner() {
+        match object.borrow().inner() {
             ValueType::Struct { name, fields } => {
-                let origin_info = if let Some((source_name, source_scope)) = self.env.get_variable_source(&name) {
-                    Some((source_name, source_scope))
-                } else {
-                    None
-                };
-
+                let origin_info = self.env.get_variable_source(&name);
                 self.handle_struct_method_call(&name, &fields, origin_info, method, args, field_chain)
             }
-
             ValueType::Reference {
                 data: Some(boxed_value),
                 source_name,
                 source_scope,
                 ..
             } => {
-                if !object.is_mutable() {
+                if !object.borrow().is_mutable() {
                     return Err("Cannot call method on non-mutable reference".to_string());
                 }
-                match boxed_value.inner() {
+                match boxed_value.borrow().inner() {
                     ValueType::Struct { name, fields } => {
                         let origin_info = match (source_name, source_scope) {
                             (Some(name), Some(scope)) => Some((name.clone(), scope)),
-                            _ => self.env.get_variable_source(&name).map(|(name, scope)| (name.clone(), scope)),
+                            _ => self.env.get_variable_source(&name).map(|(n, s)| (n.clone(), s)),
                         };
                         self.handle_struct_method_call(&name, &fields, origin_info, method, args, field_chain)
                     }
                     _ => Err("Cannot call method on non-struct reference".to_string()),
                 }
             }
-
             _ => Err("Cannot call method on non-struct value".to_string()),
         }
     }
 
     pub fn handle_struct_method_call(
-        &mut self, name: &String, fields: &HashMap<String, Rc<RefCell<Value>>>, origin: Option<(String, usize)>, method: &str, args: &[Expr], field_chain: Option<(String, Vec<String>)>,
+        &mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(String, usize)>, method: &str, args: &[Expr], field_chain: Option<(String, Vec<String>)>,
     ) -> Result<Value, String> {
         let struct_def = match self.env.get_variable(name) {
-            Some(value) => match value.inner() {
+            Some(value) => match value.borrow().inner() {
                 ValueType::StructDef { methods, .. } => methods,
                 _ => return Err(format!("Type '{}' is not a struct definition", name)),
             },
@@ -206,7 +200,6 @@ impl Interpreter {
                     Pattern::Identifier { name: param_name, mutable } if param_name == "self" => {
                         params_to_process.push(("self".to_owned(), self_value, *mutable, param_type.clone()));
                     }
-
                     Pattern::Reference { mutable, pattern } => {
                         if let Pattern::Identifier { name: param_name, .. } = pattern.as_ref() {
                             if param_name != "self" {
@@ -215,7 +208,6 @@ impl Interpreter {
                             params_to_process.push(("self".to_owned(), self_value, *mutable, param_type.clone()));
                         }
                     }
-
                     _ => return Err("First parameter must be a form of 'self'".to_string()),
                 }
             }
@@ -233,13 +225,12 @@ impl Interpreter {
             match param_type {
                 Type::Reference { mutable: ref_mutable, .. } => {
                     self.env.scope_resolver.declare_reference(&param_name, ref_mutable);
-                    if ref_mutable && !value.is_mutable() {
+                    if ref_mutable && !value.borrow().is_mutable() {
                         return Err("Cannot pass immutable value as mutable reference".to_string());
                     }
                 }
                 _ => self.env.scope_resolver.declare_variable(&param_name, mutable),
             }
-
             self.env.set_variable(&param_name, value)?;
         }
 
