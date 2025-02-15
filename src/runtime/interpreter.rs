@@ -998,57 +998,27 @@ impl Interpreter {
 
             Expr::MemberAccess { object, member } => {
                 let obj_value = self.evaluate_expression(object)?;
-                let obj_inner = obj_value.borrow().inner();
 
-                let (field_ref, is_mutable, source_info) = match obj_inner {
-                    ValueType::Struct { ref fields, .. } => {
-                        if let Some(field_ref) = fields.get(member) {
-                            (Rc::clone(field_ref), obj_value.borrow().is_mutable(), None)
-                        } else {
-                            return Err(format!("Field '{}' not found", member));
-                        }
-                    }
+                let obj_inner = {
+                    let borrowed = obj_value.borrow();
+                    borrowed.inner()
+                };
 
-                    ValueType::Reference {
-                        data: Some(ref inner),
-                        ref source_name,
-                        source_scope,
-                        ..
-                    } => {
+                let field_ref = match obj_inner {
+                    ValueType::Struct { ref fields, .. } => fields.get(member).ok_or_else(|| format!("Field '{}' not found", member))?.clone(),
+
+                    ValueType::Reference { data: Some(ref inner), .. } => {
                         let inner_inner = inner.borrow().inner();
+
                         match inner_inner {
-                            ValueType::Struct { ref fields, .. } => {
-                                if let Some(field_ref) = fields.get(member) {
-                                    (
-                                        Rc::clone(field_ref),
-                                        obj_value.borrow().is_mutable() && inner.borrow().is_mutable(),
-                                        source_name.as_ref().cloned().zip(source_scope),
-                                    )
-                                } else {
-                                    return Err(format!("Field '{}' not found", member));
-                                }
-                            }
+                            ValueType::Struct { ref fields, .. } => fields.get(member).ok_or_else(|| format!("Field '{}' not found", member))?.clone(),
                             _ => return Err("Cannot access member of non-struct reference".to_string()),
                         }
                     }
                     _ => return Err("Cannot access member of non-struct value".to_string()),
                 };
 
-                if is_mutable {
-                    let (source_name, source_scope) = if matches!(field_ref.borrow().inner(), ValueType::Struct { .. }) {
-                        (source_info.as_ref().map(|(name, _)| name.clone()), source_info.as_ref().map(|(_, scope)| *scope))
-                    } else {
-                        (None, None)
-                    };
-
-                    Ok(val!(mut ValueType::Reference {
-                        source_name,
-                        source_scope,
-                        data: Some(field_ref),
-                    }))
-                } else {
-                    Ok(field_ref)
-                }
+                Ok(field_ref)
             }
 
             _ => Ok(ValueEnum::unit()),
