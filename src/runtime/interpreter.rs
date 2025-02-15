@@ -331,6 +331,7 @@ impl Interpreter {
 
             Expr::Identifier(name) => {
                 if let Some((_scope_index, value)) = self.env.find_variable(name) {
+                    crate::dbg_ptr!(format!("Identifier {} lookup", name), value);
                     Ok(value.clone())
                 } else {
                     Err(format!("Undefined variable: {}", name))
@@ -523,6 +524,7 @@ impl Interpreter {
                 Expr::Identifier(name) => {
                     if let Some((scope_index, existing)) = self.env.find_variable(name) {
                         if matches!(existing.borrow().inner(), ValueType::Reference { .. }) {
+                            crate::dbg_ptr!(format!("Ref Identifier {} lookup", name), existing);
                             return Ok(existing.clone());
                         }
                         let reference = ValueType::Reference {
@@ -843,31 +845,15 @@ impl Interpreter {
                                     Type::Reference { mutable: ref_mutable, .. } => {
                                         self.env.scope_resolver.declare_reference(name, *ref_mutable);
 
-                                        let ref_value = if let ValueType::Reference { .. } = value.borrow().inner() {
-                                            if *ref_mutable && !value.borrow().is_mutable() {
-                                                return Err("Cannot pass immutable reference as mutable".to_string());
-                                            }
-
-                                            value.clone()
-                                        } else {
-                                            if *ref_mutable && !value.borrow().is_mutable() {
-                                                return Err("Cannot pass immutable reference as mutable".to_string());
-                                            }
-
-                                            let new_ref = ValueType::Reference {
-                                                source_name: Some(name.clone()),
-                                                source_scope: None,
-                                                data: Some(value.clone()),
-                                            };
-
-                                            val!(new_ref)
-                                        };
+                                        if *ref_mutable && !value.borrow().is_mutable() {
+                                            return Err("Cannot pass immutable reference as mutable".to_string());
+                                        }
 
                                         if let Some(scope) = self.env.scopes.last_mut() {
                                             if let Some(existing) = scope.get(name) {
-                                                *existing.borrow_mut() = ref_value.borrow().clone();
+                                                *existing.borrow_mut() = value.borrow().clone();
                                             } else {
-                                                scope.insert(name.to_string(), ref_value.clone());
+                                                scope.insert(name.to_string(), value.clone());
                                             }
                                         }
                                     }

@@ -1,4 +1,11 @@
 #[macro_export]
+macro_rules! dbg_ptr {
+    ($label:expr, $val:expr) => {
+        println!("{} pointer: {:p}", $label, Rc::as_ptr(&$val))
+    };
+}
+
+#[macro_export]
 macro_rules! val {
     (mut $inner:expr) => {
         Rc::new(RefCell::new(ValueEnum::Mutable($inner)))
