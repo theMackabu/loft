@@ -16,7 +16,10 @@ impl Info {
    
    fn set_name(&mut self, name: &str) {
       self.name = name;
+      
+      io::print("set_name (self for info): ");
       io::println(self);
+      io::println("");
    }
 }
 
@@ -25,28 +28,40 @@ impl Triangle {
       Self { base, height, info: Info { name, id } }
    }
    
-   fn display(&mut self) {         
-      // self.set_base(1000);
-      // io::println(self);
-      // 
-      // self.info.set_name("third");
-      io::println(self);
+   fn display(&mut self) {
+      io::println("called self.display():\n");
+      
+      io::print(" - self.base: ");
+      io::println(self.base);
+      io::println("");
+      
+      io::print(" - self.height: ");
+      io::println(self.height);
+      io::println("");
+      
+      io::print(" - self.info.id: ");
+      io::println(self.info.id);
+      io::println("");
+      
+      io::print(" - self.info.get_name(): ");
+      io::println(self.info.get_name());
+      io::println("");
    }
    
    fn set_base(&mut self, base: i32) {
       self.base = base;
+      
+      io::print("set_base (self for triangle): ");
       io::println(self);
+      io::println("");
    }
 }
 
 fn main() {
    let mut trig1 = Triangle::new(10.7, 5.3, "first", 1);
    
-   // // works when even trig1 isnt mut
    trig1.set_base(100000);
    trig1.info.set_name("third");
  
    trig1.display();
-
-   io::println(trig1);
 }

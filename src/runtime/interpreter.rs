@@ -810,6 +810,16 @@ impl Interpreter {
                             }
                         }
 
+                        if path.segments[0].ident == "io" && path.segments[1].ident == "print" {
+                            if let Some(arg) = arguments.first() {
+                                let value = self.evaluate_expression(arg)?;
+                                print!("{}", value.borrow());
+                                return Ok(ValueEnum::unit());
+                            } else {
+                                return Err("io::print requires an argument".to_string());
+                            }
+                        }
+
                         let type_name = &path.segments[0].ident;
                         let method_name = &path.segments[1].ident;
 
