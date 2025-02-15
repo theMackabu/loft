@@ -23,7 +23,7 @@ fn run() -> Result {
     match result_inner {
         ValueType::I32(code) => exit(code),
         ValueType::Unit => Ok(()),
-        _ => Err(Error::UnexpectedReturnValue),
+        err => Err(Error::UnexpectedReturnValue(err)),
     }
 }
 

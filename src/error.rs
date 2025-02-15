@@ -5,13 +5,15 @@ use std::{
     result::Result as StdResult,
 };
 
+use crate::runtime::value::ValueType;
+
 #[derive(Debug)]
 pub enum Error {
     MissingArgument,
     IoError(std::io::Error),
     ParseError(String),
     RuntimeError(String),
-    UnexpectedReturnValue,
+    UnexpectedReturnValue(ValueType),
 }
 
 pub type Result = StdResult<(), Error>;
@@ -29,7 +31,7 @@ impl Display for Error {
             Error::IoError(e) => write!(f, "I/O error: {}", e),
             Error::ParseError(err) => write!(f, "Parse error: {}", err),
             Error::RuntimeError(err) => write!(f, "Runtime error: {}", err),
-            Error::UnexpectedReturnValue => write!(f, "Unexpected return value from program entry point"),
+            Error::UnexpectedReturnValue(err) => write!(f, "Unexpected return value from program entry point: {err:?}"),
         }
     }
 }

@@ -72,6 +72,30 @@ pub enum ValueType {
     Unit,
 }
 
+pub trait ValueExt {
+    fn into_return(self) -> Value;
+}
+
+impl ValueExt for Value {
+    fn into_return(self) -> Value {
+        {
+            let mut value = self.borrow_mut();
+            let (inner_val, is_mutable) = match &*value {
+                ValueEnum::Mutable(v) => (v.clone(), true),
+                ValueEnum::Immutable(v) => (v.clone(), false),
+            };
+
+            *value = if is_mutable {
+                ValueEnum::Mutable(ValueType::Return(Value::new(RefCell::new(ValueEnum::Mutable(inner_val)))))
+            } else {
+                ValueEnum::Immutable(ValueType::Return(Value::new(RefCell::new(ValueEnum::Immutable(inner_val)))))
+            };
+        }
+
+        return self;
+    }
+}
+
 impl ValueEnum {
     pub fn unit() -> Value { Rc::new(RefCell::new(ValueEnum::Immutable(ValueType::Unit))) }
 

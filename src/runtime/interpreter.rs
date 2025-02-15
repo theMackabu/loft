@@ -4,7 +4,7 @@ mod environment;
 mod pointer;
 mod structs;
 
-use super::value::{Value, ValueEnum, ValueType};
+use super::value::{Value, ValueEnum, ValueExt, ValueType};
 use crate::parser::{ast::*, lexer::*};
 use crate::{impl_binary_ops, impl_promote_to_type, val};
 
@@ -165,10 +165,14 @@ impl Interpreter {
                 Ok(ValueEnum::unit())
             }
 
-            Stmt::Return(expr) => match expr {
-                Some(e) => Ok(self.evaluate_expression(e)?),
-                None => Ok(ValueEnum::unit()),
-            },
+            Stmt::Return(expr) => {
+                let res = match expr {
+                    Some(e) => self.evaluate_expression(e)?,
+                    None => ValueEnum::unit(),
+                };
+
+                Ok(res.into_return())
+            }
 
             Stmt::Module { body, .. } => {
                 self.env.enter_scope();
