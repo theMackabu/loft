@@ -366,7 +366,7 @@ impl Interpreter {
                 Expr::Assignment { target, value } => match target.as_ref() {
                     Expr::Identifier(identifier) => {
                         let new_value = self.evaluate_expression(value)?;
-                        let var_ref = self.env.get_variable_ref(identifier).ok_or_else(|| format!("Variable '{}' not found", identifier))?;
+                        let var_ref = self.env.get_variable(identifier).ok_or_else(|| format!("Variable '{}' not found", identifier))?;
 
                         let (source_name, source_scope) = {
                             let borrow = var_ref.borrow();
@@ -522,19 +522,14 @@ impl Interpreter {
             Expr::Reference { mutable, operand } => match &**operand {
                 Expr::Identifier(name) => {
                     if let Some((scope_index, existing)) = self.env.find_variable(name) {
-                        let reference = match existing.borrow().inner() {
-                            ValueType::Reference { source_name, source_scope, data, .. } => ValueType::Reference {
-                                source_name: source_name.clone(),
-                                source_scope: source_scope.clone(),
-                                data: data.clone(),
-                            },
-                            _ => ValueType::Reference {
-                                source_name: Some(name.clone()),
-                                source_scope: Some(scope_index),
-                                data: None,
-                            },
+                        if matches!(existing.borrow().inner(), ValueType::Reference { .. }) {
+                            return Ok(existing.clone());
+                        }
+                        let reference = ValueType::Reference {
+                            source_name: Some(name.clone()),
+                            source_scope: Some(scope_index),
+                            data: Some(existing.clone()),
                         };
-
                         Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                     } else {
                         Err(format!("Variable '{}' not found", name))
@@ -543,35 +538,15 @@ impl Interpreter {
 
                 other => {
                     let value = self.evaluate_expression(&*other)?;
-
-                    let value_inner = {
-                        let borrowed = value.borrow();
-                        borrowed.inner()
-                    };
-
-                    match value_inner {
-                        ValueType::Reference { ref source_name, source_scope, .. } => {
-                            if *mutable && !value.borrow().is_mutable() {
-                                return Err("Cannot create a mutable reference to an immutable value".to_string());
-                            }
-                            let reference = ValueType::Reference {
-                                source_name: source_name.clone(),
-                                source_scope: source_scope.clone(),
-                                data: Some(value),
-                            };
-
-                            Ok(if *mutable { val!(mut reference) } else { val!(reference) })
-                        }
-                        _ => {
-                            let reference = ValueType::Reference {
-                                source_name: None,
-                                source_scope: None,
-                                data: Some(value),
-                            };
-
-                            Ok(if *mutable { val!(mut reference) } else { val!(reference) })
-                        }
+                    if matches!(value.borrow().inner(), ValueType::Reference { .. }) {
+                        return Ok(value.clone());
                     }
+                    let reference = ValueType::Reference {
+                        source_name: None,
+                        source_scope: None,
+                        data: Some(value),
+                    };
+                    Ok(if *mutable { val!(mut reference) } else { val!(reference) })
                 }
             },
 
@@ -867,31 +842,42 @@ impl Interpreter {
                                 match param_type {
                                     Type::Reference { mutable: ref_mutable, .. } => {
                                         self.env.scope_resolver.declare_reference(name, *ref_mutable);
-                                        match value.borrow().inner() {
-                                            ValueType::Reference { source_name, source_scope, data, .. } => {
-                                                let reference = ValueType::Reference {
-                                                    source_scope: source_scope.clone(),
-                                                    source_name: source_name.clone(),
-                                                    data: data.clone(),
-                                                };
 
-                                                if *ref_mutable && !value.borrow().is_mutable() {
-                                                    return Err("Cannot pass immutable reference as mutable".to_string());
-                                                }
-
-                                                let ref_value = if *ref_mutable && value.borrow().is_mutable() { val!(mut reference) } else { val!(reference) };
-
-                                                if let Some(scope) = self.env.scopes.last_mut() {
-                                                    scope.insert(name.to_string(), ref_value);
-                                                }
+                                        let ref_value = if let ValueType::Reference { .. } = value.borrow().inner() {
+                                            if *ref_mutable && !value.borrow().is_mutable() {
+                                                return Err("Cannot pass immutable reference as mutable".to_string());
                                             }
-                                            _ => return Err("Expected a reference value".to_string()),
+                                            value.clone()
+                                        } else {
+                                            let new_ref = ValueType::Reference {
+                                                source_name: Some(name.clone()),
+                                                source_scope: None,
+                                                data: Some(value.clone()),
+                                            };
+                                            if *ref_mutable && !value.borrow().is_mutable() {
+                                                return Err("Cannot pass immutable reference as mutable".to_string());
+                                            }
+                                            val!(new_ref)
+                                        };
+
+                                        if let Some(scope) = self.env.scopes.last_mut() {
+                                            if let Some(existing) = scope.get(name) {
+                                                *existing.borrow_mut() = ref_value.borrow().clone();
+                                            } else {
+                                                scope.insert(name.to_string(), ref_value.clone());
+                                            }
                                         }
                                     }
+
                                     _ => {
                                         self.env.scope_resolver.declare_variable(name, false);
-                                        let value_copy = value.borrow().clone().into_immutable();
-                                        self.env.set_variable(name, Rc::new(RefCell::new(value_copy)))?;
+                                        if let Some(scope) = self.env.scopes.last_mut() {
+                                            if let Some(existing) = scope.get(name) {
+                                                *existing.borrow_mut() = value.borrow().clone().into_immutable();
+                                            } else {
+                                                scope.insert(name.to_string(), value.clone());
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -935,7 +921,7 @@ impl Interpreter {
                             let base_inner = base_value.borrow().inner();
                             println!("DEBUG: MemberAssignment - base_inner: {:?}", base_inner);
 
-                            match base_value.borrow().inner() {
+                            match base_inner {
                                 ValueType::Struct { ref fields, .. } => {
                                     if let Some(field_ref) = get_nested_field_ref(fields, &chain) {
                                         *field_ref.borrow_mut() = right_val.borrow().clone();

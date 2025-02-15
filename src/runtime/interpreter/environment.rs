@@ -34,48 +34,32 @@ impl Environment {
         self.scope_resolver.exit_scope();
     }
 
-    /// (doc required)
-    pub fn get_variable_ref(&self, name: &str) -> Option<&Value> {
+    /// Retrieves the value of a variable from the environment.
+    pub fn get_variable(&self, name: &str) -> Option<&Value> {
         if self.scope_resolver.resolve(name).is_none() {
             return None;
         }
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
     }
 
-    /// (doc required)
-    pub fn get_variable_source(&self, name: &str) -> Option<(String, usize)> {
-        let scoper = |(scope_index, _)| (name.to_string(), scope_index);
-        self.find_variable(name).map(scoper)
-    }
-
-    /// (doc required)
-    pub fn resolve_effective_origin(&self, name: &str, origin: &Option<(String, usize)>) -> (String, usize) {
-        let current_scope = self.get_current_scope();
-        if name == "self" {
-            if let Some((outer_name, outer_scope)) = origin {
-                return (outer_name.to_owned(), *outer_scope);
-            }
-        }
-        (name.to_owned(), current_scope)
-    }
-
-    /// Retrieves the value of a variable from the environment.
-    pub fn get_variable(&self, name: &str) -> Option<&Value> {
-        self.get_variable_ref(name).and_then(|value| match value.borrow().inner() {
-            ValueType::Reference { source_name, source_scope, .. } => {
-                if let (Some(source_name), Some(source_scope)) = (source_name, source_scope) {
-                    if let Some(scope) = self.scopes.get(source_scope) {
-                        scope.get(&source_name).or(Some(value))
-                    } else {
-                        Some(value)
-                    }
-                } else {
-                    Some(value)
-                }
-            }
-            _ => Some(value),
-        })
-    }
+    // pub fn get_variable(&self, name: &str) -> Option<&Value> {
+    //     let mut value = self.get_variable_ref(name)?;
+    //     while let ValueType::Reference {
+    //         source_name: Some(ref s_name),
+    //         source_scope: Some(scope_idx),
+    //         ..
+    //     } = value.borrow().inner()
+    //     {
+    //         if let Some(scope) = self.scopes.get(scope_idx) {
+    //             if let Some(next_value) = scope.get(s_name) {
+    //                 value = next_value;
+    //                 continue;
+    //             }
+    //         }
+    //         break;
+    //     }
+    //     Some(value)
+    // }
 
     /// Sets the value of a declared variable in the current scope.
     pub fn set_variable(&mut self, name: &str, value: Value) -> Result<(), String> {
@@ -87,7 +71,11 @@ impl Environment {
             };
 
             if let Some(scope) = self.scopes.last_mut() {
-                scope.insert(name.to_string(), final_value);
+                if let Some(existing) = scope.get(name) {
+                    *existing.borrow_mut() = final_value.borrow().clone();
+                } else {
+                    scope.insert(name.to_string(), final_value);
+                }
                 Ok(())
             } else {
                 Err("No active scope".to_string())
@@ -108,7 +96,12 @@ impl Environment {
                     return Err(format!("Cannot assign to immutable variable '{}'", name));
                 }
             }
-            scope.insert(name.to_string(), value);
+
+            if let Some(existing) = scope.get(name) {
+                *existing.borrow_mut() = value.borrow().clone();
+            } else {
+                scope.insert(name.to_string(), value);
+            }
             Ok(())
         } else {
             Err(format!("Scope {} not found", scope_index))
@@ -118,7 +111,11 @@ impl Environment {
     /// Updates the value of an existing variable.
     pub fn update_scoped_variable(&mut self, name: &str, value: Value, scope_index: usize) -> Result<(), String> {
         if let Some(scope) = self.scopes.get_mut(scope_index) {
-            scope.insert(name.to_string(), value);
+            if let Some(existing) = scope.get(name) {
+                *existing.borrow_mut() = value.borrow().clone();
+            } else {
+                scope.insert(name.to_string(), value);
+            }
             Ok(())
         } else {
             Err(format!("Scope {} not found", scope_index))
