@@ -1,5 +1,6 @@
 use super::*;
 use crate::runtime::scope::Scope;
+use std::{cell::RefCell, rc::Rc};
 
 /// Manages the runtime environment with scoped variable storage.
 ///
@@ -159,8 +160,9 @@ impl Environment {
         let inner = match value.inner() {
             ValueType::Struct { name, fields } => {
                 let mut mutable_fields = HashMap::new();
-                for (field_name, field_value) in fields {
-                    mutable_fields.insert(field_name, self.make_deeply_mutable(field_value));
+                for (field_name, field_ref) in fields {
+                    let mutable_value = self.make_deeply_mutable(field_ref.borrow().clone());
+                    mutable_fields.insert(field_name, Rc::new(RefCell::new(mutable_value)));
                 }
                 ValueType::Struct { name, fields: mutable_fields }
             }
@@ -181,8 +183,9 @@ impl Environment {
         let inner = match value.inner() {
             ValueType::Struct { name, fields } => {
                 let mut immutable_fields = HashMap::new();
-                for (field_name, field_value) in fields {
-                    immutable_fields.insert(field_name, self.make_deeply_immutable(field_value));
+                for (field_name, field_ref) in fields {
+                    let immutable_value = self.make_deeply_immutable(field_ref.borrow().clone());
+                    immutable_fields.insert(field_name, Rc::new(RefCell::new(immutable_value)));
                 }
                 ValueType::Struct { name, fields: immutable_fields }
             }

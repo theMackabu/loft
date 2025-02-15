@@ -9,6 +9,7 @@ use crate::{impl_binary_ops, impl_promote_to_type, val};
 
 use environment::Environment;
 use std::collections::HashMap;
+use std::{cell::RefCell, rc::Rc};
 
 enum Either<L, R> {
     Left(L),
@@ -396,18 +397,17 @@ impl Interpreter {
 
                     Expr::MemberAccess { object, member } => {
                         let new_value = self.evaluate_expression(value)?;
-
                         match self.evaluate_expression(object)? {
                             ref_value if matches!(ref_value.inner(), ValueType::Reference { .. }) => {
                                 if !ref_value.is_mutable() {
                                     return Err("Cannot assign through immutable reference".to_string());
                                 }
 
-                                if let ValueType::Reference { data: Some(mut target), .. } = ref_value.inner() {
-                                    match target.inner_mut() {
+                                if let ValueType::Reference { data: Some(target), .. } = ref_value.inner() {
+                                    match target.inner() {
                                         ValueType::Struct { fields, .. } => {
-                                            if let Some(field_value) = fields.get_mut(member) {
-                                                *field_value = new_value;
+                                            if let Some(field_ref) = fields.get(member) {
+                                                *field_ref.borrow_mut() = new_value;
                                                 Ok(ValueEnum::unit())
                                             } else {
                                                 Err(format!("Field '{}' not found", member))
@@ -422,6 +422,7 @@ impl Interpreter {
                             _ => Err("Cannot dereference non-reference value".to_string()),
                         }
                     }
+
                     _ => Err("Invalid assignment target".to_string()),
                 },
 
@@ -663,17 +664,16 @@ impl Interpreter {
                 }
 
                 Expr::MemberAccess { object, member } => {
-                    let mut obj_value = self.evaluate_expression(object)?;
+                    let obj_value = self.evaluate_expression(object)?;
 
-                    if !obj_value.is_mutable() {
-                        return Err("Cannot modify field of immutable struct".to_string());
-                    }
-
-                    match obj_value.inner_mut() {
+                    match obj_value.inner() {
                         ValueType::Struct { fields, .. } => {
-                            if let Some(field_value) = fields.get_mut(member) {
+                            if let Some(field_ref) = fields.get(member) {
+                                if !obj_value.is_mutable() {
+                                    return Err("Cannot modify field of immutable struct".to_string());
+                                }
                                 let right_val = self.evaluate_expression(value)?;
-                                *field_value = right_val;
+                                *field_ref.borrow_mut() = right_val;
                                 Ok(ValueEnum::unit())
                             } else {
                                 Err(format!("Field '{}' not found", member))
@@ -710,18 +710,19 @@ impl Interpreter {
                 }
 
                 Expr::MemberAccess { object, member } => {
-                    let mut obj_value = self.evaluate_expression(object)?;
+                    let obj_value = self.evaluate_expression(object)?;
 
-                    if !obj_value.is_mutable() {
-                        return Err("Cannot modify field of immutable struct".to_string());
-                    }
-
-                    match obj_value.inner_mut() {
+                    match obj_value.inner() {
                         ValueType::Struct { fields, .. } => {
-                            if let Some(field_value) = fields.get_mut(member) {
+                            if let Some(field_ref) = fields.get(member) {
+                                if !obj_value.is_mutable() {
+                                    return Err("Cannot modify field of immutable struct".to_string());
+                                }
+
                                 let right_val = self.evaluate_expression(value)?;
-                                let result = self.evaluate_compound_assignment(&field_value, operator, &right_val)?;
-                                *field_value = result;
+                                let current_val = field_ref.borrow().clone();
+                                let result = self.evaluate_compound_assignment(&current_val, operator, &right_val)?;
+                                *field_ref.borrow_mut() = result;
                                 Ok(ValueEnum::unit())
                             } else {
                                 Err(format!("Field '{}' not found", member))
@@ -874,8 +875,8 @@ impl Interpreter {
                         if chain.last().map_or(true, |m| m != member) {
                             chain.push(member.clone());
                         }
-                        if let Some((scope_index, base_value)) = self.env.find_variable(&base_name) {
-                            // check that the variable is mutable (move to struct?)
+
+                        if let Some((_, base_value)) = self.env.find_variable(&base_name) {
                             if let Some(symbol_info) = self.env.scope_resolver.resolve(&base_name) {
                                 if !symbol_info.mutable {
                                     return Err(format!("Cannot assign to immutable variable '{}'", base_name));
@@ -884,52 +885,49 @@ impl Interpreter {
                                 return Err(format!("Variable '{}' not found", base_name));
                             }
 
-                            let mut updated_base = self.env.make_deeply_mutable(base_value.clone());
-
-                            updated_base.set_struct_field(&chain, right_val)?;
-                            self.env.update_scoped_variable(&base_name, updated_base, scope_index)?;
-                            Ok(ValueEnum::unit())
+                            match base_value.inner() {
+                                ValueType::Struct { fields, .. } => {
+                                    if let Some(field_ref) = get_nested_field_ref(&fields, &chain) {
+                                        *field_ref.borrow_mut() = right_val;
+                                        Ok(ValueEnum::unit())
+                                    } else {
+                                        Err(format!("Invalid field chain: {:?}", chain))
+                                    }
+                                }
+                                _ => Err("Cannot access field of non-struct value".to_string()),
+                            }
                         } else {
                             Err(format!("Variable '{}' not found", base_name))
                         }
                     }
 
                     Err(_) => {
-                        let mut target = self.evaluate_expression(object)?;
-
+                        let target = self.evaluate_expression(object)?;
                         if !target.is_mutable() {
                             return Err("Cannot assign through immutable reference".to_string());
                         }
 
-                        match target.inner_mut() {
-                            ValueType::Reference {
-                                data: Some(ref mut boxed_value),
-                                source_name: Some(ref source_name),
-                                source_scope: Some(scope),
-                                ..
-                            } => match boxed_value.inner_mut() {
-                                ValueType::Struct { fields, .. } => {
-                                    if let Some(field_value) = fields.get_mut(member) {
-                                        *field_value = right_val.clone();
-
-                                        self.env.update_scoped_variable(source_name, boxed_value.clone(), *scope)?;
-                                        Ok(ValueEnum::unit())
-                                    } else {
-                                        Err(format!("Field '{}' not found", member))
-                                    }
-                                }
-                                _ => Err("Cannot assign to field of non-struct reference".to_string()),
-                            },
-
+                        match target.inner() {
                             ValueType::Struct { fields, .. } => {
-                                if let Some(field_value) = fields.get_mut(member) {
-                                    *field_value = right_val;
+                                if let Some(field_ref) = fields.get(member) {
+                                    *field_ref.borrow_mut() = right_val;
                                     Ok(ValueEnum::unit())
                                 } else {
                                     Err(format!("Field '{}' not found", member))
                                 }
                             }
-
+                            ValueType::Reference { data: Some(struct_val), .. } => {
+                                if let ValueType::Struct { fields, .. } = struct_val.inner() {
+                                    if let Some(field_ref) = fields.get(member) {
+                                        *field_ref.borrow_mut() = right_val;
+                                        Ok(ValueEnum::unit())
+                                    } else {
+                                        Err(format!("Field '{}' not found", member))
+                                    }
+                                } else {
+                                    Err("Cannot assign to field of non-struct reference".to_string())
+                                }
+                            }
                             _ => Err("Invalid target for member assignment".to_string()),
                         }
                     }
@@ -938,47 +936,47 @@ impl Interpreter {
 
             Expr::MemberAccess { object, member } => {
                 let obj_value = self.evaluate_expression(object)?;
-                println!("\nMember Access Debug:");
-                println!("Accessing member: {}", member);
-                println!("Object value: {:?}", obj_value);
 
-                fn get_struct_value(value: &Value) -> Option<(HashMap<String, Value>, bool, Option<(String, usize)>)> {
-                    match value.inner() {
-                        ValueType::Struct { fields, .. } => Some((fields.clone(), value.is_mutable(), None)),
-                        ValueType::Reference {
-                            data: Some(ref inner),
-                            source_name,
-                            source_scope,
-                            ..
-                        } => get_struct_value(inner).map(|(fields, is_mut, _)| (fields, is_mut && value.is_mutable(), source_name.as_ref().cloned().zip(source_scope))),
-                        _ => None,
-                    }
-                }
-
-                match get_struct_value(&obj_value) {
-                    Some((fields, is_mutable, source_info)) => {
-                        if let Some(field_value) = fields.get(member).cloned() {
-                            if is_mutable {
-                                let mut_field = self.env.make_deeply_mutable(field_value);
-                                let (source_name, source_scope) = if let ValueType::Struct { .. } = mut_field.inner() {
-                                    (source_info.as_ref().map(|(name, _)| name.clone()), source_info.as_ref().map(|(_, scope)| *scope))
-                                } else {
-                                    (None, None)
-                                };
-
-                                Ok(val!(mut ValueType::Reference {
-                                    source_name,
-                                    source_scope,
-                                    data: Some(mut_field),
-                                }))
-                            } else {
-                                Ok(field_value)
-                            }
+                let (field_ref, is_mutable, source_info) = match obj_value.inner() {
+                    ValueType::Struct { fields, .. } => {
+                        if let Some(field_ref) = fields.get(member) {
+                            (Rc::clone(field_ref), obj_value.is_mutable(), None)
                         } else {
-                            Err(format!("Field '{}' not found", member))
+                            return Err(format!("Field '{}' not found", member));
                         }
                     }
-                    None => Err("Cannot access member of non-struct value".to_string()),
+                    ValueType::Reference {
+                        data: Some(ref inner),
+                        source_name,
+                        source_scope,
+                        ..
+                    } => match inner.inner() {
+                        ValueType::Struct { fields, .. } => {
+                            if let Some(field_ref) = fields.get(member) {
+                                (Rc::clone(field_ref), obj_value.is_mutable() && inner.is_mutable(), source_name.as_ref().cloned().zip(source_scope))
+                            } else {
+                                return Err(format!("Field '{}' not found", member));
+                            }
+                        }
+                        _ => return Err("Cannot access member of non-struct reference".to_string()),
+                    },
+                    _ => return Err("Cannot access member of non-struct value".to_string()),
+                };
+
+                if is_mutable {
+                    let (source_name, source_scope) = if matches!(field_ref.borrow().inner(), ValueType::Struct { .. }) {
+                        (source_info.as_ref().map(|(name, _)| name.clone()), source_info.as_ref().map(|(_, scope)| *scope))
+                    } else {
+                        (None, None)
+                    };
+
+                    Ok(val!(mut ValueType::Reference {
+                        source_name,
+                        source_scope,
+                        data: Some(field_ref.borrow().clone()),
+                    }))
+                } else {
+                    Ok(field_ref.borrow().clone())
                 }
             }
 
@@ -1088,4 +1086,25 @@ impl Interpreter {
             _ => Err("Guard expression must evaluate to a boolean".to_string()),
         }
     }
+}
+
+fn get_nested_field_ref(fields: &HashMap<String, Rc<RefCell<Value>>>, chain: &[String]) -> Option<Rc<RefCell<Value>>> {
+    if chain.is_empty() {
+        return None;
+    }
+
+    let mut current_ref = fields.get(&chain[0])?.clone();
+
+    for field_name in &chain[1..] {
+        let next_ref = {
+            let current_value = current_ref.borrow();
+            match current_value.inner() {
+                ValueType::Struct { fields: next_fields, .. } => next_fields.get(field_name)?.clone(),
+                _ => return None,
+            }
+        };
+        current_ref = next_ref;
+    }
+
+    Some(current_ref)
 }

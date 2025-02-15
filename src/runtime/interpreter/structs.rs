@@ -1,9 +1,12 @@
 use super::*;
+use std::{cell::RefCell, rc::Rc};
 
 impl Interpreter {
     pub fn extract_field_chain(&self, expr: &Expr) -> Result<(String, Vec<String>), String> {
         match expr {
             Expr::Identifier(name) => Ok((name.clone(), vec![])),
+
+            Expr::Dereference { operand } => self.extract_field_chain(operand),
 
             Expr::MemberAccess { object, member } => {
                 let (base, mut chain) = self.extract_field_chain(object)?;
@@ -75,7 +78,7 @@ impl Interpreter {
             None => return Err(format!("Struct definition '{}' not found", name)),
         };
 
-        let mut field_values: HashMap<String, Value> = HashMap::new();
+        let mut field_values: HashMap<String, Rc<RefCell<Value>>> = HashMap::new();
 
         for (field_name, (expr, is_shorthand)) in fields {
             if !def_fields.contains_key(&field_name) {
@@ -92,7 +95,7 @@ impl Interpreter {
                 self.evaluate_expression(&expr)?
             };
 
-            field_values.insert(field_name, value);
+            field_values.insert(field_name, Rc::new(RefCell::new(value)));
         }
 
         if let Some(missing) = def_fields.keys().find(|key| !field_values.contains_key(*key)) {
@@ -148,7 +151,7 @@ impl Interpreter {
     }
 
     pub fn handle_struct_method_call(
-        &mut self, name: &String, fields: &HashMap<String, Value>, origin: Option<(String, usize)>, method: &str, args: &[Expr], field_chain: Option<(String, Vec<String>)>,
+        &mut self, name: &String, fields: &HashMap<String, Rc<RefCell<Value>>>, origin: Option<(String, usize)>, method: &str, args: &[Expr], field_chain: Option<(String, Vec<String>)>,
     ) -> Result<Value, String> {
         let struct_def = match self.env.get_variable(name) {
             Some(value) => match value.inner() {
@@ -165,15 +168,21 @@ impl Interpreter {
 
         let effective_origin = self.env.resolve_effective_origin("self", &origin);
 
-        let live_self_value = if !effective_origin.0.is_empty() {
+        let live_self_value = if let Some((base_name, chain)) = &field_chain {
+            if let Some((_, base_value)) = self.env.find_variable(base_name) {
+                base_value.get_struct_field(chain).ok_or_else(|| format!("Failed to get field with chain {:?}", chain))?
+            } else {
+                return Err(format!("Base variable '{}' not found", base_name));
+            }
+        } else if !effective_origin.0.is_empty() {
             self.env
                 .get_variable(&effective_origin.0)
                 .ok_or_else(|| format!("Variable '{}' not found", effective_origin.0))?
                 .clone()
         } else {
-            val!(mut ValueType::Struct {
+            val!(ValueType::Struct {
                 name: name.clone(),
-                fields: fields.clone(),
+                fields: fields.iter().map(|(k, v)| (k.clone(), Rc::clone(v))).collect(),
             })
         };
 
@@ -181,7 +190,7 @@ impl Interpreter {
             if origin.is_some() {
                 live_self_value
             } else {
-                val!(mut ValueType::Reference {
+                val!(ValueType::Reference {
                     source_name: None,
                     source_scope: None,
                     data: Some(live_self_value)
@@ -195,8 +204,7 @@ impl Interpreter {
             if let Some((pattern, param_type)) = function.params.first() {
                 match pattern {
                     Pattern::Identifier { name: param_name, mutable } if param_name == "self" => {
-                        let final_self = if *mutable { self.env.make_deeply_mutable(self_value) } else { self_value };
-                        params_to_process.push(("self".to_owned(), final_self, *mutable, param_type.clone()));
+                        params_to_process.push(("self".to_owned(), self_value, *mutable, param_type.clone()));
                     }
 
                     Pattern::Reference { mutable, pattern } => {
@@ -204,8 +212,7 @@ impl Interpreter {
                             if param_name != "self" {
                                 return Err("First parameter must be a form of 'self'".to_string());
                             }
-                            let ref_value = if *mutable { self.env.make_deeply_mutable(self_value) } else { self_value };
-                            params_to_process.push(("self".to_owned(), ref_value, *mutable, param_type.clone()));
+                            params_to_process.push(("self".to_owned(), self_value, *mutable, param_type.clone()));
                         }
                     }
 
@@ -215,7 +222,6 @@ impl Interpreter {
         }
 
         let arg_offset = if function.is_static { 0 } else { 1 };
-
         for (i, arg) in args.iter().enumerate() {
             if let Some((Pattern::Identifier { name: param_name, mutable }, param_type)) = function.params.get(i + arg_offset) {
                 let arg_value = self.evaluate_expression(arg)?;
@@ -234,65 +240,12 @@ impl Interpreter {
                 _ => self.env.scope_resolver.declare_variable(&param_name, mutable),
             }
 
-            let final_value = if mutable { value.into_mutable() } else { value.into_immutable() };
-            self.env.set_variable(&param_name, Box::new(final_value))?;
+            self.env.set_variable(&param_name, value)?;
         }
 
-        println!("Before method execution - origin: {:?}", origin);
-        let result = self.execute(&function.body);
-        println!("After method execution");
-
-        if let Some((mut base_name, chain)) = field_chain {
-            if base_name == "self" {
-                base_name = effective_origin.0.clone();
-            }
-            println!("Attempting nested update - base: {}, chain: {:?}", base_name, chain);
-
-            if let Some((scope_index, base_value)) = self.env.find_variable(&base_name) {
-                let mut updated_base = self.env.make_deeply_mutable(base_value.clone());
-
-                if let Some(local_self) = self.env.scopes.last().and_then(|scope| scope.get("self")).cloned() {
-                    let subfield_value = local_self.get_struct_field(&chain).ok_or_else(|| format!("Failed to get subfield with chain {:?}", chain))?;
-                    let final_value = self.env.make_deeply_mutable(subfield_value.clone());
-                    println!("Nested update final value: {:?}", final_value);
-                    updated_base.set_struct_field(&chain, final_value)?;
-                    match self.env.update_scoped_variable(&base_name, updated_base, scope_index) {
-                        Ok(_) => println!("Nested update successful"),
-                        Err(e) => println!("Nested update failed: {}", e),
-                    }
-                } else {
-                    println!("No local 'self' to use for nested update");
-                }
-            } else {
-                println!("Base variable '{}' not found", base_name);
-            }
-        } else if let Some((ref source_name, scope_index)) = origin {
-            println!("Attempting update - source: {}, scope: {}", source_name, scope_index);
-
-            if let Some(modified_self) = self.env.scopes.last().and_then(|scope| scope.get("self")).cloned() {
-                println!("Modified self value: {:?}", modified_self);
-                let final_value = match modified_self.inner() {
-                    ValueType::Reference { data: Some(inner), .. } => inner,
-                    _ => modified_self,
-                };
-                let final_value = self.env.make_deeply_mutable(final_value);
-                println!("Final value to update: {:?}", final_value);
-                match self.env.update_scoped_variable(source_name, final_value, scope_index) {
-                    Ok(_) => println!("Update successful"),
-                    Err(e) => println!("Update failed: {}", e),
-                }
-            }
-        }
-
-        if let Some((src, scope_index)) = origin {
-            if let Some(scope) = self.env.scopes.get(scope_index) {
-                if let Some(value) = scope.get(&src) {
-                    println!("Variable after update: {:?}", value);
-                }
-            }
-        }
+        let result = self.execute(&function.body)?;
 
         self.env.exit_scope();
-        result
+        Ok(result)
     }
 }

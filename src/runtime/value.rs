@@ -1,7 +1,8 @@
 use crate::parser::ast::{Function, Type};
-use std::{collections::HashMap, fmt};
+use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 pub type Value = Box<ValueEnum>;
+pub type RcValue = Rc<RefCell<Value>>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueEnum {
@@ -36,7 +37,7 @@ pub enum ValueType {
 
     Struct {
         name: String,
-        fields: HashMap<String, Value>,
+        fields: HashMap<String, RcValue>,
     },
 
     StructDef {
@@ -144,22 +145,27 @@ impl ValueEnum {
 
             ValueType::Struct { fields, .. } => {
                 let field_name = &chain[0];
-                if chain.len() == 1 {
-                    fields.get(field_name).cloned()
-                } else {
-                    if let Some(next) = fields.get(field_name) {
-                        next.get_struct_field(&chain[1..])
+                if let Some(field_ref) = fields.get(field_name) {
+                    let field_value = field_ref.borrow().clone();
+                    if chain.len() == 1 {
+                        Some(field_value)
                     } else {
-                        None
+                        field_value.get_struct_field(&chain[1..])
                     }
+                } else {
+                    None
                 }
             }
-
             _ => None,
         }
     }
 
     pub fn set_struct_field(&mut self, chain: &[String], new_value: Value) -> Result<(), String> {
+        println!("\nset_struct_field Debug:");
+        println!("Chain: {:?}", chain);
+        println!("New value: {:?}", new_value);
+        println!("Current value: {:?}", self);
+
         if chain.is_empty() {
             return Err("Field chain is empty; cannot update".to_string());
         }
@@ -173,19 +179,17 @@ impl ValueEnum {
 
             ValueType::Struct { fields, .. } => {
                 let field_name = &chain[0];
-                if chain.len() == 1 {
-                    if let Some(existing) = fields.get_mut(field_name) {
-                        *existing = new_value;
+
+                if let Some(field_ref) = fields.get(field_name) {
+                    if chain.len() == 1 {
+                        *field_ref.borrow_mut() = new_value;
                         Ok(())
                     } else {
-                        Err(format!("Field '{}' not found", field_name))
+                        let mut field_value = field_ref.borrow_mut();
+                        field_value.set_struct_field(&chain[1..], new_value)
                     }
                 } else {
-                    if let Some(inner_value) = fields.get_mut(field_name) {
-                        inner_value.set_struct_field(&chain[1..], new_value)
-                    } else {
-                        Err(format!("Field '{}' not found", field_name))
-                    }
+                    Err(format!("Field '{}' not found", field_name))
                 }
             }
 
@@ -267,7 +271,7 @@ impl fmt::Display for Value {
                         write!(f, ", ")?;
                     }
                     // add quotes
-                    write!(f, "{}: {}", field_name, value)?;
+                    write!(f, "{}: {}", field_name, value.borrow())?;
                 }
                 write!(f, " }}")
             }
