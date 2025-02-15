@@ -113,8 +113,6 @@ impl Interpreter {
     }
 
     pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
-        println!("DEBUG: evaluate_method_call - Object = {}", object.borrow());
-
         match object.borrow().inner() {
             ValueType::Struct { name, .. } => self.handle_struct_method_call(object.clone(), &name, method, args),
             ValueType::Reference { data: Some(boxed_value), .. } => {
@@ -143,8 +141,6 @@ impl Interpreter {
 
         self.env.enter_scope();
         let mut params_to_process = Vec::new();
-
-        println!("DEBUG: handle_struct_method_call - live_self_value = {}", live_obj.borrow());
 
         if !function.is_static {
             if let Some((pattern, param_type)) = function.params.first() {

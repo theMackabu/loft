@@ -910,8 +910,6 @@ impl Interpreter {
                         }
 
                         if let Some((_, base_value)) = self.env.find_variable(&base_name) {
-                            println!("DEBUG: MemberAssignment - base_name: {}, chain: {:?}, base_value: {}", base_name, chain, base_value.borrow());
-
                             if let Some(symbol_info) = self.env.scope_resolver.resolve(&base_name) {
                                 if !symbol_info.mutable {
                                     return Err(format!("Cannot assign to immutable variable '{}'", base_name));
@@ -920,9 +918,7 @@ impl Interpreter {
                                 return Err(format!("Variable '{}' not found", base_name));
                             }
 
-                            // Instead of matching only on Struct, allow unwrapping references.
                             let base_inner = base_value.borrow().inner();
-                            println!("DEBUG: MemberAssignment - base_inner: {:?}", base_inner);
 
                             match base_inner {
                                 ValueType::Struct { ref fields, .. } => {
@@ -1176,23 +1172,20 @@ fn get_nested_field_ref(fields: &HashMap<String, Value>, chain: &[String]) -> Op
     }
 
     let mut current_ref = fields.get(&chain[0])?.clone();
-    println!("DEBUG: get_nested_field_ref - starting with field '{}' = {}", &chain[0], current_ref.borrow());
 
     for field_name in &chain[1..] {
         let next_ref = {
             let current_value = current_ref.borrow();
-            println!("DEBUG: get_nested_field_ref - current value before field '{}': {}", field_name, current_value);
+
             match current_value.inner() {
                 ValueType::Struct { fields: next_fields, .. } => {
                     if let Some(next_value) = next_fields.get(field_name) {
                         next_value.clone()
                     } else {
-                        println!("DEBUG: get_nested_field_ref - field '{}' not found!", field_name);
                         return None;
                     }
                 }
                 _ => {
-                    println!("DEBUG: get_nested_field_ref - value is not a struct when trying to access field '{}'", field_name);
                     return None;
                 }
             }
