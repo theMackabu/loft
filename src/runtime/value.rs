@@ -146,19 +146,6 @@ impl ValueEnum {
             _ => None,
         }
     }
-
-    pub fn into_reference(self, source_name: Option<String>, source_scope: Option<usize>) -> ValueEnum {
-        let rc = Rc::new(RefCell::new(self));
-        let ptr = Rc::as_ptr(&rc);
-
-        ValueEnum::Mutable(ValueType::Reference {
-            source_name,
-            source_scope,
-
-            original_ptr: ptr,
-            _undropped: rc,
-        })
-    }
 }
 
 impl fmt::Display for ValueEnum {

@@ -199,11 +199,20 @@ impl Interpreter {
                 };
 
                 if let Pattern::Identifier { name, mutable } = pattern {
-                    self.env.scope_resolver.declare_variable(name, *mutable);
-                    {
+                    let is_ref = matches!(value.borrow().inner(), ValueType::Reference { .. });
+                    let declared_mutability = if is_ref { value.borrow().is_mutable() } else { *mutable };
+
+                    self.env.scope_resolver.declare_variable(name, declared_mutability);
+
+                    if !is_ref {
                         let mut value_ref = value.borrow_mut();
-                        *value_ref = if *mutable { value_ref.clone().into_mutable() } else { value_ref.clone().into_immutable() };
+                        *value_ref = if declared_mutability {
+                            value_ref.clone().into_mutable()
+                        } else {
+                            value_ref.clone().into_immutable()
+                        };
                     }
+
                     self.env.set_variable(name, value)?;
                 }
 
