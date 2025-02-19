@@ -70,14 +70,14 @@ pub enum ValueType {
     },
 
     Array {
-        element_type: Box<ValueType>,
-        elements: Vec<Value>,
-        length: usize,
+        ty: Box<ValueType>,
+        el: Vec<Value>,
+        len: usize,
     },
 
     Slice {
-        element_type: Box<ValueType>,
-        elements: Vec<Value>,
+        ty: Box<ValueType>,
+        el: Vec<Value>,
     },
 
     Unit,
@@ -270,9 +270,9 @@ impl fmt::Display for ValueEnum {
                 }
             }
 
-            ValueType::Array { elements, .. } => {
+            ValueType::Array { el, .. } => {
                 write!(f, "[")?;
-                for (i, value) in elements.iter().enumerate() {
+                for (i, value) in el.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
@@ -282,9 +282,9 @@ impl fmt::Display for ValueEnum {
                 write!(f, "]")
             }
 
-            ValueType::Slice { elements, .. } => {
+            ValueType::Slice { el, .. } => {
                 write!(f, "[")?;
-                for (i, value) in elements.iter().enumerate() {
+                for (i, value) in el.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }

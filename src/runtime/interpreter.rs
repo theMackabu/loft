@@ -1,3 +1,4 @@
+mod array;
 mod assign;
 mod cast;
 mod environment;
@@ -725,13 +726,13 @@ impl Interpreter {
                     evaluated_elements.push(value);
                 }
 
-                let length = evaluated_elements.len();
+                let len = evaluated_elements.len();
                 let element_type_box = Box::new(element_type.unwrap_or(ValueType::Unit));
 
                 Ok(val!(ValueType::Array {
-                    length,
-                    element_type: element_type_box,
-                    elements: evaluated_elements,
+                    len,
+                    ty: element_type_box,
+                    el: evaluated_elements,
                 }))
             }
 
@@ -761,18 +762,18 @@ impl Interpreter {
                 };
 
                 match array_inner {
-                    ValueType::Array { elements, length, .. } => {
-                        if idx >= length {
-                            return Err(format!("Index out of bounds: {} (array length: {})", idx, length));
+                    ValueType::Array { el, len, .. } => {
+                        if idx >= len {
+                            return Err(format!("Index out of bounds: {} (array length: {})", idx, len));
                         }
-                        Ok(elements[idx].clone())
+                        Ok(el[idx].clone())
                     }
 
-                    ValueType::Slice { elements, .. } => {
-                        if idx >= elements.len() {
-                            return Err(format!("Index out of bounds: {} (slice length: {})", idx, elements.len()));
+                    ValueType::Slice { el, .. } => {
+                        if idx >= el.len() {
+                            return Err(format!("Index out of bounds: {} (slice length: {})", idx, el.len()));
                         }
-                        Ok(elements[idx].clone())
+                        Ok(el[idx].clone())
                     }
 
                     _ => Err("Cannot index non-array/slice value".to_string()),

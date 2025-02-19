@@ -30,7 +30,7 @@ impl Display for Error {
             Error::MissingArgument => write!(f, "Missing file argument"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
             Error::ParseError(err) => write!(f, "Parse error: {}", err),
-            Error::RuntimeError(err) => write!(f, "Runtime error: {}", err),
+            Error::RuntimeError(err) => write!(f, "runtime 'main' errored at '{err}', file:line:pos"),
             Error::UnexpectedReturnValue(err) => write!(f, "Unexpected return value from program entry point: {err:?}"),
         }
     }

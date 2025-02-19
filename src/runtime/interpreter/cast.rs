@@ -74,53 +74,53 @@ impl Interpreter {
             }
 
             Type::Array { element_type, size } => match value.borrow().inner() {
-                ValueType::Array { elements, length, .. } => {
-                    if length != *size {
-                        return Err(format!("Cannot cast array of size {} to array of size {}", size, length));
+                ValueType::Array { el, len, .. } => {
+                    if len != *size {
+                        return Err(format!("Cannot cast array of size {} to array of size {}", size, len));
                     }
 
                     let mut casted_elements = Vec::with_capacity(*size);
-                    for elem in elements.iter() {
+                    for elem in el.iter() {
                         let casted_elem = self.perform_cast(elem.clone(), element_type)?;
                         casted_elements.push(casted_elem);
                     }
 
                     let inner_type = self.type_to_value_type(element_type)?;
                     Ok(val!(ValueType::Array {
-                        element_type: Box::new(inner_type),
-                        elements: casted_elements,
-                        length: *size
+                        ty: Box::new(inner_type),
+                        el: casted_elements,
+                        len: *size
                     }))
                 }
                 _ => Err(format!("Cannot cast {:?} to array type", value.borrow().inner())),
             },
 
             Type::Slice { element_type } => match value.borrow().inner() {
-                ValueType::Array { elements, .. } => {
-                    let mut casted_elements = Vec::with_capacity(elements.len());
-                    for elem in elements.iter() {
+                ValueType::Array { el, .. } => {
+                    let mut casted_elements = Vec::with_capacity(el.len());
+                    for elem in el.iter() {
                         let casted_elem = self.perform_cast(elem.clone(), element_type)?;
                         casted_elements.push(casted_elem);
                     }
 
                     let inner_type = self.type_to_value_type(element_type)?;
                     Ok(val!(ValueType::Slice {
-                        element_type: Box::new(inner_type),
-                        elements: casted_elements
+                        ty: Box::new(inner_type),
+                        el: casted_elements
                     }))
                 }
 
-                ValueType::Slice { elements, .. } => {
-                    let mut casted_elements = Vec::with_capacity(elements.len());
-                    for elem in elements.iter() {
+                ValueType::Slice { el, .. } => {
+                    let mut casted_elements = Vec::with_capacity(el.len());
+                    for elem in el.iter() {
                         let casted_elem = self.perform_cast(elem.clone(), element_type)?;
                         casted_elements.push(casted_elem);
                     }
 
                     let inner_type = self.type_to_value_type(element_type)?;
                     Ok(val!(ValueType::Slice {
-                        element_type: Box::new(inner_type),
-                        elements: casted_elements
+                        ty: Box::new(inner_type),
+                        el: casted_elements
                     }))
                 }
                 _ => Err(format!("Cannot cast {:?} to slice type", value.borrow().inner())),
@@ -422,17 +422,17 @@ impl Interpreter {
             Type::Slice { element_type } => {
                 let inner_type = self.type_to_value_type(element_type)?;
                 Ok(ValueType::Slice {
-                    element_type: Box::new(inner_type),
-                    elements: Vec::new(),
+                    ty: Box::new(inner_type),
+                    el: Vec::new(),
                 })
             }
 
             Type::Array { element_type, size } => {
                 let inner_type = self.type_to_value_type(element_type)?;
                 Ok(ValueType::Array {
-                    element_type: Box::new(inner_type),
-                    elements: Vec::new(),
-                    length: *size,
+                    ty: Box::new(inner_type),
+                    el: Vec::new(),
+                    len: *size,
                 })
             }
 
