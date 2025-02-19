@@ -1,7 +1,8 @@
 use super::*;
-use crate::runtime::scope::Scope;
+use crate::runtime::{callable::UserFunction, scope::Scope};
 
 /// Manages the runtime environment with scoped variable storage.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Environment {
     pub scopes: Vec<HashMap<String, Value>>,
     pub scope_resolver: Scope,
@@ -31,6 +32,31 @@ impl Environment {
     pub fn exit_scope(&mut self) {
         self.scopes.pop();
         self.scope_resolver.exit_scope();
+    }
+
+    /// Convenience method to define a variable in the current scope.
+    pub fn define(&mut self, name: &str, value: Value) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_string(), value);
+        }
+    }
+
+    /// Defines a first‑class function in the current (global or local) scope.
+    pub fn define_function(&mut self, name: &str, user_fn: UserFunction) {
+        self.define(name, ValueEnum::function_value(Rc::new(user_fn)));
+        self.scope_resolver.declare_function(name).expect("Error declaring function");
+    }
+
+    /// Creates a new enclosed environment with the given parent.
+    pub fn new_enclosed(&self, parent: Rc<RefCell<Environment>>) -> Environment {
+        // this is a simple implementation where we clone the parent.
+        // in a full implementation, you might want the new environment to reference
+        // the parent's scopes rather than cloning them.
+        Environment {
+            scopes: vec![HashMap::new()],
+            scope_resolver: self.scope_resolver.clone(), // adjust as needed
+            next_ref_id: self.next_ref_id,
+        }
     }
 
     /// Retrieves the value of a variable from the environment.

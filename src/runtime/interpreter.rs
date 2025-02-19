@@ -1,8 +1,9 @@
+pub(crate) mod environment;
+
 mod array;
 mod assign;
 mod cast;
 mod r#enum;
-mod environment;
 mod methods;
 mod pointer;
 mod structs;
@@ -18,22 +19,29 @@ use std::collections::HashMap;
 use std::{cell::RefCell, rc::Rc};
 
 pub struct Interpreter {
-    env: Environment,
+    pub env: Environment,
 }
 
 impl Interpreter {
     pub fn new(ast: &[Stmt]) -> Result<Self, String> {
-        let mut interpreter = Self { env: Environment::new() };
+        let mut inter = Self { env: Environment::new() };
+        inter.env.scope_resolver.resolve_program(ast)?;
 
-        interpreter.env.scope_resolver.resolve_program(ast)?;
-        interpreter.declare_globals(ast)?;
+        inter.declare_globals(ast)?;
+        inter.import_prelude()?;
 
-        Ok(interpreter)
+        Ok(inter)
     }
 
     pub fn start_main(&mut self) -> Result<Value, String> {
-        let main_func = self.fnc.get("main").ok_or("No main function found")?;
-        let result = self.execute_statement(&main_func.to_owned())?;
+        let main_func = self.env.get_variable("main").ok_or("No main function found")?;
+
+        let func_rc = match &*main_func.borrow() {
+            ValueEnum::Immutable(ValueType::Function(func)) | ValueEnum::Mutable(ValueType::Function(func)) => func.clone(),
+            _ => return Err("The 'main' symbol is not a function".into()),
+        };
+
+        let result = func_rc.call(self, vec![])?;
 
         let result_inner = {
             let borrowed = result.borrow();
@@ -91,6 +99,18 @@ impl Interpreter {
         Ok(())
     }
 
+    fn handle_function_declaration(&mut self, stmt: &Stmt) -> Result<(), String> {
+        use super::callable::make_user_function;
+        if let Stmt::Function { name, .. } = stmt {
+            let closure = Rc::new(RefCell::new(self.env.clone()));
+            let user_fn = make_user_function(stmt, closure)?;
+            self.env.define_function(name, user_fn);
+            Ok(())
+        } else {
+            Err("Statement passed is not a function.".to_string())
+        }
+    }
+
     fn declare_globals(&mut self, statements: &[Stmt]) -> Result<(), String> {
         for stmt in statements {
             match stmt {
@@ -135,6 +155,10 @@ impl Interpreter {
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
+                }
+
+                Stmt::Function { .. } => {
+                    self.handle_function_declaration(stmt)?;
                 }
 
                 _ => {}
@@ -229,7 +253,7 @@ impl Interpreter {
                     }
                 }
 
-                self.env.scope_resolver.declare_function(name)?;
+                self.handle_function_declaration(stmt)?;
                 self.env.enter_scope();
 
                 for (pat, ty) in params {
@@ -244,6 +268,7 @@ impl Interpreter {
                         }
                     }
                 }
+
                 let result = self.execute(body)?;
 
                 let return_val = {
@@ -362,14 +387,13 @@ impl Interpreter {
                 Ok(val!(ValueType::Tuple(values)))
             }
 
-            Expr::Identifier(name) => {
-                if let Some((_scope_index, value)) = self.env.find_variable(name) {
-                    Ok(value.clone())
-                } else {
-                    Err(format!("Undefined variable: {}", name))
-                }
-            }
-
+            // Expr::Identifier(name) => {
+            //     if let Some((_scope_index, value)) = self.env.find_variable(name) {
+            //         Ok(value.clone())
+            //     } else {
+            //         Err(format!("Undefined variable: {}", name))
+            //     }
+            // }
             Expr::Block { statements, value, .. } => {
                 self.env.enter_scope();
 
@@ -1200,59 +1224,14 @@ impl Interpreter {
                             let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
                             let arg_values = evaluated_args?;
 
-                            let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.env.fns.get(name) {
-                                (params.clone(), body.clone())
-                            } else {
-                                return Err(format!("Function '{}' not found", name));
+                            let func_val = self.env.get_variable(name).ok_or_else(|| format!("Function '{}' not found", name))?;
+
+                            let callable = match &*func_val.borrow() {
+                                ValueEnum::Immutable(ValueType::Function(func)) | ValueEnum::Mutable(ValueType::Function(func)) => func.clone(),
+                                _ => return Err(format!("Symbol '{}' is not callable", name)),
                             };
 
-                            if arg_values.len() != params.len() {
-                                return Err(format!("Function '{}' expects {} arguments but got {}", name, params.len(), arg_values.len()));
-                            }
-
-                            let scope_depth = self.env.scopes.len();
-                            self.env.enter_scope();
-
-                            for ((param, param_type), value) in params.iter().zip(arg_values) {
-                                if let Pattern::Identifier { name, .. } = param {
-                                    match param_type {
-                                        Type::Reference { mutable: ref_mutable, .. } => {
-                                            self.env.scope_resolver.declare_reference(name, *ref_mutable);
-
-                                            if *ref_mutable && !value.borrow().is_mutable() {
-                                                return Err("Cannot pass immutable reference as mutable".to_string());
-                                            }
-
-                                            if let Some(scope) = self.env.scopes.last_mut() {
-                                                if let Some(existing) = scope.get(name) {
-                                                    *existing.borrow_mut() = value.borrow().clone();
-                                                } else {
-                                                    scope.insert(name.to_string(), value.clone());
-                                                }
-                                            }
-                                        }
-
-                                        _ => {
-                                            self.env.scope_resolver.declare_variable(name, false);
-                                            if let Some(scope) = self.env.scopes.last_mut() {
-                                                if let Some(existing) = scope.get(name) {
-                                                    *existing.borrow_mut() = value.borrow().clone().into_immutable();
-                                                } else {
-                                                    scope.insert(name.to_string(), value.clone());
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            let result = self.execute(&body);
-
-                            while self.env.scopes.len() > scope_depth {
-                                self.env.exit_scope();
-                            }
-
-                            result
+                            callable.call(self, arg_values)
                         }
 
                         _ => Err(format!("Unsupported function call type: {:?}", function)),

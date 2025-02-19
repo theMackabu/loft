@@ -43,6 +43,8 @@ impl fmt::Display for ValueEnum {
 
             ValueType::Pointer(ptr) => write!(f, "{:p}", ptr),
 
+            ValueType::Function(func) => write!(f, "{func}"),
+
             ValueType::StructDef { name, .. } => write!(f, "<struct {name}>"),
 
             ValueType::EnumDef { name, .. } => write!(f, "<enum {name}>"),

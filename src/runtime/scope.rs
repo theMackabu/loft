@@ -10,14 +10,14 @@ pub enum DeclKind {
     Reference { mutable: bool },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SymbolInfo {
     pub name: String,
     pub kind: DeclKind,
     pub mutable: bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Scope {
     scopes: Vec<HashMap<String, SymbolInfo>>,
 }

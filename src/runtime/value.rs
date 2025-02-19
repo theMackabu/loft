@@ -1,6 +1,8 @@
 mod clone;
 mod display;
+mod eq;
 
+use super::callable::Callable;
 use crate::parser::ast::{EnumVariant, Function, Type};
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
@@ -14,7 +16,7 @@ pub enum ValueEnum {
     Mutable(ValueType),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum ValueType {
     I8(i8),
     I16(i16),
@@ -104,6 +106,8 @@ pub enum ValueType {
         el: Vec<Value>,
     },
 
+    Function(Rc<dyn Callable>),
+
     Unit,
 }
 
@@ -137,6 +141,8 @@ impl ValueExt for Value {
 
 impl ValueEnum {
     pub fn unit() -> Value { Rc::new(RefCell::new(ValueEnum::Immutable(ValueType::Unit))) }
+
+    pub fn function_value(func: Rc<dyn Callable>) -> Value { Rc::new(RefCell::new(ValueEnum::Immutable(ValueType::Function(func)))) }
 
     pub fn is_mutable(&self) -> bool { matches!(self, ValueEnum::Mutable(_)) }
 
@@ -212,6 +218,7 @@ impl ValueEnum {
 
             ValueType::Tuple(_) => String::from("tuple"),
             ValueType::Return(_) => String::from("return"),
+            ValueType::Function(_) => String::from("function"),
 
             ValueType::StructDef { name, .. } => name,
             ValueType::EnumDef { name, .. } => name,

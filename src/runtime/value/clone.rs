@@ -99,6 +99,9 @@ impl ValueType {
             },
 
             ValueType::Unit => ValueType::Unit,
+
+            // TODO
+            ValueType::Function(_) => todo!(),
         }
     }
 }
