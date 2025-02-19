@@ -19,7 +19,7 @@ fn main() {
    analyze(ys[1 .. 4]);
 
    match xs.get(1) {
-      Option::Some(xval) => io::println(xval),
-      Option::None => io::println("nope"),
+      Some(xval) => io::println(xval),
+      None => io::println("nope"),
    }
 }

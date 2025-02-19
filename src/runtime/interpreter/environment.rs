@@ -133,4 +133,56 @@ impl Environment {
         self.next_ref_id += 1;
         name
     }
+
+    /// Registers a global variant or type in the environment.
+    pub fn register_global_variant(&mut self, variant: &str, enum_type: &str) -> Result<(), String> {
+        let type_def = self.find_variable(enum_type).ok_or_else(|| format!("Type '{}' not found", enum_type))?.1.clone();
+
+        let global_value = {
+            let borrowed = type_def.borrow();
+
+            match borrowed.inner() {
+                ValueType::EnumDef { variants, .. } => {
+                    let variant_def = variants
+                        .iter()
+                        .find(|v| match v {
+                            EnumVariant::Simple(name) | EnumVariant::Tuple(name, _) | EnumVariant::Struct(name, _) => name == variant,
+                        })
+                        .ok_or_else(|| format!("Variant '{}' not found in enum '{}'", variant, enum_type))?;
+
+                    match variant_def {
+                        EnumVariant::Simple(_) => val!(ValueType::Enum {
+                            enum_type: enum_type.to_string(),
+                            variant: variant.to_string(),
+                            data: None
+                        }),
+
+                        EnumVariant::Tuple(_, field_types) => val!(ValueType::EnumConstructor {
+                            enum_name: enum_type.to_string(),
+                            variant_name: variant.to_string(),
+                            fields: field_types.clone()
+                        }),
+
+                        EnumVariant::Struct(_, fields) => val!(ValueType::EnumStructConstructor {
+                            enum_name: enum_type.to_string(),
+                            variant_name: variant.to_string(),
+                            fields: fields.clone()
+                        }),
+                    }
+                }
+
+                ValueType::StructDef { .. } if variant == enum_type => type_def.clone(),
+
+                _ => return Err(format!("'{}' is not an enum or struct type", enum_type)),
+            }
+        };
+
+        if self.scopes.is_empty() {
+            self.enter_scope();
+        }
+
+        self.scopes.first_mut().ok_or("No global scope found")?.insert(variant.to_string(), global_value);
+
+        Ok(())
+    }
 }

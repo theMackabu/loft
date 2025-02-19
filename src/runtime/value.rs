@@ -1,7 +1,7 @@
 mod clone;
 mod display;
 
-use crate::parser::ast::{Function, Type};
+use crate::parser::ast::{EnumVariant, Function, Type};
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 pub type Cell = RefCell<ValueEnum>;
@@ -55,6 +55,24 @@ pub enum ValueType {
         enum_type: String,
         variant: String,
         data: Option<Vec<Value>>,
+    },
+
+    EnumDef {
+        name: String,
+        variants: Vec<EnumVariant>,
+        methods: HashMap<String, Function>,
+    },
+
+    EnumConstructor {
+        enum_name: String,
+        variant_name: String,
+        fields: Vec<Type>,
+    },
+
+    EnumStructConstructor {
+        enum_name: String,
+        variant_name: String,
+        fields: Vec<(String, Type)>,
     },
 
     FieldRef {
@@ -195,9 +213,14 @@ impl ValueEnum {
             ValueType::Tuple(_) => String::from("tuple"),
             ValueType::Return(_) => String::from("return"),
 
-            ValueType::Struct { name, .. } => name,
             ValueType::StructDef { name, .. } => name,
+            ValueType::EnumDef { name, .. } => name,
+
+            ValueType::Struct { name, .. } => name,
             ValueType::Enum { enum_type, .. } => enum_type,
+
+            ValueType::EnumConstructor { enum_name, variant_name, .. } => format!("{}::{}", enum_name, variant_name),
+            ValueType::EnumStructConstructor { enum_name, variant_name, .. } => format!("{}::{}", enum_name, variant_name),
 
             ValueType::FieldRef { .. } => String::from("field_ref"),
             ValueType::Reference { .. } => String::from("reference"),

@@ -45,7 +45,13 @@ impl fmt::Display for ValueEnum {
 
             ValueType::StructDef { name, .. } => write!(f, "<struct {name}>"),
 
+            ValueType::EnumDef { name, .. } => write!(f, "<enum {name}>"),
+
             ValueType::StaticMethod { struct_name, method, .. } => write!(f, "{}::{}", struct_name, method),
+
+            ValueType::EnumConstructor { enum_name, variant_name, .. } => write!(f, "<constructor {}::{}>", enum_name, variant_name),
+
+            ValueType::EnumStructConstructor { enum_name, variant_name, .. } => write!(f, "<struct-constructor {}::{}>", enum_name, variant_name),
 
             ValueType::Tuple(values) => {
                 write!(f, "(")?;
@@ -96,8 +102,8 @@ impl fmt::Display for ValueEnum {
                 write!(f, " }}")
             }
 
-            ValueType::Enum { enum_type, variant, data } => {
-                write!(f, "{enum_type}::{variant}")?;
+            ValueType::Enum { variant, data, .. } => {
+                write!(f, "{variant}")?;
                 if let Some(values) = data {
                     write!(f, "(")?;
                     for (i, value) in values.iter().enumerate() {

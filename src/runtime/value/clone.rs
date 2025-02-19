@@ -50,6 +50,24 @@ impl ValueType {
                 data: data.as_ref().map(|values| values.iter().map(|v| v.borrow().deep_clone()).collect()),
             },
 
+            ValueType::EnumDef { name, variants, methods } => ValueType::EnumDef {
+                name: name.clone(),
+                variants: variants.clone(),
+                methods: methods.clone(),
+            },
+
+            ValueType::EnumConstructor { enum_name, variant_name, fields } => ValueType::EnumConstructor {
+                enum_name: enum_name.clone(),
+                variant_name: variant_name.clone(),
+                fields: fields.clone(),
+            },
+
+            ValueType::EnumStructConstructor { enum_name, variant_name, fields } => ValueType::EnumStructConstructor {
+                enum_name: enum_name.clone(),
+                variant_name: variant_name.clone(),
+                fields: fields.clone(),
+            },
+
             ValueType::FieldRef { base, chain } => ValueType::FieldRef {
                 base: base.borrow().deep_clone(),
                 chain: chain.clone(),

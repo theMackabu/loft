@@ -1,7 +1,7 @@
 use super::*;
 use std::{cell::RefCell, rc::Rc};
 
-impl<'st> Interpreter<'st> {
+impl Interpreter {
     pub fn extract_field_chain(&self, expr: &Expr) -> Result<(String, Vec<String>), String> {
         match expr {
             Expr::Identifier(name) => Ok((name.clone(), vec![])),
@@ -63,9 +63,31 @@ impl<'st> Interpreter<'st> {
                         }
                     }
                 }
-                _ => {
-                    return Err(format!("Value '{}' is not a struct definition", type_name));
+
+                ValueType::EnumDef { ref mut methods, .. } => {
+                    for method_stmt in items {
+                        if let Stmt::Function { name: method_name, params, body, .. } = method_stmt {
+                            let is_static = params.is_empty() || {
+                                let first_param = &params[0].0;
+                                !matches!(first_param, Pattern::Identifier { name, .. } if name == "self")
+                                    && !matches!(first_param, Pattern::Reference { pattern, .. }
+                                        if matches!(pattern.as_ref(), Pattern::Identifier { name, .. } if name == "self"))
+                            };
+
+                            methods.insert(
+                                method_name.clone(),
+                                Function {
+                                    params: params.clone(),
+                                    body: body.clone(),
+                                    is_method: true,
+                                    is_static,
+                                },
+                            );
+                        }
+                    }
                 }
+
+                _ => return Err(format!("Value '{}' is not a struct or enum definition", type_name)),
             }
         } else {
             return Err(format!("Type '{}' not found", type_name));
@@ -112,16 +134,17 @@ impl<'st> Interpreter<'st> {
         }))
     }
 
-    pub fn handle_struct_method_call(&mut self, live_obj: Value, name: &String, method: &str, args: &[Expr]) -> Result<Value, String> {
-        let struct_def = match self.env.get_variable(name) {
+    pub fn handle_type_method_call(&mut self, instance: Value, type_name: &String, method: &str, args: &[Expr]) -> Result<Value, String> {
+        let type_def = match self.env.get_variable(type_name) {
             Some(value) => match value.borrow().inner() {
                 ValueType::StructDef { methods, .. } => methods,
-                _ => return Err(format!("Type '{}' is not a struct definition", name)),
+                ValueType::EnumDef { methods, .. } => methods,
+                _ => return Err(format!("Type '{}' is not a struct or enum definition", type_name)),
             },
-            None => return Err(format!("Struct definition '{}' not found", name)),
+            None => return Err(format!("Type definition '{}' not found", type_name)),
         };
 
-        let function = struct_def.get(method).ok_or_else(|| format!("Method '{}' not found on struct '{}'", method, name))?.clone();
+        let function = type_def.get(method).ok_or_else(|| format!("Method '{}' not found on type '{}'", method, type_name))?.clone();
 
         self.env.enter_scope();
         let mut params_to_process = Vec::new();
@@ -130,14 +153,14 @@ impl<'st> Interpreter<'st> {
             if let Some((pattern, param_type)) = function.params.first() {
                 match pattern {
                     Pattern::Identifier { name: param_name, mutable } if param_name == "self" => {
-                        params_to_process.push(("self".to_owned(), live_obj.clone(), *mutable, param_type.clone()));
+                        params_to_process.push(("self".to_owned(), instance.clone(), *mutable, param_type.clone()));
                     }
                     Pattern::Reference { mutable, pattern } => {
                         if let Pattern::Identifier { name: param_name, .. } = pattern.as_ref() {
                             if param_name != "self" {
                                 return Err("First parameter must be a form of 'self'".to_string());
                             }
-                            params_to_process.push(("self".to_owned(), live_obj.clone(), *mutable, param_type.clone()));
+                            params_to_process.push(("self".to_owned(), instance.clone(), *mutable, param_type.clone()));
                         }
                     }
                     _ => return Err("First parameter must be a form of 'self'".to_string()),
@@ -154,9 +177,9 @@ impl<'st> Interpreter<'st> {
         }
 
         for (param_name, value, mutable, param_type) in params_to_process {
-            if param_name == "self" && Rc::ptr_eq(&live_obj, &value) {
+            if param_name == "self" && Rc::ptr_eq(&instance, &value) {
                 self.env.scope_resolver.declare_variable(&param_name, mutable);
-                self.env.set_variable_raw(&param_name, live_obj.clone())?;
+                self.env.set_variable_raw(&param_name, instance.clone())?;
                 continue;
             }
 

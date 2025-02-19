@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'st> Interpreter<'st> {
+impl Interpreter {
     pub fn handle_array_method_call(&mut self, arr_value: Value, method: &str, args: &[Expr], element_type: &ValueType, elements: &[Value], length: usize) -> Result<Value, String> {
         match method {
             "len" => Ok(val!(ValueType::USize(length))),

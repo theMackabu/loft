@@ -20,7 +20,7 @@ fn unwrap_value<'a>(env: &'a Environment, mut val: &'a Value) -> &'a Value {
     val
 }
 
-impl<'st> Interpreter<'st> {
+impl Interpreter {
     pub fn evaluate_compound_assignment(&self, left: &Value, operator: &Token, right: &Value) -> Result<Value, String> {
         match operator {
             Token::PlusEquals => impl_compound_assignment!(self.env, left, right, operator, {
