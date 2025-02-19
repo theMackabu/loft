@@ -1,7 +1,7 @@
 use super::*;
 use std::{cell::RefCell, rc::Rc};
 
-impl Interpreter {
+impl<'st> Interpreter<'st> {
     pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
         match method {
             "clone" => {

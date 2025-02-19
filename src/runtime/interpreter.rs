@@ -17,18 +17,29 @@ use environment::Environment;
 use std::collections::HashMap;
 use std::{cell::RefCell, rc::Rc};
 
-pub struct Interpreter {
+pub struct Interpreter<'st> {
     env: Environment,
+    fnc: HashMap<String, &'st Stmt>,
 }
 
-impl Interpreter {
-    pub fn new(ast: &[Stmt]) -> Result<Self, String> {
-        let mut interpreter = Self { env: Environment::new() };
+impl<'st> Interpreter<'st> {
+    pub fn new(ast: &'st [Stmt]) -> Result<Self, String> {
+        let function_count = ast.iter().filter(|stmt| matches!(stmt, Stmt::Function { .. })).count();
+        let mut fnc = HashMap::with_capacity(function_count);
 
-        interpreter.env.scope_resolver.resolve_program(ast)?;
-        interpreter.declare_globals(ast)?;
+        for stmt in ast {
+            if let Stmt::Function { name, .. } = stmt {
+                fnc.insert(name.clone(), stmt);
+            }
+        }
 
-        Ok(interpreter)
+        let mut intrp = Self { env: Environment::new(), fnc };
+        intrp.env.scope_resolver.resolve_program(ast)?;
+
+        intrp.declare_globals(ast)?;
+        intrp.import_prelude()?;
+
+        Ok(intrp)
     }
 
     pub fn start_main(&mut self) -> Result<Value, String> {
@@ -1200,7 +1211,7 @@ impl Interpreter {
                             let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
                             let arg_values = evaluated_args?;
 
-                            let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.env.fns.get(name) {
+                            let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.fnc.get(name) {
                                 (params.clone(), body.clone())
                             } else {
                                 return Err(format!("Function '{}' not found", name));

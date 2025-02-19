@@ -1,6 +1,6 @@
 use super::*;
 
-impl Interpreter {
+impl<'st> Interpreter<'st> {
     pub fn handle_enum_def(&mut self, name: &str, variants: Vec<EnumVariant>) -> Result<(), String> {
         self.env.scope_resolver.declare_variable(name, true);
 
