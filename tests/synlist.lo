@@ -317,21 +317,6 @@ if Foo::Bar == a {}
 
 if let Foo::Bar = a_value {}
 
-match value {
-   0 => "zero",
-   _ => "not zero"
-}
-
-match value {
-   0i32 => "zero",
-   0u8 => "unsigned zero",
-   1.0f32 => "one float",
-   -1i64 => "negative one",
-   -1.0f64 => "negative one float",
-   n if n < 0 => "negative",
-   _ => "positive"
-}
-
 match enum_stuff {
    Enum::EE => {},
    Enum::Wee => {},
@@ -353,11 +338,6 @@ loop {
 }
 
 while condition {}
-
-// !fix Expected Assign, but found LeftParen
-// while let Some(y) = x.pop() {
-//    println!("y = {}", y);
-// }
 
 while i < 10 {
    println!("hello");

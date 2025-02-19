@@ -7,8 +7,7 @@ mod methods;
 mod pointer;
 mod structs;
 
-use super::value::{Value, ValueEnum, ValueExt, ValueType};
-
+use super::value::*;
 use crate::parser::{ast::*, lexer::*};
 use crate::{impl_binary_ops, impl_promote_to_type, inner_val, val};
 use crate::{models::Either, util::unwrap_value};

@@ -28,4 +28,16 @@ fn main() {
    io::println(error_msg);  // should print "error message"
    io::println(opt_value);  // should print 123
    io::println(default);    // should print 999
+   
+   let value = 0;
+   
+   io::println(match value {
+      0i32 => "zero",
+      0u8 => "unsigned zero",
+      1.0f32 => "one float",
+      -1i64 => "negative one",
+      -1.0f64 => "negative one float",
+      n if n < 0 => "negative",
+      _ => "positive"
+   });
 }

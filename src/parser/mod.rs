@@ -191,7 +191,12 @@ impl Parser {
 
             Token::Match | Token::If => {
                 let expr = self.parse_expression(0)?;
-                Ok(Stmt::ExpressionValue(expr))
+                if self.current.token == Token::Semicolon {
+                    self.advance();
+                    Ok(Stmt::ExpressionStmt(expr))
+                } else {
+                    Ok(Stmt::ExpressionValue(expr))
+                }
             }
 
             Token::Async => {

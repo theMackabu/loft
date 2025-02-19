@@ -1,0 +1,11 @@
+fn main() {   
+   let x = [1, 2, 3, 4, 5];
+   while let Some(y) = x.pop() {
+      io::println("y = {}", y);
+   }
+   
+   let strs = ["cats", "dogs"];
+   for text in strs {
+      io::println("I like {}.", text);
+   }
+}
