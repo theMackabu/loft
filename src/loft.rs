@@ -8,33 +8,7 @@ use loft::{
 use std::{fs, process::exit};
 
 // !TEMPORARY PRELUDE IMPL
-const PRELUDE: &'static str = r#"
-pub enum Result<T, E> {
-    Ok(T),
-    Err(E),
-}
-
-pub enum Option<T> {
-    None,
-    Some(T),
-}
-
-impl Option<T> {
-    fn is_some(&self) -> bool {
-        match *self {
-            Option::Some(_) => true,
-            _ => false
-        }
-    }
-    
-    fn unwrap(self) -> T {
-        match self {
-            Option::Some(v) => v,
-            Option::None => core::panic("called `Option::unwrap()` on a `none` value")
-        }
-    }
-}
-"#;
+const PRELUDE: &'static str = include_str!("std/prelude.lo");
 
 fn run() -> Result {
     let filename = std::env::args().nth(1).ok_or(Error::MissingArgument)?;

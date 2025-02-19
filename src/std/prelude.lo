@@ -1,0 +1,43 @@
+pub enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+pub enum Option<T> {
+    None,
+    Some(T),
+}
+
+impl Result<T, E> {
+    fn is_ok(&self) -> bool {
+        match *self {
+            Ok(_) => true,
+            _ => false
+        }
+    }
+    
+    // add err in core::panic
+    pub fn unwrap(self) -> T {
+        match self {
+            Ok(t) => t,
+            Err(_) => core::panic("called `Result::unwrap()` on an `Err` value"),
+        }
+    }
+}
+
+
+impl Option<T> {
+    fn is_some(&self) -> bool {
+        match *self {
+            Some(_) => true,
+            _ => false
+        }
+    }
+    
+    fn unwrap(self) -> T {
+        match self {
+            Some(v) => v,
+            None => core::panic("called `Option::unwrap()` on a `none` value")
+        }
+    }
+}
