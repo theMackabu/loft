@@ -6,47 +6,30 @@ mod pointer;
 mod structs;
 
 use super::value::{Value, ValueEnum, ValueExt, ValueType};
+
 use crate::parser::{ast::*, lexer::*};
 use crate::{impl_binary_ops, impl_promote_to_type, val};
+use crate::{models::Either, util::unwrap_value};
 
 use environment::Environment;
 use std::collections::HashMap;
 use std::{cell::RefCell, rc::Rc};
 
-enum Either<L, R> {
-    Left(L),
-    Right(R),
-}
-
-pub struct Interpreter {
+pub struct Interpreter<'st> {
     env: Environment,
-    fnc: HashMap<String, Stmt>,
+    fnc: HashMap<String, &'st Stmt>,
 }
 
-fn unwrap_value(val: &Value) -> Value {
-    let mut current = val.clone();
+impl<'st> Interpreter<'st> {
+    pub fn new(ast: &'st [Stmt]) -> Result<Self, String> {
+        let function_count = ast.iter().filter(|stmt| matches!(stmt, Stmt::Function { .. })).count();
+        let mut fnc = HashMap::with_capacity(function_count);
 
-    loop {
-        let borrowed = current.borrow();
-        match &borrowed.inner() {
-            ValueType::Reference { _undropped, .. } => {
-                let next = _undropped.clone();
-                drop(borrowed);
-                current = next;
+        for stmt in ast {
+            if let Stmt::Function { name, .. } = stmt {
+                fnc.insert(name.clone(), stmt);
             }
-            _ => break,
         }
-    }
-
-    current
-}
-
-impl Interpreter {
-    pub fn new(ast: &Vec<Stmt>) -> Result<Self, String> {
-        let fnc = ast
-            .iter()
-            .filter_map(|stmt| if let Stmt::Function { name, .. } = stmt { Some((name.clone(), stmt.clone())) } else { None })
-            .collect();
 
         let mut interpreter = Self { env: Environment::new(), fnc };
 
@@ -57,7 +40,7 @@ impl Interpreter {
     }
 
     pub fn start_main(&mut self) -> Result<Value, String> {
-        let main_func = self.find_function("main").ok_or("No main function found")?;
+        let main_func = self.fnc.get("main").ok_or("No main function found")?;
         let result = self.execute_statement(&main_func.to_owned())?;
 
         let result_inner = {
@@ -106,8 +89,6 @@ impl Interpreter {
 
         Ok(last_value)
     }
-
-    fn find_function(&self, name: &str) -> Option<&Stmt> { self.fnc.get(name) }
 
     fn declare_globals(&mut self, statements: &[Stmt]) -> Result<(), String> {
         for stmt in statements {
@@ -972,7 +953,7 @@ impl Interpreter {
                         let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
                         let arg_values = evaluated_args?;
 
-                        let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.find_function(name) {
+                        let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.fnc.get(name) {
                             (params.clone(), body.clone())
                         } else {
                             return Err(format!("Function '{}' not found", name));

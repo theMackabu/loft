@@ -13,4 +13,5 @@ pub mod macros;
 #[path = "../error.rs"]
 pub mod error;
 
+pub(crate) mod models;
 pub(crate) mod util;

@@ -1,7 +1,7 @@
 use crate::{
     parser::ast::Pattern,
-    // parser::ast::Type,
-    // types::checker::{Pointer, Primitive, TypeError},
+    runtime::value::{Value, ValueType}, // parser::ast::Type,
+                                        // types::checker::{Pointer, Primitive, TypeError},
 };
 
 // use macros_rs::fmt::fmtstr;
@@ -20,6 +20,24 @@ pub fn extract_identifier_info(pattern: &Pattern) -> Option<(String, bool)> {
         Pattern::Reference { pattern, .. } => extract_identifier_info(pattern),
         _ => None,
     }
+}
+
+pub fn unwrap_value(val: &Value) -> Value {
+    let mut current = val.clone();
+
+    loop {
+        let borrowed = current.borrow();
+        match &borrowed.inner() {
+            ValueType::Reference { _undropped, .. } => {
+                let next = _undropped.clone();
+                drop(borrowed);
+                current = next;
+            }
+            _ => break,
+        }
+    }
+
+    current
 }
 
 // pub fn convert_type_annotation(ty: &Type) -> Result<Primitive, TypeError> {

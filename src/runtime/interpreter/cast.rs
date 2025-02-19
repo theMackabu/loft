@@ -1,7 +1,7 @@
 use super::*;
 use std::mem;
 
-impl Interpreter {
+impl<'st> Interpreter<'st> {
     pub fn perform_cast(&mut self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {
             Type::Reference { mutable, inner } => {
