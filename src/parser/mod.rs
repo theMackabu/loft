@@ -2096,12 +2096,99 @@ impl Parser {
                 }
             }
 
+            Token::Integer(n, t) => {
+                let n = *n;
+                let t = t.clone();
+                self.advance();
+                Ok(Pattern::Literal(Box::new(Expr::Integer(n, t))))
+            }
+
+            Token::Float(n, t) => {
+                let n = *n;
+                let t = t.clone();
+                self.advance();
+                Ok(Pattern::Literal(Box::new(Expr::Float(n, t))))
+            }
+
+            Token::String(s) => {
+                let s = s.clone();
+                self.advance();
+                Ok(Pattern::Literal(Box::new(Expr::String(s))))
+            }
+
+            Token::True => {
+                self.advance();
+                Ok(Pattern::Literal(Box::new(Expr::Boolean(true))))
+            }
+
+            Token::False => {
+                self.advance();
+                Ok(Pattern::Literal(Box::new(Expr::Boolean(false))))
+            }
+
+            Token::BitOr => {
+                self.advance();
+                let mut patterns = Vec::new();
+                patterns.push(self.parse_pattern()?);
+
+                while self.current.token == Token::BitOr {
+                    self.advance();
+                    patterns.push(self.parse_pattern()?);
+                }
+
+                Ok(Pattern::Or(patterns))
+            }
+
+            Token::Minus => {
+                self.advance(); // consume the minus
+                match &self.current.token {
+                    Token::Integer(n, t) => {
+                        let n = -n;
+                        let t = t.clone();
+                        self.advance();
+                        Ok(Pattern::Literal(Box::new(Expr::Integer(n, t))))
+                    }
+                    Token::Float(n, t) => {
+                        let n = -n;
+                        let t = t.clone();
+                        self.advance();
+                        Ok(Pattern::Literal(Box::new(Expr::Float(n, t))))
+                    }
+                    _ => Err(ParseError::ExpectedExpression {
+                        location: self.current.location.clone(),
+                    }),
+                }
+            }
+
             Token::Identifier(name) => {
                 let name = name.clone();
                 self.advance();
 
                 if name == "_" {
                     return Ok(Pattern::Wildcard);
+                }
+
+                if self.current.token == Token::LeftParen {
+                    self.advance(); // consume '('
+
+                    let mut patterns = Vec::new();
+                    if self.current.token != Token::RightParen {
+                        patterns.push(self.parse_pattern()?);
+                        while self.current.token == Token::Comma {
+                            self.advance(); // consume ','
+                            if self.current.token == Token::RightParen {
+                                break;
+                            }
+                            patterns.push(self.parse_pattern()?);
+                        }
+                    }
+                    self.expect(Token::RightParen)?; // consume ')'
+
+                    let path = Path {
+                        segments: vec![PathSegment { ident: name, generics: Vec::new() }],
+                    };
+
+                    return Ok(Pattern::TupleStruct { path, elements: patterns });
                 }
 
                 if self.current.token == Token::DoubleColon {
@@ -2205,70 +2292,6 @@ impl Parser {
                 } else {
                     Ok(Pattern::Identifier { name, mutable: false })
                 }
-            }
-
-            Token::Integer(n, t) => {
-                let n = *n;
-                let t = t.clone();
-                self.advance();
-                Ok(Pattern::Literal(Box::new(Expr::Integer(n, t))))
-            }
-
-            Token::Float(n, t) => {
-                let n = *n;
-                let t = t.clone();
-                self.advance();
-                Ok(Pattern::Literal(Box::new(Expr::Float(n, t))))
-            }
-
-            Token::Minus => {
-                self.advance(); // consume the minus
-                match &self.current.token {
-                    Token::Integer(n, t) => {
-                        let n = -n;
-                        let t = t.clone();
-                        self.advance();
-                        Ok(Pattern::Literal(Box::new(Expr::Integer(n, t))))
-                    }
-                    Token::Float(n, t) => {
-                        let n = -n;
-                        let t = t.clone();
-                        self.advance();
-                        Ok(Pattern::Literal(Box::new(Expr::Float(n, t))))
-                    }
-                    _ => Err(ParseError::ExpectedExpression {
-                        location: self.current.location.clone(),
-                    }),
-                }
-            }
-
-            Token::String(s) => {
-                let s = s.clone();
-                self.advance();
-                Ok(Pattern::Literal(Box::new(Expr::String(s))))
-            }
-
-            Token::True => {
-                self.advance();
-                Ok(Pattern::Literal(Box::new(Expr::Boolean(true))))
-            }
-
-            Token::False => {
-                self.advance();
-                Ok(Pattern::Literal(Box::new(Expr::Boolean(false))))
-            }
-
-            Token::BitOr => {
-                self.advance();
-                let mut patterns = Vec::new();
-                patterns.push(self.parse_pattern()?);
-
-                while self.current.token == Token::BitOr {
-                    self.advance();
-                    patterns.push(self.parse_pattern()?);
-                }
-
-                Ok(Pattern::Or(patterns))
             }
 
             _ => Err(ParseError::UnexpectedToken {

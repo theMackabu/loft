@@ -34,50 +34,6 @@ fn get_message(input: &str) -> &str {
    GREETING
 }
 
-// parse enums
-pub enum Result<T, E> {
-   Ok(T),
-   Err(E),
-}
-
-pub enum Option<T> {
-   None,
-   Some(T),
-}
-
-fn test_patterns() {
-   let success = Result::Ok(42);
-   let failure = Result::Err("error message");
-   let maybe = Option::Some(123);
-   let nothing = Option::None;
-   
-   let result = match success {
-      Result::Ok(n) => n,
-      Result::Err(_) => -1,
-   };
-   
-   
-   let error_msg = match failure {
-      Result::Ok(_) => "success",
-      Result::Err(msg) => msg,
-   };
-   
-   let opt_value = match maybe {
-      Option::Some(x) => x,
-      Option::None => 0,
-    };
-   
-   let default = match nothing {
-      Option::Some(x) => x,
-      Option::None => 999,
-   };
-   
-   io::println(result);     // should print 42
-   io::println(error_msg);  // should print "error message"
-   io::println(opt_value);  // should print 123
-   io::println(default);    // should print 999
-}
-
 pub enum Shape {
    Circle(f64),
    Rectangle(f64, f64),
@@ -102,7 +58,6 @@ fn test_assignment(val: &mut i32) -> &mut i32 {
 // allow async fn main -> Result
 fn main() -> Result<(), &str> {
    test_enums();
-   test_patterns();
       
    let big_num: &i64 = 50;
    let mut value = 5;

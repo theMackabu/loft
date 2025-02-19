@@ -7,13 +7,45 @@ use loft::{
 
 use std::{fs, process::exit};
 
+// !TEMPORARY PRELUDE IMPL
+const PRELUDE: &'static str = r#"
+pub enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+pub enum Option<T> {
+    None,
+    Some(T),
+}
+
+impl Option<T> {
+    fn is_some(&self) -> bool {
+        match *self {
+            Option::Some(_) => true,
+            _ => false
+        }
+    }
+    
+    fn unwrap(self) -> T {
+        match self {
+            Option::Some(v) => v,
+            Option::None => core::panic("called `Option::unwrap()` on a `none` value")
+        }
+    }
+}
+"#;
+
 fn run() -> Result {
     let filename = std::env::args().nth(1).ok_or(Error::MissingArgument)?;
     let input = fs::read_to_string(&filename)?;
 
+    // !TEMPORARY PRELUDE IMPL
+    let input = format!("{}\n{}", PRELUDE, input);
+
     let ast = Parser::new(Lexer::new(input)).parse_program().map_err(|err| Error::ParseError(err.to_string()))?;
 
-    // println!("{ast:?}");
+    // println!("{ast:#?}");
 
     let mut runtime = Interpreter::new(&ast).map_err(|err| Error::RuntimeError(err.to_string()))?;
     let result = runtime.start_main().map_err(|err| Error::RuntimeError(err.to_string()))?;

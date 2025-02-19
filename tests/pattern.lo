@@ -1,0 +1,31 @@
+fn main() {
+   let success = Ok(42);
+   let failure = Err("error message");
+   let maybe = Some(123);
+   let nothing = None;
+   
+   let result = match success {
+      Ok(n) => n,
+      Err(_) => -1,
+   };
+   
+   let error_msg = match failure {
+      Ok(_) => "success",
+      Err(msg) => msg,
+   };
+   
+   let opt_value = match maybe {
+      Some(x) => x,
+      None => 0,
+   };
+   
+   let default = match nothing {
+      Some(x) => x,
+      None => 999,
+   };
+   
+   io::println(result);     // should print 42
+   io::println(error_msg);  // should print "error message"
+   io::println(opt_value);  // should print 123
+   io::println(default);    // should print 999
+}

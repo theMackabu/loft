@@ -1,7 +1,7 @@
 use super::*;
 use std::{cell::RefCell, rc::Rc};
 
-impl<'st> Interpreter<'st> {
+impl Interpreter {
     pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
         match method {
             "clone" => {
@@ -106,7 +106,9 @@ impl<'st> Interpreter<'st> {
 
             ValueType::Slice { ref ty, ref el } => self.handle_slice_method_call(object, method, args, ty, el),
 
-            ValueType::Struct { name, .. } => self.handle_struct_method_call(object, &name, method, args),
+            ValueType::Struct { name, .. } => self.handle_type_method_call(object, &name, method, args),
+
+            ValueType::Enum { enum_type, .. } => self.handle_type_method_call(object, &enum_type, method, args),
 
             _ => {
                 let borrowed = object.borrow();

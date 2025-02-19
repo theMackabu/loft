@@ -1,6 +1,7 @@
 mod array;
 mod assign;
 mod cast;
+mod r#enum;
 mod environment;
 mod methods;
 mod pointer;
@@ -16,23 +17,13 @@ use environment::Environment;
 use std::collections::HashMap;
 use std::{cell::RefCell, rc::Rc};
 
-pub struct Interpreter<'st> {
+pub struct Interpreter {
     env: Environment,
-    fnc: HashMap<String, &'st Stmt>,
 }
 
-impl<'st> Interpreter<'st> {
-    pub fn new(ast: &'st [Stmt]) -> Result<Self, String> {
-        let function_count = ast.iter().filter(|stmt| matches!(stmt, Stmt::Function { .. })).count();
-        let mut fnc = HashMap::with_capacity(function_count);
-
-        for stmt in ast {
-            if let Stmt::Function { name, .. } = stmt {
-                fnc.insert(name.clone(), stmt);
-            }
-        }
-
-        let mut interpreter = Self { env: Environment::new(), fnc };
+impl Interpreter {
+    pub fn new(ast: &[Stmt]) -> Result<Self, String> {
+        let mut interpreter = Self { env: Environment::new() };
 
         interpreter.env.scope_resolver.resolve_program(ast)?;
         interpreter.declare_globals(ast)?;
@@ -91,9 +82,37 @@ impl<'st> Interpreter<'st> {
         Ok(last_value)
     }
 
+    fn import_prelude(&mut self) -> Result<(), String> {
+        self.env.register_global_variant("Some", "Option")?;
+        self.env.register_global_variant("None", "Option")?;
+        self.env.register_global_variant("Ok", "Result")?;
+        self.env.register_global_variant("Err", "Result")?;
+
+        Ok(())
+    }
+
     fn declare_globals(&mut self, statements: &[Stmt]) -> Result<(), String> {
         for stmt in statements {
             match stmt {
+                Stmt::Impl { target, items, .. } => {
+                    self.handle_impl_block(target, items)?;
+                }
+
+                Stmt::Struct { name, fields, .. } => {
+                    self.handle_struct_def(name, fields.to_owned())?;
+                }
+
+                Stmt::Enum { name, variants, .. } => {
+                    self.handle_enum_def(name, variants.to_owned())?;
+                }
+
+                Stmt::Module { name, body, .. } => {
+                    self.env.scope_resolver.declare_module(name)?;
+                    self.env.enter_scope();
+                    self.declare_globals(body)?;
+                    self.env.exit_scope();
+                }
+
                 Stmt::Const {
                     name, initializer, type_annotation, ..
                 } => {
@@ -116,21 +135,6 @@ impl<'st> Interpreter<'st> {
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
-                }
-
-                Stmt::Impl { target, items, .. } => {
-                    self.handle_impl_block(target, items)?;
-                }
-
-                Stmt::Struct { name, fields, .. } => {
-                    self.handle_struct_def(name, fields.to_owned())?;
-                }
-
-                Stmt::Module { name, body, .. } => {
-                    self.env.scope_resolver.declare_module(name)?;
-                    self.env.enter_scope();
-                    self.declare_globals(body)?;
-                    self.env.exit_scope();
                 }
 
                 _ => {}
@@ -1050,144 +1054,209 @@ impl<'st> Interpreter<'st> {
                 _ => Err("Invalid assignment target".to_string()),
             },
 
-            // !MODULE SYSTEM!
-            // TEMPORARY
             Expr::Call { function, arguments } => {
-                match &**function {
-                    Expr::Path(path) if path.segments.len() == 2 => {
-                        // handle import calls (like use std::io, io::println)
-                        // handle path-based calls (like std::io::println)
-                        // TEMPORARY
-                        if path.segments[0].ident == "io" && path.segments[1].ident == "println" {
-                            if let Some(arg) = arguments.first() {
-                                let value = self.evaluate_expression(arg)?;
-                                println!("{}", value.borrow());
-                                return Ok(ValueEnum::unit());
-                            } else {
-                                return Err("io::println requires an argument".to_string());
-                            }
+                let callable = self.evaluate_expression(function)?;
+                let callable_type = callable.borrow().inner();
+
+                match callable_type {
+                    ValueType::EnumConstructor { enum_name, variant_name, fields } => {
+                        if arguments.len() != fields.len() {
+                            return Err(format!("Expected {} arguments for enum variant {}, got {}", fields.len(), variant_name, arguments.len()));
                         }
 
-                        if path.segments[0].ident == "io" && path.segments[1].ident == "print" {
-                            if let Some(arg) = arguments.first() {
-                                let value = self.evaluate_expression(arg)?;
-                                print!("{}", value.borrow());
-                                return Ok(ValueEnum::unit());
-                            } else {
-                                return Err("io::print requires an argument".to_string());
-                            }
+                        let mut arg_values = Vec::new();
+                        for arg in arguments {
+                            arg_values.push(self.evaluate_expression(arg)?);
                         }
-
-                        let type_name = &path.segments[0].ident;
-                        let method_name = &path.segments[1].ident;
-
-                        if let Some((scope_idx, value)) = self.env.find_variable(type_name) {
-                            let methods = {
-                                let borrowed = value.borrow();
-                                match borrowed.inner() {
-                                    ValueType::StructDef { methods, .. } => methods.clone(),
-                                    _ => return Err(format!("Type '{}' is not a struct definition", type_name)),
-                                }
-                            };
-
-                            if let Some(method_fn) = methods.get(method_name) {
-                                let function = method_fn.clone();
-
-                                let mut evaluated_args = Vec::new();
-                                for arg in arguments {
-                                    evaluated_args.push(self.evaluate_expression(arg)?);
-                                }
-
-                                self.env.enter_scope();
-
-                                for (i, arg_val) in evaluated_args.iter().enumerate() {
-                                    if let Some((param_pattern, _)) = function.params.get(i) {
-                                        if let Pattern::Identifier { name, mutable } = param_pattern {
-                                            self.env.set_scoped_variable(name, arg_val.clone(), scope_idx, *mutable)?;
-                                        }
-                                    }
-                                }
-
-                                let result = self.execute(&function.body)?;
-                                self.env.exit_scope();
-
-                                return Ok(result);
-                            }
-                        }
-
-                        let values: Vec<Value> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
 
                         Ok(val!(ValueType::Enum {
-                            enum_type: type_name.clone(),
-                            variant: method_name.clone(),
-                            data: if values.is_empty() { None } else { Some(values) },
+                            enum_type: enum_name,
+                            variant: variant_name,
+                            data: Some(arg_values),
                         }))
                     }
-
-                    Expr::Identifier(name) => {
-                        if name == "main" {
-                            return Err("main function cannot be called directly".to_string());
+                    ValueType::EnumStructConstructor { enum_name, variant_name, fields } => {
+                        if arguments.len() != 1 {
+                            return Err(format!(
+                                "Expected 1 argument (field initializer) for struct-like enum variant {}, got {}",
+                                variant_name,
+                                arguments.len()
+                            ));
                         }
 
-                        let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
-                        let arg_values = evaluated_args?;
+                        if let Expr::StructInit { fields: init_fields, .. } = &arguments[0] {
+                            let mut field_values = Vec::new();
 
-                        let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.fnc.get(name) {
-                            (params.clone(), body.clone())
+                            for (field_name, _) in &fields {
+                                if !init_fields.contains_key(field_name) {
+                                    return Err(format!("Missing field '{}' in struct-like enum initialization", field_name));
+                                }
+                            }
+
+                            for (field_name, _) in &fields {
+                                if let Some((expr, _)) = init_fields.get(field_name) {
+                                    field_values.push(self.evaluate_expression(expr)?);
+                                }
+                            }
+
+                            Ok(val!(ValueType::Enum {
+                                enum_type: enum_name,
+                                variant: variant_name,
+                                data: Some(field_values),
+                            }))
                         } else {
-                            return Err(format!("Function '{}' not found", name));
-                        };
-
-                        if arg_values.len() != params.len() {
-                            return Err(format!("Function '{}' expects {} arguments but got {}", name, params.len(), arg_values.len()));
+                            Err(format!("Expected struct initializer for struct-like enum variant {}", variant_name))
                         }
+                    }
 
-                        let scope_depth = self.env.scopes.len();
-                        self.env.enter_scope();
+                    _ => match &**function {
+                        // !MODULE SYSTEM!
+                        // TEMPORARY
+                        Expr::Path(path) if path.segments.len() == 2 => {
+                            // handle import calls (like use std::io, io::println)
+                            // handle path-based calls (like std::io::println)
+                            // TEMPORARY
+                            if path.segments[0].ident == "core" && path.segments[1].ident == "panic" {
+                                if let Some(arg) = arguments.first() {
+                                    let value = self.evaluate_expression(arg)?;
+                                    return Err(value.borrow().to_string());
+                                } else {
+                                    return Err("core::panic requires an argument".to_string());
+                                }
+                            }
 
-                        for ((param, param_type), value) in params.iter().zip(arg_values) {
-                            if let Pattern::Identifier { name, .. } = param {
-                                match param_type {
-                                    Type::Reference { mutable: ref_mutable, .. } => {
-                                        self.env.scope_resolver.declare_reference(name, *ref_mutable);
+                            if path.segments[0].ident == "io" && path.segments[1].ident == "println" {
+                                if let Some(arg) = arguments.first() {
+                                    let value = self.evaluate_expression(arg)?;
+                                    println!("{}", value.borrow());
+                                    return Ok(ValueEnum::unit());
+                                } else {
+                                    return Err("io::println requires an argument".to_string());
+                                }
+                            }
 
-                                        if *ref_mutable && !value.borrow().is_mutable() {
-                                            return Err("Cannot pass immutable reference as mutable".to_string());
-                                        }
+                            if path.segments[0].ident == "io" && path.segments[1].ident == "print" {
+                                if let Some(arg) = arguments.first() {
+                                    let value = self.evaluate_expression(arg)?;
+                                    print!("{}", value.borrow());
+                                    return Ok(ValueEnum::unit());
+                                } else {
+                                    return Err("io::print requires an argument".to_string());
+                                }
+                            }
 
-                                        if let Some(scope) = self.env.scopes.last_mut() {
-                                            if let Some(existing) = scope.get(name) {
-                                                *existing.borrow_mut() = value.borrow().clone();
-                                            } else {
-                                                scope.insert(name.to_string(), value.clone());
+                            let type_name = &path.segments[0].ident;
+                            let method_name = &path.segments[1].ident;
+
+                            if let Some((scope_idx, value)) = self.env.find_variable(type_name) {
+                                let methods = {
+                                    let borrowed = value.borrow();
+                                    match borrowed.inner() {
+                                        ValueType::StructDef { methods, .. } => methods.clone(),
+                                        ValueType::EnumDef { methods, .. } => methods.clone(),
+                                        _ => return Err(format!("Type '{}' is not a struct or enum definition", type_name)),
+                                    }
+                                };
+
+                                if let Some(method_fn) = methods.get(method_name) {
+                                    let function = method_fn.clone();
+
+                                    let mut evaluated_args = Vec::new();
+                                    for arg in arguments {
+                                        evaluated_args.push(self.evaluate_expression(arg)?);
+                                    }
+
+                                    self.env.enter_scope();
+
+                                    for (i, arg_val) in evaluated_args.iter().enumerate() {
+                                        if let Some((param_pattern, _)) = function.params.get(i) {
+                                            if let Pattern::Identifier { name, mutable } = param_pattern {
+                                                self.env.set_scoped_variable(name, arg_val.clone(), scope_idx, *mutable)?;
                                             }
                                         }
                                     }
 
-                                    _ => {
-                                        self.env.scope_resolver.declare_variable(name, false);
-                                        if let Some(scope) = self.env.scopes.last_mut() {
-                                            if let Some(existing) = scope.get(name) {
-                                                *existing.borrow_mut() = value.borrow().clone().into_immutable();
-                                            } else {
-                                                scope.insert(name.to_string(), value.clone());
+                                    let result = self.execute(&function.body)?;
+                                    self.env.exit_scope();
+
+                                    return Ok(result);
+                                }
+                            }
+
+                            let values: Vec<Value> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
+
+                            Ok(val!(ValueType::Enum {
+                                enum_type: type_name.clone(),
+                                variant: method_name.clone(),
+                                data: if values.is_empty() { None } else { Some(values) },
+                            }))
+                        }
+
+                        Expr::Identifier(name) => {
+                            if name == "main" {
+                                return Err("main function cannot be called directly".to_string());
+                            }
+
+                            let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
+                            let arg_values = evaluated_args?;
+
+                            let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.env.fns.get(name) {
+                                (params.clone(), body.clone())
+                            } else {
+                                return Err(format!("Function '{}' not found", name));
+                            };
+
+                            if arg_values.len() != params.len() {
+                                return Err(format!("Function '{}' expects {} arguments but got {}", name, params.len(), arg_values.len()));
+                            }
+
+                            let scope_depth = self.env.scopes.len();
+                            self.env.enter_scope();
+
+                            for ((param, param_type), value) in params.iter().zip(arg_values) {
+                                if let Pattern::Identifier { name, .. } = param {
+                                    match param_type {
+                                        Type::Reference { mutable: ref_mutable, .. } => {
+                                            self.env.scope_resolver.declare_reference(name, *ref_mutable);
+
+                                            if *ref_mutable && !value.borrow().is_mutable() {
+                                                return Err("Cannot pass immutable reference as mutable".to_string());
+                                            }
+
+                                            if let Some(scope) = self.env.scopes.last_mut() {
+                                                if let Some(existing) = scope.get(name) {
+                                                    *existing.borrow_mut() = value.borrow().clone();
+                                                } else {
+                                                    scope.insert(name.to_string(), value.clone());
+                                                }
+                                            }
+                                        }
+
+                                        _ => {
+                                            self.env.scope_resolver.declare_variable(name, false);
+                                            if let Some(scope) = self.env.scopes.last_mut() {
+                                                if let Some(existing) = scope.get(name) {
+                                                    *existing.borrow_mut() = value.borrow().clone().into_immutable();
+                                                } else {
+                                                    scope.insert(name.to_string(), value.clone());
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
+
+                            let result = self.execute(&body);
+
+                            while self.env.scopes.len() > scope_depth {
+                                self.env.exit_scope();
+                            }
+
+                            result
                         }
 
-                        let result = self.execute(&body);
-
-                        while self.env.scopes.len() > scope_depth {
-                            self.env.exit_scope();
-                        }
-
-                        result
-                    }
-
-                    _ => Err(format!("Unsupported function call type: {:?}", function)),
+                        _ => Err(format!("Unsupported function call type: {:?}", function)),
+                    },
                 }
             }
 
@@ -1355,41 +1424,80 @@ impl<'st> Interpreter<'st> {
             }
 
             (Pattern::Path(path), value) => {
+                if path.segments.len() != 2 {
+                    return Ok(false);
+                }
+
+                let enum_name = &path.segments[0].ident;
+                let variant_name = &path.segments[1].ident;
+
+                if self.env.get_variable(enum_name).is_none() {
+                    return Err(format!("Enum type '{}' not found in pattern matching", enum_name));
+                }
+
+                let enum_def = self.env.get_variable(enum_name).unwrap();
+                let valid_variant = match enum_def.borrow().inner() {
+                    ValueType::EnumDef { variants, .. } => variants.iter().any(|v| match v {
+                        EnumVariant::Simple(name) => name == variant_name,
+                        EnumVariant::Tuple(name, _) => name == variant_name,
+                        EnumVariant::Struct(name, _) => name == variant_name,
+                    }),
+                    _ => return Err(format!("'{}' is not an enum type", enum_name)),
+                };
+
+                if !valid_variant {
+                    return Err(format!("Enum '{}' does not have variant '{}'", enum_name, variant_name));
+                }
+
                 let inner_value = {
                     let borrowed = value.borrow();
                     borrowed.inner()
                 };
 
                 if let ValueType::Enum { variant, data, enum_type } = inner_value {
-                    if path.segments.len() == 2 {
-                        Ok(path.segments[0].ident == enum_type && path.segments[1].ident == variant && data.as_ref().map_or(true, |v| v.is_empty()))
-                    } else {
-                        Ok(false)
-                    }
+                    Ok(*enum_name == enum_type && *variant_name == variant && data.as_ref().map_or(true, |v| v.is_empty()))
                 } else {
                     Ok(false)
                 }
             }
 
+            // simplify pattern matching in ast
             (Pattern::TupleStruct { path, elements }, value) => {
-                let inner_value = {
-                    let borrowed = value.borrow();
-                    borrowed.inner()
-                };
-
-                if let ValueType::Enum { variant, data, enum_type } = inner_value {
-                    if path.segments.len() == 2 && path.segments[0].ident == *enum_type && path.segments[1].ident == *variant {
-                        match data {
-                            Some(values) if elements.len() == values.len() => {
-                                for (element, value) in elements.iter().zip(values.iter()) {
-                                    if !self.pattern_matches(element, value)? {
-                                        return Ok(false);
+                let value_inner = value.borrow().inner();
+                if let ValueType::Enum { variant, data, enum_type } = value_inner {
+                    if path.segments.len() == 2 {
+                        if path.segments[0].ident == *enum_type && path.segments[1].ident == *variant {
+                            match data {
+                                Some(values) if elements.len() == values.len() => {
+                                    for (element, val) in elements.iter().zip(values.iter()) {
+                                        if !self.pattern_matches(element, val)? {
+                                            return Ok(false);
+                                        }
                                     }
+                                    Ok(true)
                                 }
-                                Ok(true)
+                                None if elements.is_empty() => Ok(true),
+                                _ => Ok(false),
                             }
-                            None if elements.is_empty() => Ok(true),
-                            _ => Ok(false),
+                        } else {
+                            Ok(false)
+                        }
+                    } else if path.segments.len() == 1 {
+                        if path.segments[0].ident == variant {
+                            match data {
+                                Some(values) if elements.len() == values.len() => {
+                                    for (element, val) in elements.iter().zip(values.iter()) {
+                                        if !self.pattern_matches(element, val)? {
+                                            return Ok(false);
+                                        }
+                                    }
+                                    Ok(true)
+                                }
+                                None if elements.is_empty() => Ok(true),
+                                _ => Ok(false),
+                            }
+                        } else {
+                            Ok(false)
                         }
                     } else {
                         Ok(false)
