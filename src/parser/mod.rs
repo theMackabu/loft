@@ -1600,6 +1600,11 @@ impl Parser {
                         self.advance(); // consume 'await'
                         Ok(Expr::Await(Box::new(left)))
                     }
+                    Token::Integer(n, _) if n >= 0 => {
+                        let index = n.to_string();
+                        self.advance(); // consume the integer
+                        self.parse_member_access(left, index)
+                    }
                     _ => {
                         let method = self.expect_identifier()?;
                         self.parse_member_access(left, method)

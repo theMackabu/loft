@@ -195,22 +195,63 @@ impl<'st> Interpreter<'st> {
                     ValueEnum::unit()
                 };
 
-                if let Pattern::Identifier { name, mutable } = pattern {
-                    let is_ref = matches!(value.borrow().inner(), ValueType::Reference { .. });
-                    let declared_mutability = if is_ref { value.borrow().is_mutable() } else { *mutable };
+                match pattern {
+                    Pattern::Identifier { name, mutable } => {
+                        let is_ref = matches!(value.borrow().inner(), ValueType::Reference { .. });
+                        let declared_mutability = if is_ref { value.borrow().is_mutable() } else { *mutable };
 
-                    self.env.scope_resolver.declare_variable(name, declared_mutability);
+                        self.env.scope_resolver.declare_variable(name, declared_mutability);
 
-                    if !is_ref {
-                        let mut value_ref = value.borrow_mut();
-                        *value_ref = if declared_mutability {
-                            value_ref.clone().into_mutable()
-                        } else {
-                            value_ref.clone().into_immutable()
-                        };
+                        if !is_ref {
+                            let mut value_ref = value.borrow_mut();
+                            *value_ref = if declared_mutability {
+                                value_ref.clone().into_mutable()
+                            } else {
+                                value_ref.clone().into_immutable()
+                            };
+                        }
+
+                        self.env.set_variable(name, value)?;
                     }
 
-                    self.env.set_variable(name, value)?;
+                    Pattern::Tuple(patterns) => {
+                        let value_inner = value.borrow().inner();
+
+                        match value_inner {
+                            ValueType::Tuple(elements) => {
+                                if patterns.len() != elements.len() {
+                                    return Err(format!("Expected tuple with {} elements but got {} elements", patterns.len(), elements.len()));
+                                }
+
+                                for (i, pattern) in patterns.iter().enumerate() {
+                                    match pattern {
+                                        Pattern::Identifier { name, mutable } => {
+                                            let element_value = elements[i].clone();
+                                            let is_ref = matches!(element_value.borrow().inner(), ValueType::Reference { .. });
+                                            let declared_mutability = if is_ref { element_value.borrow().is_mutable() } else { *mutable };
+
+                                            self.env.scope_resolver.declare_variable(name, declared_mutability);
+
+                                            if !is_ref {
+                                                let mut element_ref = element_value.borrow_mut();
+                                                *element_ref = if declared_mutability {
+                                                    element_ref.clone().into_mutable()
+                                                } else {
+                                                    element_ref.clone().into_immutable()
+                                                };
+                                            }
+
+                                            self.env.set_variable(name, element_value)?;
+                                        }
+                                        _ => return Err("Nested destructuring patterns are not supported yet".to_string()),
+                                    }
+                                }
+                            }
+                            _ => return Err("Cannot destructure non-tuple value".to_string()),
+                        }
+                    }
+
+                    _ => return Err("Unsupported pattern in let binding".to_string()),
                 }
 
                 Ok(ValueEnum::unit())
@@ -435,6 +476,44 @@ impl<'st> Interpreter<'st> {
                     Expr::MemberAccess { object, member } => {
                         let new_value = self.evaluate_expression(value)?;
                         let ref_value = self.evaluate_expression(object)?;
+
+                        if let Ok(index) = member.parse::<usize>() {
+                            if !matches!(ref_value.borrow().inner(), ValueType::Reference { .. }) {
+                                return Err("Cannot dereference non-reference value".to_string());
+                            }
+                            if !ref_value.borrow().is_mutable() {
+                                return Err("Cannot dereference immutable reference".to_string());
+                            }
+
+                            let target_ptr = {
+                                let borrow = ref_value.borrow();
+                                match borrow.inner() {
+                                    ValueType::Reference { original_ptr, .. } => {
+                                        if original_ptr.is_null() {
+                                            return Err("Reference contains null pointer".to_string());
+                                        }
+                                        original_ptr
+                                    }
+                                    _ => return Err("Invalid reference".to_string()),
+                                }
+                            };
+
+                            let target_inner = unsafe {
+                                let cell_ref = &*target_ptr;
+                                cell_ref.borrow().inner()
+                            };
+
+                            match target_inner {
+                                ValueType::Tuple(elements) => {
+                                    if index < elements.len() {
+                                        return Ok(elements[index].clone());
+                                    } else {
+                                        return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
+                                    }
+                                }
+                                _ => return Err("Cannot access tuple element through non-tuple reference".to_string()),
+                            }
+                        }
 
                         if !matches!(ref_value.borrow().inner(), ValueType::Reference { .. }) {
                             return Err("Cannot dereference non-reference value".to_string());
@@ -877,6 +956,56 @@ impl<'st> Interpreter<'st> {
                 Expr::MemberAccess { object, member } => {
                     let obj_value = self.evaluate_expression(object)?;
 
+                    if let Ok(index) = member.parse::<usize>() {
+                        let obj_value_inner = {
+                            let borrowed = obj_value.borrow();
+                            borrowed.inner()
+                        };
+
+                        match obj_value_inner {
+                            ValueType::Tuple(elements) => {
+                                if !obj_value.borrow().is_mutable() {
+                                    return Err("Cannot modify element of immutable tuple".to_string());
+                                }
+
+                                if index >= elements.len() {
+                                    return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
+                                }
+
+                                let right_val = self.evaluate_expression(value)?;
+                                *elements[index].borrow_mut() = right_val.borrow().clone();
+                                return Ok(ValueEnum::unit());
+                            }
+
+                            ValueType::Reference { original_ptr, .. } => {
+                                if !obj_value.borrow().is_mutable() {
+                                    return Err("Cannot modify element through immutable reference".to_string());
+                                }
+
+                                if original_ptr.is_null() {
+                                    return Err("Reference contains null pointer".to_string());
+                                }
+
+                                unsafe {
+                                    let cell_ref = &*original_ptr;
+                                    let inner_value = cell_ref.borrow().inner();
+                                    if let ValueType::Tuple(elements) = inner_value {
+                                        if index >= elements.len() {
+                                            return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
+                                        }
+
+                                        let right_val = self.evaluate_expression(value)?;
+                                        *elements[index].borrow_mut() = right_val.borrow().clone();
+                                        return Ok(ValueEnum::unit());
+                                    } else {
+                                        return Err("Cannot assign to element of non-tuple reference".to_string());
+                                    }
+                                }
+                            }
+                            _ => return Err("Cannot index non-tuple value".to_string()),
+                        }
+                    }
+
                     let obj_value_inner = {
                         let borrowed = obj_value.borrow();
                         borrowed.inner()
@@ -976,6 +1105,62 @@ impl<'st> Interpreter<'st> {
 
                 Expr::MemberAccess { object, member } => {
                     let obj_value = self.evaluate_expression(object)?;
+
+                    if let Ok(index) = member.parse::<usize>() {
+                        let obj_value_inner = {
+                            let borrowed = obj_value.borrow();
+                            borrowed.inner()
+                        };
+
+                        match obj_value_inner {
+                            ValueType::Tuple(elements) => {
+                                if !obj_value.borrow().is_mutable() {
+                                    return Err("Cannot modify element of immutable tuple".to_string());
+                                }
+
+                                if index >= elements.len() {
+                                    return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
+                                }
+
+                                let right_val = self.evaluate_expression(value)?;
+                                let current_val = elements[index].clone();
+                                let result = self.evaluate_compound_assignment(&current_val, operator, &right_val)?;
+
+                                *elements[index].borrow_mut() = result.borrow().clone();
+                                return Ok(ValueEnum::unit());
+                            }
+
+                            ValueType::Reference { original_ptr, .. } => {
+                                if !obj_value.borrow().is_mutable() {
+                                    return Err("Cannot modify element through immutable reference".to_string());
+                                }
+
+                                if original_ptr.is_null() {
+                                    return Err("Reference contains null pointer".to_string());
+                                }
+
+                                unsafe {
+                                    let cell_ref = &*original_ptr;
+                                    let inner_value = cell_ref.borrow().inner();
+                                    if let ValueType::Tuple(elements) = inner_value {
+                                        if index >= elements.len() {
+                                            return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
+                                        }
+
+                                        let right_val = self.evaluate_expression(value)?;
+                                        let current_val = elements[index].clone();
+                                        let result = self.evaluate_compound_assignment(&current_val, operator, &right_val)?;
+
+                                        *elements[index].borrow_mut() = result.borrow().clone();
+                                        return Ok(ValueEnum::unit());
+                                    } else {
+                                        return Err("Cannot assign to element of non-tuple reference".to_string());
+                                    }
+                                }
+                            }
+                            _ => return Err("Cannot index non-tuple value".to_string()),
+                        }
+                    }
 
                     {
                         let borrowed = obj_value.borrow();
@@ -1273,6 +1458,51 @@ impl<'st> Interpreter<'st> {
             Expr::MemberAssignment { object, member, value } => {
                 let right_val = self.evaluate_expression(value)?;
 
+                if let Ok(index) = member.parse::<usize>() {
+                    let target = self.evaluate_expression(object)?;
+
+                    if !target.borrow().is_mutable() {
+                        return Err("Cannot assign to element of immutable tuple".to_string());
+                    }
+
+                    let target_inner = {
+                        let borrowed = target.borrow();
+                        borrowed.inner()
+                    };
+
+                    match target_inner {
+                        ValueType::Tuple(elements) => {
+                            if index < elements.len() {
+                                *elements[index].borrow_mut() = right_val.borrow().clone();
+                                return Ok(val!(ValueType::Unit));
+                            } else {
+                                return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
+                            }
+                        }
+                        ValueType::Reference { original_ptr, .. } => {
+                            if original_ptr.is_null() {
+                                return Err("Reference contains null pointer".to_string());
+                            }
+
+                            unsafe {
+                                let cell_ref = &*original_ptr;
+                                let inner_value = cell_ref.borrow().inner();
+                                if let ValueType::Tuple(elements) = inner_value {
+                                    if index < elements.len() {
+                                        *elements[index].borrow_mut() = right_val.borrow().clone();
+                                        return Ok(val!(ValueType::Unit));
+                                    } else {
+                                        return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
+                                    }
+                                } else {
+                                    return Err("Cannot assign to element of non-tuple reference".to_string());
+                                }
+                            }
+                        }
+                        _ => return Err("Cannot assign to element of non-tuple value".to_string()),
+                    }
+                }
+
                 match self.extract_field_chain(object) {
                     Ok((base_name, mut chain)) => {
                         if chain.last().map_or(true, |m| m != member) {
@@ -1386,6 +1616,39 @@ impl<'st> Interpreter<'st> {
                     let borrowed = obj_value.borrow();
                     borrowed.inner()
                 };
+
+                if let Ok(index) = member.parse::<usize>() {
+                    match obj_inner {
+                        ValueType::Tuple(elements) => {
+                            if index < elements.len() {
+                                return Ok(elements[index].clone());
+                            } else {
+                                return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
+                            }
+                        }
+                        ValueType::Reference { original_ptr, .. } => {
+                            if original_ptr.is_null() {
+                                return Err("Reference contains null pointer".to_string());
+                            }
+
+                            unsafe {
+                                let cell_ref = &*original_ptr;
+                                let inner_inner = cell_ref.borrow().inner();
+                                match inner_inner {
+                                    ValueType::Tuple(elements) => {
+                                        if index < elements.len() {
+                                            return Ok(elements[index].clone());
+                                        } else {
+                                            return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
+                                        }
+                                    }
+                                    _ => return Err("Cannot access numeric index of non-tuple reference".to_string()),
+                                }
+                            }
+                        }
+                        _ => return Err("Cannot access numeric index of non-tuple value".to_string()),
+                    }
+                }
 
                 let field_ref = match obj_inner {
                     ValueType::Struct { ref fields, .. } => fields.get(member).ok_or_else(|| format!("Field '{}' not found", member))?.clone(),

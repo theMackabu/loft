@@ -1,11 +1,63 @@
-fn main() {   
+fn test_loop() {
+   // loop { 
+   //    io::println("I live."); 
+   // }
+   
+   'outer: loop {
+      io::println("Entered the outer loop");
+      
+      'inner: loop {
+         io::println("Entered the inner loop");
+         break 'outer;
+      }
+      
+      io::println("This point will never be reached");
+   }
+}
+
+fn test_assign() {
+   let mut a = 1;
+   let mut b = 1;
+   
+   let result = loop {
+      if b > 10 {
+         break b;
+      }
+   
+      let c = a + b;
+      a = b;
+      b = c;
+   };
+   
+   io::println(result);
+}
+
+fn test_while() {
+   let mut i = 0;
+   while i < 10 {
+      io::println("balls"); 
+      i += 1;
+   }
+   
    let x = [1, 2, 3, 4, 5];
    while let Some(y) = x.pop() {
       io::println("y = {}", y);
+   }
+}
+
+fn test_for() {
+   for i in 0..10 {
+      io::println(i);
    }
    
    let strs = ["cats", "dogs"];
    for text in strs {
       io::println("I like {}.", text);
    }
+}
+
+fn main() {     
+   test_loop();
+   test_assign();
+   test_while();
 }

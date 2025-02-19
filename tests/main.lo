@@ -83,7 +83,20 @@ fn main() -> Result<(), &str> {
    };
    
    io::println(nest);
-      
+   
+   let (a, mut b) = (1, 1);
+   let c = (1, 2, 3);
+   
+   b += 2;
+
+   io::println(a);
+   io::println(b);
+   io::println(c);
+   
+   io::println(c.0);
+   io::println(c.1);   
+   io::println(c.2); 
+
    Result::Ok(())
 }
 
