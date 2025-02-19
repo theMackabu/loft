@@ -1,3 +1,6 @@
+mod clone;
+mod display;
+
 use crate::parser::ast::{Function, Type};
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
@@ -112,6 +115,15 @@ impl ValueEnum {
 
     pub fn is_mutable(&self) -> bool { matches!(self, ValueEnum::Mutable(_)) }
 
+    pub fn is_ref(&self) -> bool { matches!(self.inner(), ValueType::Reference { .. }) }
+
+    pub fn deep_clone(&self) -> Value {
+        match self {
+            ValueEnum::Immutable(inner) => crate::val!(inner.deep_clone()),
+            ValueEnum::Mutable(inner) => crate::val!(mut inner.deep_clone()),
+        }
+    }
+
     pub fn set_mutable(&mut self, mutable: bool) {
         *self = match self {
             ValueEnum::Immutable(inner) if mutable => ValueEnum::Mutable(inner.clone()),
@@ -157,142 +169,43 @@ impl ValueEnum {
             _ => None,
         }
     }
-}
 
-impl fmt::Display for ValueEnum {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value_type = self.inner();
+    pub fn kind(&self) -> String {
+        match self.inner() {
+            ValueType::I8(_) => String::from("i8"),
+            ValueType::I16(_) => String::from("i16"),
+            ValueType::I32(_) => String::from("i32"),
+            ValueType::I64(_) => String::from("i64"),
+            ValueType::I128(_) => String::from("i128"),
+            ValueType::ISize(_) => String::from("isize"),
 
-        match value_type {
-            ValueType::I8(v) => write!(f, "{v}"),
+            ValueType::U8(_) => String::from("u8"),
+            ValueType::U16(_) => String::from("u16"),
+            ValueType::U32(_) => String::from("u32"),
+            ValueType::U64(_) => String::from("u64"),
+            ValueType::U128(_) => String::from("u128"),
+            ValueType::USize(_) => String::from("usize"),
 
-            ValueType::I16(v) => write!(f, "{v}"),
+            ValueType::F32(_) => String::from("f32"),
+            ValueType::F64(_) => String::from("f64"),
 
-            ValueType::I32(v) => write!(f, "{v}"),
+            ValueType::Str(_) => String::from("str"),
+            ValueType::Boolean(_) => String::from("bool"),
+            ValueType::Tuple(_) => String::from("tuple"),
+            ValueType::Return(_) => String::from("return"),
 
-            ValueType::I64(v) => write!(f, "{v}"),
+            ValueType::Struct { name, .. } => name,
+            ValueType::StructDef { name, .. } => name,
+            ValueType::Enum { enum_type, .. } => enum_type,
 
-            ValueType::I128(v) => write!(f, "{v}"),
+            ValueType::FieldRef { .. } => String::from("field_ref"),
+            ValueType::Reference { .. } => String::from("reference"),
+            ValueType::StaticMethod { .. } => String::from("static_method"),
 
-            ValueType::ISize(v) => write!(f, "{v}"),
+            ValueType::Array { .. } => String::from("array"),
+            ValueType::Slice { .. } => String::from("slice"),
 
-            ValueType::U8(v) => write!(f, "{v}"),
-
-            ValueType::U16(v) => write!(f, "{v}"),
-
-            ValueType::U32(v) => write!(f, "{v}"),
-
-            ValueType::U64(v) => write!(f, "{v}"),
-
-            ValueType::U128(v) => write!(f, "{v}"),
-
-            ValueType::USize(v) => write!(f, "{v}"),
-
-            ValueType::F32(v) => write!(f, "{v}"),
-
-            ValueType::F64(v) => write!(f, "{v}"),
-
-            ValueType::Unit => write!(f, "()"),
-
-            ValueType::Str(v) => write!(f, "{}", v),
-
-            ValueType::Boolean(v) => write!(f, "{}", v),
-
-            ValueType::Return(v) => write!(f, "{}", v.borrow()),
-
-            ValueType::StructDef { name, .. } => write!(f, "<struct {name}>"),
-
-            ValueType::StaticMethod { struct_name, method, .. } => write!(f, "{}::{}", struct_name, method),
-
-            ValueType::Tuple(values) => {
-                write!(f, "(")?;
-                for (i, value) in values.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    // add quotes
-                    write!(f, "{}", value.borrow())?;
-                }
-                write!(f, ")")
-            }
-
-            ValueType::FieldRef { base, chain, .. } => {
-                if self.is_mutable() {
-                    write!(f, "&mut ")?;
-                }
-                write!(f, "{}", base.borrow())?;
-                for field in chain {
-                    write!(f, ".{field}")?;
-                }
-                Ok(())
-            }
-
-            ValueType::Reference { source_name, original_ptr, .. } => {
-                if !original_ptr.is_null() {
-                    unsafe { write!(f, "{}", (*original_ptr).borrow()) }
-                } else if let Some(name) = source_name {
-                    if self.is_mutable() {
-                        write!(f, "&mut {name}")
-                    } else {
-                        write!(f, "&{name}")
-                    }
-                } else {
-                    write!(f, "&<unnamed>")
-                }
-            }
-
-            ValueType::Struct { name, fields } => {
-                write!(f, "{name} {{ ")?;
-                for (i, (field_name, value)) in fields.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    // add quotes
-                    write!(f, "{}: {}", field_name, value.borrow())?;
-                }
-                write!(f, " }}")
-            }
-
-            ValueType::Enum { enum_type, variant, data } => {
-                write!(f, "{enum_type}::{variant}")?;
-                if let Some(values) = data {
-                    write!(f, "(")?;
-                    for (i, value) in values.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
-                        // add quotes
-                        write!(f, "{}", value.borrow())?;
-                    }
-                    write!(f, ")")
-                } else {
-                    Ok(())
-                }
-            }
-
-            ValueType::Array { el, .. } => {
-                write!(f, "[")?;
-                for (i, value) in el.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    // add quotes
-                    write!(f, "{}", value.borrow())?;
-                }
-                write!(f, "]")
-            }
-
-            ValueType::Slice { el, .. } => {
-                write!(f, "[")?;
-                for (i, value) in el.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    // add quotes
-                    write!(f, "{}", value.borrow())?;
-                }
-                write!(f, "]")
-            }
+            ValueType::Unit => String::from("unit"),
         }
     }
 }

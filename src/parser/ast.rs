@@ -145,6 +145,11 @@ pub enum Expr {
         end: Box<Expr>,
     },
 
+    ArrayRepeat {
+        value: Box<Expr>,
+        count: Box<Expr>,
+    },
+
     Cast {
         expr: Box<Expr>,
         target_type: Type,

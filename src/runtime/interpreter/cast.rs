@@ -188,7 +188,7 @@ impl<'st> Interpreter<'st> {
                     "f32" => self.cast_to_float::<f32>(new_value),
                     "f64" => self.cast_to_float::<f64>(new_value),
 
-                    _ => Err(format!("Unsupported cast to type: {}", type_name)),
+                    _ => Ok(value),
                 }
             }
 

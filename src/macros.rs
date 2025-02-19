@@ -1,4 +1,14 @@
 #[macro_export]
+macro_rules! inner_val {
+    ($value:ident) => {
+        let $value = {
+            let borrowed = $value.borrow();
+            borrowed.inner()
+        };
+    };
+}
+
+#[macro_export]
 macro_rules! val {
     (mut $inner:expr) => {
         Rc::new(RefCell::new(ValueEnum::Mutable($inner)))

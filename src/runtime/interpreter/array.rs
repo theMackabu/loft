@@ -1,7 +1,7 @@
 use super::*;
 
 impl<'st> Interpreter<'st> {
-    pub fn handle_array_method_call(&mut self, method: &str, args: &[Expr], element_type: &ValueType, elements: &[Value], length: usize) -> Result<Value, String> {
+    pub fn handle_array_method_call(&mut self, arr_value: Value, method: &str, args: &[Expr], element_type: &ValueType, elements: &[Value], length: usize) -> Result<Value, String> {
         match method {
             "len" => Ok(val!(ValueType::USize(length))),
 
@@ -33,11 +33,20 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
-            // check mutability
-            "to_slice" => Ok(val!(ValueType::Slice {
-                ty: Box::new(element_type.clone()),
-                el: elements.to_vec(),
-            })),
+            "to_slice" => {
+                if !args.is_empty() {
+                    return Err("to_slice method does not take any arguments".to_string());
+                }
+
+                let slice = ValueType::Slice {
+                    ty: Box::new(element_type.clone()),
+                    el: elements.to_vec(),
+                };
+
+                let is_mutable = arr_value.borrow().is_mutable();
+
+                Ok(if is_mutable { val!(mut slice) } else { val!(slice) })
+            }
 
             _ => Err(format!("Unknown method '{}' on array type", method)),
         }
@@ -94,44 +103,41 @@ impl<'st> Interpreter<'st> {
             }
 
             "pop" => {
-                let is_mutable = {
+                let (is_empty, is_mutable) = {
                     let borrowed = slice_value.borrow();
-                    if let ValueType::Slice { .. } = borrowed.inner() {
-                        borrowed.is_mutable()
+                    if let ValueType::Slice { ref el, .. } = borrowed.inner() {
+                        (el.is_empty(), borrowed.is_mutable())
                     } else {
-                        false
+                        return Err("Expected a slice value".to_string());
                     }
                 };
 
+                if is_empty {
+                    return Ok(val!(ValueType::Enum {
+                        enum_type: "Option".to_string(),
+                        variant: "None".to_string(),
+                        data: None
+                    }));
+                }
+
                 if !is_mutable {
-                    return Err("Cannot call push on immutable slice".to_string());
+                    return Err("Cannot pop from immutable slice".to_string());
                 }
 
                 let popped = {
                     let mut slice_ref = slice_value.borrow_mut();
                     if let ValueType::Slice { ref mut el, .. } = slice_ref.inner_mut() {
-                        if el.is_empty() {
-                            None
-                        } else {
-                            Some(el.pop().unwrap())
-                        }
+                        el.pop().unwrap()
                     } else {
-                        None
+                        unreachable!("Already verified this is a slice")
                     }
                 };
 
-                match popped {
-                    Some(value) => Ok(val!(ValueType::Enum {
-                        enum_type: "Option".to_string(),
-                        variant: "Some".to_string(),
-                        data: Some(vec![value])
-                    })),
-                    None => Ok(val!(ValueType::Enum {
-                        enum_type: "Option".to_string(),
-                        variant: "None".to_string(),
-                        data: None
-                    })),
-                }
+                Ok(val!(ValueType::Enum {
+                    enum_type: "Option".to_string(),
+                    variant: "Some".to_string(),
+                    data: Some(vec![popped])
+                }))
             }
 
             "get" => {

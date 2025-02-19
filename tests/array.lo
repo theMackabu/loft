@@ -1,9 +1,4 @@
-// enum Option<T> {
-//    None,
-//    Some(T),
-// }
-
-fn analyze_slice(slice: &[i32]) {
+fn analyze(slice: [i32]) {
    io::print("First element of the slice: ");
    io::println(slice[0]);
     
@@ -14,16 +9,17 @@ fn analyze_slice(slice: &[i32]) {
 
 fn main() {   
    let mut s: [i32] = [1, 2, 3];
-   // let ys: [i32; 500] = [0; 500];
    let xs: [i32; 5] = [1, 2, 3, 4, 5];
+   let ys: [&str; 500] = [":3"; 500];
+
+   s[0] += 8;
    
-   // s[2] = 10;
-   
-   analyze_slice(s);
-   analyze_slice(xs);
-   
-   // match xs.get(10) {
-   //    Option::Some(xval) => io::println(xval),
-   //    Option::None => io::println("nope"),
-   // }
+   analyze(s);
+   analyze(xs);
+   analyze(ys[1 .. 4]);
+
+   match xs.get(1) {
+      Option::Some(xval) => io::println(xval),
+      Option::None => io::println("nope"),
+   }
 }

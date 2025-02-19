@@ -2,42 +2,6 @@ use super::*;
 use std::{cell::RefCell, rc::Rc};
 
 impl<'st> Interpreter<'st> {
-    // migrate to a better method system
-    pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
-        let object_inner = {
-            let borrowed = object.borrow();
-            borrowed.inner().clone()
-        };
-
-        match object_inner {
-            ValueType::Array { ref ty, ref el, len } => self.handle_array_method_call(method, args, ty, el, len),
-
-            ValueType::Slice { ref ty, ref el } => self.handle_slice_method_call(object, method, args, ty, el),
-
-            ValueType::Struct { name, .. } => self.handle_struct_method_call(object, &name, method, args),
-
-            ValueType::Reference { original_ptr, .. } => {
-                if original_ptr.is_null() {
-                    return Err("Reference contains null pointer".to_string());
-                }
-
-                if !object.borrow().is_mutable() {
-                    return Err("Cannot call method on non-mutable reference".to_string());
-                }
-
-                unsafe {
-                    let cell_ref = &*original_ptr;
-                    match cell_ref.borrow().inner() {
-                        ValueType::Struct { name, .. } => self.handle_struct_method_call(object.clone(), &name, method, args),
-                        _ => Err("Cannot call method on non-struct reference".to_string()),
-                    }
-                }
-            }
-
-            _ => Err("Cannot call method on non-struct value".to_string()),
-        }
-    }
-
     pub fn extract_field_chain(&self, expr: &Expr) -> Result<(String, Vec<String>), String> {
         match expr {
             Expr::Identifier(name) => Ok((name.clone(), vec![])),

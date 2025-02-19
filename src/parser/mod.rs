@@ -1244,17 +1244,37 @@ impl Parser {
 
             Token::LeftBracket => {
                 self.advance(); // consume [
-                let mut elements = Vec::new();
 
-                while self.current.token != Token::RightBracket {
-                    if !elements.is_empty() {
-                        self.expect(Token::Comma)?;
-                    }
-                    elements.push(self.parse_expression(0)?);
+                if self.current.token == Token::RightBracket {
+                    self.advance(); // consume ]
+                    return Ok(Expr::Array(vec![]));
                 }
 
-                self.expect(Token::RightBracket)?;
-                Ok(Expr::Array(elements))
+                let first_expr = self.parse_expression(0)?;
+
+                if self.current.token == Token::Semicolon {
+                    self.advance(); // consume ;
+                    let count_expr = self.parse_expression(0)?;
+                    self.expect(Token::RightBracket)?;
+
+                    Ok(Expr::ArrayRepeat {
+                        value: Box::new(first_expr),
+                        count: Box::new(count_expr),
+                    })
+                } else {
+                    let mut elements = vec![first_expr];
+
+                    while self.current.token == Token::Comma {
+                        self.advance(); // consume ,
+                        if self.current.token == Token::RightBracket {
+                            break;
+                        }
+                        elements.push(self.parse_expression(0)?);
+                    }
+
+                    self.expect(Token::RightBracket)?;
+                    Ok(Expr::Array(elements))
+                }
             }
 
             Token::LeftBrace => {
@@ -1588,17 +1608,6 @@ impl Parser {
                 Ok(Expr::Cast { expr: Box::new(left), target_type })
             }
 
-            Token::LeftBracket => {
-                self.advance(); // consume [
-                let index = self.parse_expression(0)?;
-                self.expect(Token::RightBracket)?;
-
-                Ok(Expr::Index {
-                    array: Box::new(left),
-                    index: Box::new(index),
-                })
-            }
-
             Token::Question => {
                 self.advance(); // consume ?
                 Ok(Expr::Try(Box::new(left)))
@@ -1656,16 +1665,16 @@ impl Parser {
                 })
             }
 
-            Token::RemAssign
-            | Token::BitAndAssign
-            | Token::StarEquals
-            | Token::PlusEquals
+            Token::PlusEquals
             | Token::MinusEquals
+            | Token::StarEquals
             | Token::SlashEquals
-            | Token::ShlAssign
-            | Token::ShrAssign
+            | Token::RemAssign
+            | Token::BitAndAssign
+            | Token::BitOrAssign
             | Token::BitXorAssign
-            | Token::BitOrAssign => {
+            | Token::ShlAssign
+            | Token::ShrAssign => {
                 let operator = self.current.token.clone();
                 self.advance();
                 let value = self.parse_expression(PRECEDENCE_ASSIGN - 1)?;
@@ -1674,6 +1683,50 @@ impl Parser {
                     operator,
                     value: Box::new(value),
                 })
+            }
+
+            Token::LeftBracket => {
+                self.advance(); // consume [
+                let index = self.parse_expression(0)?;
+                self.expect(Token::RightBracket)?;
+
+                let indexed_expr = Expr::Index {
+                    array: Box::new(left),
+                    index: Box::new(index),
+                };
+
+                match self.current.token {
+                    Token::Assign => {
+                        self.advance(); // consume =
+                        let value = self.parse_expression(0)?;
+                        Ok(Expr::Assignment {
+                            target: Box::new(indexed_expr),
+                            value: Box::new(value),
+                        })
+                    }
+
+                    Token::PlusEquals
+                    | Token::MinusEquals
+                    | Token::StarEquals
+                    | Token::SlashEquals
+                    | Token::RemAssign
+                    | Token::BitAndAssign
+                    | Token::BitOrAssign
+                    | Token::BitXorAssign
+                    | Token::ShlAssign
+                    | Token::ShrAssign => {
+                        let operator = self.current.token.clone();
+                        self.advance();
+                        let value = self.parse_expression(0)?;
+                        Ok(Expr::CompoundAssignment {
+                            target: Box::new(indexed_expr),
+                            operator,
+                            value: Box::new(value),
+                        })
+                    }
+
+                    _ => Ok(indexed_expr),
+                }
             }
 
             _ => Ok(left),

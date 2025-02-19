@@ -2,13 +2,14 @@ mod array;
 mod assign;
 mod cast;
 mod environment;
+mod methods;
 mod pointer;
 mod structs;
 
 use super::value::{Value, ValueEnum, ValueExt, ValueType};
 
 use crate::parser::{ast::*, lexer::*};
-use crate::{impl_binary_ops, impl_promote_to_type, val};
+use crate::{impl_binary_ops, impl_promote_to_type, inner_val, val};
 use crate::{models::Either, util::unwrap_value};
 
 use environment::Environment;
@@ -385,6 +386,7 @@ impl<'st> Interpreter<'st> {
                 Ok(result)
             }
 
+            // make the code DRY
             Expr::Dereference { operand } => match &**operand {
                 Expr::MethodCall { object, method, arguments } => {
                     let obj_value = self.evaluate_expression(object)?;
@@ -717,11 +719,11 @@ impl<'st> Interpreter<'st> {
                 }))
             }
 
-            Expr::Index { array, index } => {
-                let array_value = self.evaluate_expression(array)?;
-                let index_value = self.evaluate_expression(index)?;
+            Expr::ArrayRepeat { value, count } => {
+                let value_val = self.evaluate_expression(value)?;
+                let count_val = self.evaluate_expression(count)?;
 
-                let idx = match index_value.borrow().inner() {
+                let count_int = match count_val.borrow().inner() {
                     ValueType::I8(i) => i as usize,
                     ValueType::I16(i) => i as usize,
                     ValueType::I32(i) => i as usize,
@@ -734,30 +736,99 @@ impl<'st> Interpreter<'st> {
                     ValueType::U64(i) => i as usize,
                     ValueType::U128(i) => i as usize,
                     ValueType::USize(i) => i,
-                    _ => return Err("Array index must be an integer".to_string()),
+                    _ => return Err("Array repeat count must be an integer".to_string()),
                 };
 
-                let array_inner = {
-                    let borrowed = array_value.borrow();
+                if count_int > 10000 {
+                    return Err(format!("Array size too large: {}", count_int));
+                }
+
+                let mut elements = Vec::with_capacity(count_int);
+                let element_type = {
+                    let borrowed = value_val.borrow();
                     borrowed.inner()
                 };
 
-                match array_inner {
-                    ValueType::Array { el, len, .. } => {
-                        if idx >= len {
-                            return Err(format!("Index out of bounds: {} (array length: {})", idx, len));
-                        }
-                        Ok(el[idx].clone())
-                    }
+                for _ in 0..count_int {
+                    elements.push(value_val.clone());
+                }
 
-                    ValueType::Slice { el, .. } => {
-                        if idx >= el.len() {
-                            return Err(format!("Index out of bounds: {} (slice length: {})", idx, el.len()));
-                        }
-                        Ok(el[idx].clone())
-                    }
+                Ok(val!(ValueType::Array {
+                    len: count_int,
+                    ty: Box::new(element_type),
+                    el: elements,
+                }))
+            }
 
-                    _ => Err("Cannot index non-array/slice value".to_string()),
+            // allow to work with references
+            // allow assignment
+            Expr::Index { array, index } => {
+                let array_value = self.evaluate_expression(array)?;
+
+                if let Expr::Range { ref start, ref end } = **index {
+                    let start_value = self.evaluate_expression(start)?;
+                    let start_idx = get_index_as_usize(&start_value)?;
+
+                    inner_val!(array_value);
+
+                    match array_value {
+                        ValueType::Array { el, len, ty } => {
+                            let end_value = self.evaluate_expression(end)?;
+                            let end_idx = get_index_as_usize(&end_value)?;
+
+                            if start_idx > end_idx || end_idx > len {
+                                return Err(format!("Invalid range: {}..{} (array length: {})", start_idx, end_idx, len));
+                            }
+
+                            let slice_elements: Vec<Value> = el[start_idx..end_idx].to_vec();
+
+                            Ok(val!(ValueType::Slice {
+                                ty: Box::new(*ty.clone()),
+                                el: slice_elements,
+                            }))
+                        }
+
+                        ValueType::Slice { el, ty } => {
+                            let end_value = self.evaluate_expression(end)?;
+                            let end_idx = get_index_as_usize(&end_value)?;
+
+                            if start_idx > end_idx || end_idx > el.len() {
+                                return Err(format!("Invalid range: {}..{} (slice length: {})", start_idx, end_idx, el.len()));
+                            }
+
+                            let slice_elements: Vec<Value> = el[start_idx..end_idx].to_vec();
+
+                            Ok(val!(ValueType::Slice {
+                                ty: Box::new(*ty.clone()),
+                                el: slice_elements,
+                            }))
+                        }
+
+                        _ => Err("Cannot slice non-array/slice value".to_string()),
+                    }
+                } else {
+                    let index_value = self.evaluate_expression(index)?;
+                    let idx = get_index_as_usize(&index_value)?;
+
+                    inner_val!(array_value);
+
+                    match array_value {
+                        ValueType::Array { el, len, .. } => {
+                            if idx >= len {
+                                return Err(format!("Index out of bounds: {} (array length: {})", idx, len));
+                            }
+                            Ok(el[idx].clone())
+                        }
+
+                        ValueType::Slice { el, .. } => {
+                            if idx >= el.len() {
+                                return Err(format!("Index out of bounds: {} (slice length: {})", idx, el.len()));
+                            }
+                            Ok(el[idx].clone())
+                        }
+
+                        _ => Err("Cannot index non-array/slice value".to_string()),
+                    }
                 }
             }
 
@@ -803,6 +874,55 @@ impl<'st> Interpreter<'st> {
                             }
                         }
                         _ => Err("Cannot assign to field of non-struct value".to_string()),
+                    }
+                }
+
+                Expr::Index { array, index } => {
+                    let array_value = self.evaluate_expression(array)?;
+
+                    let array_value_inner = {
+                        let borrowed = array_value.borrow();
+                        borrowed.inner()
+                    };
+
+                    match array_value_inner {
+                        ValueType::Array { el, len, .. } => {
+                            if !array_value.borrow().is_mutable() {
+                                return Err("Cannot modify element of immutable array".to_string());
+                            }
+
+                            let index_value = self.evaluate_expression(index)?;
+                            let idx = get_index_as_usize(&index_value)?;
+
+                            if idx >= len {
+                                return Err(format!("Index out of bounds: {} (length: {})", idx, len));
+                            }
+
+                            let right_val = self.evaluate_expression(value)?;
+                            *el[idx].borrow_mut() = right_val.borrow().clone();
+
+                            Ok(ValueEnum::unit())
+                        }
+
+                        ValueType::Slice { el, .. } => {
+                            if !array_value.borrow().is_mutable() {
+                                return Err("Cannot modify element of immutable slice".to_string());
+                            }
+
+                            let index_value = self.evaluate_expression(index)?;
+                            let idx = get_index_as_usize(&index_value)?;
+
+                            if idx >= el.len() {
+                                return Err(format!("Index out of bounds: {} (length: {})", idx, el.len()));
+                            }
+
+                            let right_val = self.evaluate_expression(value)?;
+                            *el[idx].borrow_mut() = right_val.borrow().clone();
+
+                            Ok(ValueEnum::unit())
+                        }
+
+                        _ => Err("Cannot index into non-array/slice value".to_string()),
                     }
                 }
 
@@ -866,6 +986,57 @@ impl<'st> Interpreter<'st> {
 
                     *field_ref.borrow_mut() = result.borrow().clone();
                     Ok(ValueEnum::unit())
+                }
+
+                Expr::Index { array, index } => {
+                    let array_value = self.evaluate_expression(array)?;
+
+                    let array_value_inner = {
+                        let borrowed = array_value.borrow();
+                        borrowed.inner()
+                    };
+
+                    match array_value_inner {
+                        ValueType::Array { el, len, .. } => {
+                            if !array_value.borrow().is_mutable() {
+                                return Err("Cannot modify element of immutable array".to_string());
+                            }
+
+                            let index_value = self.evaluate_expression(index)?;
+                            let idx = get_index_as_usize(&index_value)?;
+
+                            if idx >= len {
+                                return Err(format!("Index out of bounds: {} (length: {})", idx, len));
+                            }
+
+                            let right_val = self.evaluate_expression(value)?;
+                            let current_val = el[idx].clone();
+                            let result = self.evaluate_compound_assignment(&current_val, operator, &right_val)?;
+
+                            *el[idx].borrow_mut() = result.borrow().clone();
+                            Ok(ValueEnum::unit())
+                        }
+                        ValueType::Slice { el, .. } => {
+                            if !array_value.borrow().is_mutable() {
+                                return Err("Cannot modify element of immutable slice".to_string());
+                            }
+
+                            let index_value = self.evaluate_expression(index)?;
+                            let idx = get_index_as_usize(&index_value)?;
+
+                            if idx >= el.len() {
+                                return Err(format!("Index out of bounds: {} (length: {})", idx, el.len()));
+                            }
+
+                            let right_val = self.evaluate_expression(value)?;
+                            let current_val = el[idx].clone();
+                            let result = self.evaluate_compound_assignment(&current_val, operator, &right_val)?;
+
+                            *el[idx].borrow_mut() = result.borrow().clone();
+                            Ok(ValueEnum::unit())
+                        }
+                        _ => Err("Cannot index into non-array/slice value".to_string()),
+                    }
                 }
 
                 _ => Err("Invalid assignment target".to_string()),
@@ -1296,6 +1467,24 @@ impl<'st> Interpreter<'st> {
             ValueType::Boolean(b) => Ok(b),
             _ => Err("Guard expression must evaluate to a boolean".to_string()),
         }
+    }
+}
+
+fn get_index_as_usize(value: &Value) -> Result<usize, String> {
+    match value.borrow().inner() {
+        ValueType::I8(i) => Ok(i as usize),
+        ValueType::I16(i) => Ok(i as usize),
+        ValueType::I32(i) => Ok(i as usize),
+        ValueType::I64(i) => Ok(i as usize),
+        ValueType::I128(i) => Ok(i as usize),
+        ValueType::ISize(i) => Ok(i as usize),
+        ValueType::U8(i) => Ok(i as usize),
+        ValueType::U16(i) => Ok(i as usize),
+        ValueType::U32(i) => Ok(i as usize),
+        ValueType::U64(i) => Ok(i as usize),
+        ValueType::U128(i) => Ok(i as usize),
+        ValueType::USize(i) => Ok(i),
+        _ => Err("Array/slice index must be an integer".to_string()),
     }
 }
 
