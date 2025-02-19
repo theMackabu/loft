@@ -13,6 +13,14 @@ fn test_loop() {
       
       io::println("This point will never be reached");
    }
+   
+   'a: loop {
+      'a: loop {
+         break 'a;
+      }
+      io::print("outer loop");
+      break 'a;
+   }
 }
 
 fn test_assign() {
@@ -42,6 +50,11 @@ fn test_while() {
    let x = [1, 2, 3, 4, 5];
    while let Some(y) = x.pop() {
       io::println("y = {}", y);
+   }
+   
+   while let _ = 5 {
+      io::print("irrefutable patterns are always true");
+      break;
    }
 }
 

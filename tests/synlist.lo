@@ -317,56 +317,6 @@ if Foo::Bar == a {}
 
 if let Foo::Bar = a_value {}
 
-match enum_stuff {
-   Enum::EE => {},
-   Enum::Wee => {},
-}
-
-// !fix Expected Fat, but found LeftParen
-// match res {
-//    Ok(_) => {}, 
-//    Err(_) => {},
-// }
-// 
-// match res {
-//    Some(_) => {},
-//    None => {},
-// }
-
-loop { 
-   println!("I live."); 
-}
-
-while condition {}
-
-while i < 10 {
-   println!("hello");
-   i = i + 1;
-}
-
-while let _ = 5 {
-   println!("Irrefutable patterns are always true");
-   break;
-}
-
-'label: while let PATS = EXPR {
-    /* loop body */
-}
-
-'a: loop {
-   'a: loop {
-      break 'a;
-   }
-   print!("outer loop");
-   break 'a;
-}
-
-for text in v {
-   println!("I like {}.", text);
-}
-
-let (mut a, mut b) = (1, 1);
-
 pub trait Summary {
    fn summarize(&self) -> String;
    

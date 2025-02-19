@@ -3,6 +3,7 @@ mod assign;
 mod cast;
 mod r#enum;
 mod environment;
+mod macros;
 mod methods;
 mod pointer;
 mod structs;
@@ -19,6 +20,7 @@ use std::{cell::RefCell, rc::Rc};
 pub struct Interpreter<'st> {
     env: Environment,
     fnc: HashMap<String, &'st Stmt>,
+    mcs: HashMap<String, (MacroDelimiter, Vec<TokenInfo>)>,
 }
 
 impl<'st> Interpreter<'st> {
@@ -32,7 +34,12 @@ impl<'st> Interpreter<'st> {
             }
         }
 
-        let mut intrp = Self { env: Environment::new(), fnc };
+        let mut intrp = Self {
+            fnc,
+            mcs: HashMap::new(),
+            env: Environment::new(),
+        };
+
         intrp.env.scope_resolver.resolve_program(ast)?;
 
         intrp.declare_globals(ast)?;
@@ -156,6 +163,11 @@ impl<'st> Interpreter<'st> {
     fn execute_statement(&mut self, stmt: &Stmt) -> Result<Value, String> {
         match stmt {
             Stmt::ExpressionValue(expr) => self.evaluate_expression(expr),
+
+            Stmt::MacroDefinition { name, tokens, .. } => {
+                self.handle_macro_definition(name, tokens)?;
+                Ok(ValueEnum::unit())
+            }
 
             Stmt::ExpressionStmt(expr) => {
                 self.evaluate_expression(expr)?;
@@ -348,6 +360,11 @@ impl<'st> Interpreter<'st> {
                         Err(format!("Undefined symbol: {}", name))
                     }
                 }
+            }
+
+            Expr::MacroInvocation { name, delimiter, tokens } => {
+                let expanded = self.expand_macro_with_recursion_check(name, delimiter, tokens, 0)?;
+                self.evaluate_expression(&expanded)
             }
 
             Expr::StructInit { struct_name, fields } => {
@@ -1254,9 +1271,18 @@ impl<'st> Interpreter<'st> {
                     // !MODULE SYSTEM!
                     // TEMPORARY
                     Expr::Path(path) if path.segments.len() == 2 => {
-                        // handle import calls (like use std::io, io::println)
-                        // handle path-based calls (like std::io::println)
+                        // handle import calls (like use std::io, io::write)
+                        // handle path-based calls (like std::io::writeln)
                         // TEMPORARY
+                        if path.segments[0].ident == "core" && path.segments[1].ident == "concat" {
+                            let mut concatenated = String::new();
+                            for arg in arguments {
+                                let value = self.evaluate_expression(arg)?;
+                                concatenated.push_str(&value.borrow().to_string());
+                            }
+                            return Ok(val!(ValueType::Str(concatenated)));
+                        }
+
                         if path.segments[0].ident == "core" && path.segments[1].ident == "panic" {
                             if let Some(arg) = arguments.first() {
                                 let value = self.evaluate_expression(arg)?;

@@ -1173,7 +1173,7 @@ impl Parser {
         }
     }
 
-    fn parse_expression(&mut self, precedence: i32) -> Result<Expr, ParseError> {
+    pub fn parse_expression(&mut self, precedence: i32) -> Result<Expr, ParseError> {
         self.enter_recursion()?;
         let result = {
             let mut left = self.parse_prefix()?;

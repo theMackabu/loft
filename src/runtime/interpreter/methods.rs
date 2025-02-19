@@ -12,14 +12,6 @@ impl<'st> Interpreter<'st> {
                 return Ok(object.borrow().deep_clone());
             }
 
-            "to_string" => {
-                if !args.is_empty() {
-                    return Err("to_string method does not take any arguments".to_string());
-                }
-
-                return Ok(val!(ValueType::Str(object.borrow().to_string())));
-            }
-
             "type_name" => {
                 if !args.is_empty() {
                     return Err("type_name method does not take any arguments".to_string());
@@ -42,6 +34,22 @@ impl<'st> Interpreter<'st> {
                 }
 
                 return Ok(self.resolve_value(&object)?);
+            }
+
+            "as_str" => {
+                if !args.is_empty() {
+                    return Err("as_str method does not take any arguments".to_string());
+                }
+
+                let rc = val!(ValueType::Str(object.borrow().to_string()));
+
+                return Ok(val!(ValueType::Reference {
+                    source_name: None,
+                    source_scope: None,
+
+                    original_ptr: Rc::as_ptr(&rc),
+                    _undropped: rc,
+                }));
             }
 
             "as_ref" => {

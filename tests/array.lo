@@ -1,10 +1,7 @@
 fn analyze(slice: [i32]) {
-   io::print("First element of the slice: ");
-   io::println(slice[0]);
-    
-   io::print("The slice has ");
-   io::print(slice.len());
-   io::println(" elements.");
+   println!("First element of the slice: {}", slice[0]);
+   println!("The slice has {} elements.", slice.len());
+   println!();
 }
 
 fn main() {   
@@ -19,7 +16,7 @@ fn main() {
    analyze(ys[1 .. 4]);
 
    match xs.get(1) {
-      Some(xval) => io::println(xval),
+      Some(xval) => println!("{xval}"),
       None => io::println("nope"),
    }
 }
