@@ -8,6 +8,7 @@ impl<'st> Interpreter<'st> {
                 if !args.is_empty() {
                     return Err("clone method does not take any arguments".to_string());
                 }
+
                 return Ok(object.borrow().deep_clone());
             }
 
@@ -15,7 +16,62 @@ impl<'st> Interpreter<'st> {
                 if !args.is_empty() {
                     return Err("to_string method does not take any arguments".to_string());
                 }
+
                 return Ok(val!(ValueType::Str(object.borrow().to_string())));
+            }
+
+            "type_name" => {
+                if !args.is_empty() {
+                    return Err("type_name method does not take any arguments".to_string());
+                }
+
+                return Ok(val!(ValueType::Str(object.borrow().kind())));
+            }
+
+            "as_ptr" => {
+                if !args.is_empty() {
+                    return Err("as_ptr method does not take any arguments".to_string());
+                }
+
+                return Ok(val!(ValueType::Pointer(object.as_ptr())));
+            }
+
+            "deref" => {
+                if !args.is_empty() {
+                    return Err("deref method does not take any arguments".to_string());
+                }
+
+                return Ok(self.resolve_value(&object)?);
+            }
+
+            "as_ref" => {
+                if !args.is_empty() {
+                    return Err("as_ref method does not take any arguments".to_string());
+                }
+
+                let ptr = object.as_ptr();
+
+                return Ok(val!(ValueType::Reference {
+                    original_ptr: ptr,
+                    source_name: None,
+                    source_scope: None,
+                    _undropped: object.clone(),
+                }));
+            }
+
+            "as_mut" => {
+                if !args.is_empty() {
+                    return Err("as_mut method does not take any arguments".to_string());
+                }
+
+                let ptr = object.as_ptr();
+
+                return Ok(val!(mut ValueType::Reference {
+                    original_ptr: ptr,
+                    source_name: None,
+                    source_scope: None,
+                    _undropped: object.clone(),
+                }));
             }
 
             _ => {}
@@ -58,12 +114,46 @@ impl<'st> Interpreter<'st> {
 
                 let ref_prefix = match (borrowed.is_ref(), borrowed.is_mutable()) {
                     (true, true) => "&mut ",
-                    (true, false) => "& ",
+                    (true, false) => "&",
                     (false, true) => "mut ",
                     (false, false) => "",
                 };
 
                 Err(format!("Cannot call {method} on {ref_prefix}{type_name}"))
+            }
+        }
+    }
+
+    fn resolve_value(&self, object: &Value) -> Result<Value, String> {
+        let mut current_value = object.clone();
+
+        loop {
+            let object_inner = current_value.borrow().inner().clone();
+
+            match object_inner {
+                ValueType::Reference { original_ptr, .. } => {
+                    if original_ptr.is_null() {
+                        return Err("Reference contains null pointer".to_string());
+                    }
+
+                    unsafe {
+                        let cell_ref = &*original_ptr;
+                        current_value = Rc::from(cell_ref.clone());
+                    }
+                }
+
+                ValueType::Pointer(ptr) => {
+                    if ptr.is_null() {
+                        return Err("Pointer is null".to_string());
+                    }
+
+                    unsafe {
+                        let cell_ref = &*ptr;
+                        current_value = Rc::from(cell_ref.clone());
+                    }
+                }
+
+                _ => return Ok(current_value),
             }
         }
     }

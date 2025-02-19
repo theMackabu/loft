@@ -557,6 +557,14 @@ impl<'st> Interpreter<'st> {
                             }
                         }
 
+                        ValueType::Pointer(pointer) => {
+                            if pointer.is_null() {
+                                Err("Reference contains null pointer".to_string())
+                            } else {
+                                unsafe { Ok(Rc::from_raw(pointer)) }
+                            }
+                        }
+
                         _ => Err("Cannot dereference a non-reference value".to_string()),
                     }
                 }

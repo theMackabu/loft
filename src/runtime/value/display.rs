@@ -41,6 +41,8 @@ impl fmt::Display for ValueEnum {
 
             ValueType::Return(v) => write!(f, "{}", v.borrow()),
 
+            ValueType::Pointer(ptr) => write!(f, "{:p}", ptr),
+
             ValueType::StructDef { name, .. } => write!(f, "<struct {name}>"),
 
             ValueType::StaticMethod { struct_name, method, .. } => write!(f, "{}::{}", struct_name, method),

@@ -4,7 +4,9 @@ mod display;
 use crate::parser::ast::{Function, Type};
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-pub type Value = Rc<RefCell<ValueEnum>>;
+pub type Cell = RefCell<ValueEnum>;
+pub type Value = Rc<Cell>;
+pub type Ptr = *const Cell;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueEnum {
@@ -32,6 +34,7 @@ pub enum ValueType {
     F64(f64),
 
     Str(String),
+    Pointer(Ptr),
     Boolean(bool),
 
     Tuple(Vec<Value>),
@@ -60,10 +63,10 @@ pub enum ValueType {
     },
 
     Reference {
+        original_ptr: Ptr,
+        _undropped: Rc<Cell>,
         source_name: Option<String>,
         source_scope: Option<usize>,
-        original_ptr: *const RefCell<ValueEnum>,
-        _undropped: Rc<RefCell<ValueEnum>>,
     },
 
     StaticMethod {
@@ -87,10 +90,14 @@ pub enum ValueType {
 }
 
 pub trait ValueExt {
+    fn as_ptr(&self) -> Ptr;
+
     fn into_return(self) -> Value;
 }
 
 impl ValueExt for Value {
+    fn as_ptr(&self) -> Ptr { Rc::as_ptr(self) }
+
     fn into_return(self) -> Value {
         {
             let mut value = self.borrow_mut();
@@ -122,14 +129,6 @@ impl ValueEnum {
             ValueEnum::Immutable(inner) => crate::val!(inner.deep_clone()),
             ValueEnum::Mutable(inner) => crate::val!(mut inner.deep_clone()),
         }
-    }
-
-    pub fn set_mutable(&mut self, mutable: bool) {
-        *self = match self {
-            ValueEnum::Immutable(inner) if mutable => ValueEnum::Mutable(inner.clone()),
-            ValueEnum::Mutable(inner) if !mutable => ValueEnum::Immutable(inner.clone()),
-            _ => return,
-        };
     }
 
     pub fn into_mutable(self) -> ValueEnum {
@@ -190,7 +189,9 @@ impl ValueEnum {
             ValueType::F64(_) => String::from("f64"),
 
             ValueType::Str(_) => String::from("str"),
+            ValueType::Pointer(_) => String::from("pointer"),
             ValueType::Boolean(_) => String::from("bool"),
+
             ValueType::Tuple(_) => String::from("tuple"),
             ValueType::Return(_) => String::from("return"),
 

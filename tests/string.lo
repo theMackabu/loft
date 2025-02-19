@@ -1,0 +1,16 @@
+fn main() {
+   let text1 = r"Hello\nWorld";
+   
+   let text2 = "Hello\nWorld"; 
+   
+   let text3 = r"
+      This is a
+      multi-line string
+   ";
+ 
+   io::println(text1);  
+   io::print("\n");
+   io::println(text2);  
+   io::print("\n");
+   io::println(text3);
+}

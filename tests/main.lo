@@ -120,6 +120,14 @@ fn main() -> Result<(), &str> {
 
    io::println(tester());
    get_message("testing!");
+   
+   let nest = {
+      let y = 10;
+      let z = 20;
+      y + z
+   };
+   
+   io::println(nest);
       
    Result::Ok(())
 }

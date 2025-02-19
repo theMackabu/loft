@@ -21,6 +21,9 @@ impl ValueType {
             ValueType::F64(v) => ValueType::F64(*v),
 
             ValueType::Str(v) => ValueType::Str(v.clone()),
+
+            ValueType::Pointer(v) => ValueType::Pointer(v.clone()),
+
             ValueType::Boolean(v) => ValueType::Boolean(*v),
 
             ValueType::Tuple(values) => ValueType::Tuple(values.iter().map(|v| v.borrow().deep_clone()).collect()),
