@@ -4,7 +4,6 @@ use std::mem;
 impl Interpreter {
     pub fn perform_cast(&mut self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {
-            // it cannot cast references like: let big_num: &i64 = 50;
             Type::Reference { mutable, inner } => {
                 let value_inner = {
                     let borrowed = value.borrow();
@@ -73,6 +72,59 @@ impl Interpreter {
                     }
                 }
             }
+
+            Type::Array { element_type, size } => match value.borrow().inner() {
+                ValueType::Array { elements, length, .. } => {
+                    if length != *size {
+                        return Err(format!("Cannot cast array of size {} to array of size {}", size, length));
+                    }
+
+                    let mut casted_elements = Vec::with_capacity(*size);
+                    for elem in elements.iter() {
+                        let casted_elem = self.perform_cast(elem.clone(), element_type)?;
+                        casted_elements.push(casted_elem);
+                    }
+
+                    let inner_type = self.type_to_value_type(element_type)?;
+                    Ok(val!(ValueType::Array {
+                        element_type: Box::new(inner_type),
+                        elements: casted_elements,
+                        length: *size
+                    }))
+                }
+                _ => Err(format!("Cannot cast {:?} to array type", value.borrow().inner())),
+            },
+
+            Type::Slice { element_type } => match value.borrow().inner() {
+                ValueType::Array { elements, .. } => {
+                    let mut casted_elements = Vec::with_capacity(elements.len());
+                    for elem in elements.iter() {
+                        let casted_elem = self.perform_cast(elem.clone(), element_type)?;
+                        casted_elements.push(casted_elem);
+                    }
+
+                    let inner_type = self.type_to_value_type(element_type)?;
+                    Ok(val!(ValueType::Slice {
+                        element_type: Box::new(inner_type),
+                        elements: casted_elements
+                    }))
+                }
+
+                ValueType::Slice { elements, .. } => {
+                    let mut casted_elements = Vec::with_capacity(elements.len());
+                    for elem in elements.iter() {
+                        let casted_elem = self.perform_cast(elem.clone(), element_type)?;
+                        casted_elements.push(casted_elem);
+                    }
+
+                    let inner_type = self.type_to_value_type(element_type)?;
+                    Ok(val!(ValueType::Slice {
+                        element_type: Box::new(inner_type),
+                        elements: casted_elements
+                    }))
+                }
+                _ => Err(format!("Cannot cast {:?} to slice type", value.borrow().inner())),
+            },
 
             Type::Path(path) if path.segments.len() == 1 => {
                 let new_value = {
@@ -340,5 +392,72 @@ impl Interpreter {
         }
 
         self.numeric_to_uint::<T>(value.round() as u64)
+    }
+
+    fn type_to_value_type(&self, ty: &Type) -> Result<ValueType, String> {
+        match ty {
+            Type::Simple(name) => match name.as_str() {
+                "i8" => Ok(ValueType::I8(0)),
+                "i16" => Ok(ValueType::I16(0)),
+                "i32" => Ok(ValueType::I32(0)),
+                "i64" => Ok(ValueType::I64(0)),
+                "i128" => Ok(ValueType::I128(0)),
+                "isize" => Ok(ValueType::ISize(0)),
+
+                "u8" => Ok(ValueType::U8(0)),
+                "u16" => Ok(ValueType::U16(0)),
+                "u32" => Ok(ValueType::U32(0)),
+                "u64" => Ok(ValueType::U64(0)),
+                "u128" => Ok(ValueType::U128(0)),
+                "usize" => Ok(ValueType::USize(0)),
+
+                "f32" => Ok(ValueType::F32(0.0)),
+                "f64" => Ok(ValueType::F64(0.0)),
+
+                "bool" => Ok(ValueType::Boolean(false)),
+                "str" => Ok(ValueType::Str(String::new())),
+                _ => Err(format!("Unsupported type: {}", name)),
+            },
+
+            Type::Slice { element_type } => {
+                let inner_type = self.type_to_value_type(element_type)?;
+                Ok(ValueType::Slice {
+                    element_type: Box::new(inner_type),
+                    elements: Vec::new(),
+                })
+            }
+
+            Type::Array { element_type, size } => {
+                let inner_type = self.type_to_value_type(element_type)?;
+                Ok(ValueType::Array {
+                    element_type: Box::new(inner_type),
+                    elements: Vec::new(),
+                    length: *size,
+                })
+            }
+
+            Type::Tuple(types) => {
+                if types.is_empty() {
+                    return Ok(ValueType::Unit);
+                }
+
+                let mut tuple_elements = Vec::new();
+
+                for ty in types {
+                    let value_type = self.type_to_value_type(ty)?;
+                    tuple_elements.push(val!(value_type));
+                }
+
+                Ok(ValueType::Tuple(tuple_elements))
+            }
+
+            Type::Unit => Ok(ValueType::Unit),
+
+            Type::Reference { inner, .. } => self.type_to_value_type(inner),
+
+            Type::Path(path) if path.segments.len() == 1 => self.type_to_value_type(&Type::Simple(path.segments[0].ident.clone())),
+
+            _ => Err(format!("Unsupported type: {:?}", ty)),
+        }
     }
 }

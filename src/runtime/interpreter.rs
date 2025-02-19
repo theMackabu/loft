@@ -709,6 +709,76 @@ impl Interpreter {
                 Err("No matching pattern found".to_string())
             }
 
+            Expr::Array(elements) => {
+                let mut evaluated_elements = Vec::new();
+                let mut element_type = None;
+
+                for element in elements {
+                    let value = self.evaluate_expression(element)?;
+
+                    if element_type.is_none() {
+                        let borrowed = value.borrow();
+                        // check to only allow matched elements
+                        element_type = Some(borrowed.inner());
+                    }
+
+                    evaluated_elements.push(value);
+                }
+
+                let length = evaluated_elements.len();
+                let element_type_box = Box::new(element_type.unwrap_or(ValueType::Unit));
+
+                Ok(val!(ValueType::Array {
+                    length,
+                    element_type: element_type_box,
+                    elements: evaluated_elements,
+                }))
+            }
+
+            Expr::Index { array, index } => {
+                let array_value = self.evaluate_expression(array)?;
+                let index_value = self.evaluate_expression(index)?;
+
+                let idx = match index_value.borrow().inner() {
+                    ValueType::I8(i) => i as usize,
+                    ValueType::I16(i) => i as usize,
+                    ValueType::I32(i) => i as usize,
+                    ValueType::I64(i) => i as usize,
+                    ValueType::I128(i) => i as usize,
+                    ValueType::ISize(i) => i as usize,
+                    ValueType::U8(i) => i as usize,
+                    ValueType::U16(i) => i as usize,
+                    ValueType::U32(i) => i as usize,
+                    ValueType::U64(i) => i as usize,
+                    ValueType::U128(i) => i as usize,
+                    ValueType::USize(i) => i,
+                    _ => return Err("Array index must be an integer".to_string()),
+                };
+
+                let array_inner = {
+                    let borrowed = array_value.borrow();
+                    borrowed.inner()
+                };
+
+                match array_inner {
+                    ValueType::Array { elements, length, .. } => {
+                        if idx >= length {
+                            return Err(format!("Index out of bounds: {} (array length: {})", idx, length));
+                        }
+                        Ok(elements[idx].clone())
+                    }
+
+                    ValueType::Slice { elements, .. } => {
+                        if idx >= elements.len() {
+                            return Err(format!("Index out of bounds: {} (slice length: {})", idx, elements.len()));
+                        }
+                        Ok(elements[idx].clone())
+                    }
+
+                    _ => Err("Cannot index non-array/slice value".to_string()),
+                }
+            }
+
             Expr::Assignment { target, value } => match target.as_ref() {
                 Expr::MethodCall { object, method, arguments } => {
                     let obj_value = self.evaluate_expression(object)?;

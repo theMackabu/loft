@@ -12,6 +12,9 @@ fn run() -> Result {
     let input = fs::read_to_string(&filename)?;
 
     let ast = Parser::new(Lexer::new(input)).parse_program().map_err(|err| Error::ParseError(err.to_string()))?;
+
+    println!("{ast:?}");
+
     let mut runtime = Interpreter::new(&ast).map_err(|err| Error::RuntimeError(err.to_string()))?;
     let result = runtime.start_main().map_err(|err| Error::RuntimeError(err.to_string()))?;
 
