@@ -715,11 +715,5 @@ impl Lexer {
 impl Token {
     pub fn is_identifier(&self) -> bool { matches!(self, Token::Identifier(_)) }
 
-    pub fn as_identifier(&self) -> Option<&str> {
-        if let Token::Identifier(s) = self {
-            Some(s.as_str())
-        } else {
-            None
-        }
-    }
+    pub fn as_identifier(&self) -> Option<&str> { if let Token::Identifier(s) = self { Some(s.as_str()) } else { None } }
 }

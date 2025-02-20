@@ -116,9 +116,8 @@ impl<'st> Interpreter<'st> {
         let mut i = 0;
 
         let branch_args = if !params.is_empty() && args.len() > 0 {
-            let first_is_branch = args[0].len() == 1 && (matches!(args[0][0].token, Token::Identifier(_)) || args[0][0].token.is_identifier());
-
-            if first_is_branch { if args.len() > 1 { &args[1..] } else { &[] } } else { args }
+            // Skip the pattern tokens (first argument)
+            if args.len() > 1 { &args[1..] } else { &[] }
         } else {
             args
         };
@@ -139,9 +138,9 @@ impl<'st> Interpreter<'st> {
                                 if params[index].kind != MacroParamKind::Expr {
                                     return Err(format!("Unsupported macro parameter kind for ${}", params[index].name));
                                 }
-                                if index < branch_args.len() {
-                                    debug!("Substituting parameter '{}' with {} argument tokens", name, branch_args[index].len());
-                                    result.extend_from_slice(&branch_args[index]);
+                                if let Some(arg_tokens) = branch_args.get(0) {
+                                    debug!("Substituting parameter '{}' with {} argument tokens", name, arg_tokens.len());
+                                    result.extend_from_slice(arg_tokens);
                                 }
                                 i += 2; // skip '$' and the identifier
                                 continue;
@@ -562,31 +561,52 @@ impl<'st> Interpreter<'st> {
 
 fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, String> {
     debug!("Extracting macro arguments from {} tokens", tokens.len());
-    // simple implementation - just splits by commas
     let mut args = Vec::new();
     let mut current_arg = Vec::new();
     let mut nesting = 0;
 
-    for (i, token_info) in tokens.iter().enumerate() {
-        match token_info.token {
+    for (i, token) in tokens.iter().enumerate() {
+        match &token.token {
             Token::LeftParen | Token::LeftBrace | Token::LeftBracket => {
                 nesting += 1;
                 trace!("Nesting increased to {} at position {}", nesting, i);
-                current_arg.push(token_info.clone());
+                current_arg.push(token.clone());
             }
             Token::RightParen | Token::RightBrace | Token::RightBracket => {
                 nesting -= 1;
                 trace!("Nesting decreased to {} at position {}", nesting, i);
-                current_arg.push(token_info.clone());
+                current_arg.push(token.clone());
             }
             Token::Comma if nesting == 0 => {
                 if !current_arg.is_empty() {
-                    debug!("Found argument with {} tokens at position {}", current_arg.len(), i);
+                    debug!("Found argument with {} tokens at comma", current_arg.len());
                     args.push(current_arg);
                     current_arg = Vec::new();
                 }
             }
-            _ => current_arg.push(token_info.clone()),
+            _ if nesting == 0 => {
+                if i > 0 && !current_arg.is_empty() {
+                    let prev_token_end = if let Some(prev) = tokens.get(i - 1) {
+                        match &prev.token {
+                            Token::Identifier(s) => prev.location.column + s.len(),
+                            Token::String(s) => prev.location.column + s.len() + 2,
+                            _ => prev.location.column + 1,
+                        }
+                    } else {
+                        0
+                    };
+
+                    if token.location.column > prev_token_end + 1 {
+                        debug!("Found space gap between tokens");
+                        args.push(current_arg);
+                        current_arg = Vec::new();
+                    }
+                }
+                current_arg.push(token.clone());
+            }
+            _ => {
+                current_arg.push(token.clone());
+            }
         }
     }
 
@@ -756,40 +776,45 @@ fn match_branch_literals(literals: &[Token], args: &[Vec<TokenInfo>]) -> bool {
         return false;
     }
 
-    for (i, literal) in literals.iter().enumerate() {
-        if i >= args.len() {
-            return false;
-        }
+    // Get the flattened tokens from the first argument
+    let arg_tokens: Vec<&Token> = args[0].iter().map(|t| &t.token).collect();
+    debug!("Comparing literal pattern {:?} with argument tokens {:?}", literals, arg_tokens);
 
-        if args[i].len() != 1 {
-            return false;
-        }
-
-        let arg_token = &args[i][0].token;
-
-        match literal {
-            Token::Identifier(lit_name) => {
-                if let Token::Identifier(arg_name) = arg_token {
-                    if lit_name != arg_name {
-                        debug!("Identifier mismatch: expected '{}', got '{}'", lit_name, arg_name);
-                        return false;
-                    }
-                } else {
-                    debug!("Token type mismatch: expected Identifier, got {:?}", arg_token);
-                    return false;
-                }
-            }
-            _ => {
-                if arg_token != literal {
-                    debug!("Literal token mismatch: expected {:?}, got {:?}", literal, arg_token);
-                    return false;
-                }
-            }
-        }
+    // If lengths match, compare each token
+    if literals.len() == arg_tokens.len() {
+        let matches = literals.iter().zip(arg_tokens.iter()).all(|(lit, arg)| match_token(lit, arg));
+        debug!("Full pattern match result: {}", matches);
+        return matches;
     }
 
-    debug!("All literal tokens matched successfully");
-    true
+    // If lengths don't match, try to match just the first token
+    if literals.len() == 1 && arg_tokens.len() == 1 {
+        let matches = match_token(&literals[0], arg_tokens[0]);
+        debug!("Single token match result: {}", matches);
+        return matches;
+    }
+
+    debug!("No branch pattern match found");
+    false
+}
+
+fn match_token(expected: &Token, actual: &Token) -> bool {
+    match (expected, actual) {
+        (Token::Identifier(lit_name), Token::Identifier(arg_name)) => {
+            let matches = lit_name == arg_name;
+            if !matches {
+                debug!("Identifier mismatch: expected '{}', got '{}'", lit_name, arg_name);
+            }
+            matches
+        }
+        _ => {
+            let matches = expected == actual;
+            if !matches {
+                debug!("Token mismatch: expected {:?}, got {:?}", expected, actual);
+            }
+            matches
+        }
+    }
 }
 
 fn validate_branch_params(params: &[MacroParameter], args: &[Vec<TokenInfo>]) -> Result<(), String> {
