@@ -386,6 +386,8 @@ impl<'st> Interpreter<'st> {
                 self.perform_cast(value, target_type)
             }
 
+            Expr::Boolean(b) => Ok(val!(ValueType::Boolean(*b))),
+
             Expr::Integer(value, ty) => Ok(val!(match ty.to_owned().unwrap_or(NumericType::I32) {
                 NumericType::I8 => ValueType::I8(*value as i8),
                 NumericType::I16 => ValueType::I16(*value as i16),

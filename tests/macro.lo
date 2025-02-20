@@ -37,6 +37,7 @@ fn main() {
    // let val = add!(5, 3);
    // io::println(val);
    
+   // log!(warn, "testing");
    // say_hello!();
    // println!("{}", count_exprs!(1, "hello", 3.14));
    

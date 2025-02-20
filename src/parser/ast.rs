@@ -123,14 +123,10 @@ pub enum Expr {
     Tuple(Vec<Expr>),
     Identifier(String),
     Await(Box<Expr>),
+    Try(Box<Expr>),
 
     Integer(i64, Option<NumericType>),
     Float(f64, Option<NumericType>),
-
-    Ok(Box<Expr>),
-    Err(Box<Expr>),
-    Some(Box<Expr>),
-    Try(Box<Expr>),
 
     Unit,
     None,

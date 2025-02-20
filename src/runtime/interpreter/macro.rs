@@ -166,18 +166,28 @@ impl<'st> Interpreter<'st> {
         let mut i = 0;
 
         while i < def_tokens.len() {
-            if let Token::Dollar = def_tokens[i].token {
+            if def_tokens[i].token == Token::Dollar {
                 if i + 1 < def_tokens.len() {
-                    if let Token::Identifier(ref name) = def_tokens[i + 1].token {
-                        if let Some(index) = params.iter().position(|p| p.name == *name) {
-                            if params[index].kind != MacroParamKind::Expr {
-                                return Err(format!("Unsupported macro parameter kind for ${}", params[index].name));
-                            }
-                            debug!("Substituting parameter '{}' with {} argument tokens", name, args[index].len());
-                            result.extend_from_slice(&args[index]);
-                            i += 2; // skip both '$' and the identifier
+                    match &def_tokens[i + 1].token {
+                        Token::LeftParen => {
+                            let (group_tokens, group_len) = self.extract_repetition_group(&def_tokens[i..])?;
+                            let expanded = self.expand_repetition_group(&group_tokens, params, args)?;
+                            result.extend(expanded);
+                            i += group_len;
                             continue;
                         }
+                        Token::Identifier(ref name) => {
+                            if let Some(index) = params.iter().position(|p| p.name == *name) {
+                                if params[index].kind != MacroParamKind::Expr {
+                                    return Err(format!("Unsupported macro parameter kind for ${}", params[index].name));
+                                }
+                                debug!("Substituting parameter '{}' with {} argument tokens", name, args[index].len());
+                                result.extend_from_slice(&args[index]);
+                                i += 2; // skip '$' and the identifier
+                                continue;
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -188,6 +198,149 @@ impl<'st> Interpreter<'st> {
 
         debug!("Substituted tokens: {} original tokens expanded to {} tokens", def_tokens.len(), result.len());
         Ok(result)
+    }
+
+    fn expand_repetition_group(&self, group_tokens: &[TokenInfo], params: &[MacroParameter], args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
+        if group_tokens.len() < 3 {
+            return Err("Invalid repetition group tokens.".to_string());
+        }
+
+        let mut nesting = 0;
+        let mut body_end = None;
+        for (i, token_info) in group_tokens.iter().enumerate().skip(1) {
+            match token_info.token {
+                Token::LeftParen => nesting += 1,
+                Token::RightParen => {
+                    nesting -= 1;
+                    if nesting == 0 {
+                        body_end = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let body_end = body_end.ok_or("Failed to find matching ')' in repetition group.".to_string())?;
+        let body_tokens = &group_tokens[2..body_end];
+
+        let separator = if group_tokens.len() > body_end + 2 {
+            if group_tokens[body_end + 1].token == Token::Comma {
+                Some(group_tokens[body_end + 1].token.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let mut repeated_param_index = None;
+        for i in 0..body_tokens.len() {
+            if body_tokens[i].token == Token::Dollar {
+                if i + 1 < body_tokens.len() {
+                    if let Token::Identifier(ref name) = body_tokens[i + 1].token {
+                        if let Some(idx) = params.iter().position(|p| p.name == *name && p.repeated) {
+                            repeated_param_index = Some(idx);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        let param_index = repeated_param_index.ok_or("No repeated parameter found in repetition group body.".to_string())?;
+
+        let mut expanded = Vec::new();
+        for (iter_index, arg_tokens) in args.iter().enumerate() {
+            if iter_index > 0 {
+                if let Some(ref sep) = separator {
+                    expanded.push(TokenInfo {
+                        token: sep.clone(),
+                        location: group_tokens[0].location.clone(),
+                    });
+                }
+            }
+
+            let mut iteration_expansion = Vec::new();
+            let mut j = 0;
+            while j < body_tokens.len() {
+                if body_tokens[j].token == Token::Dollar {
+                    if j + 1 < body_tokens.len() {
+                        if let Token::Identifier(ref id_name) = body_tokens[j + 1].token {
+                            if id_name == &params[param_index].name {
+                                iteration_expansion.extend_from_slice(arg_tokens);
+                                j += 2;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                iteration_expansion.push(body_tokens[j].clone());
+                j += 1;
+            }
+            expanded.extend(iteration_expansion);
+        }
+        Ok(expanded)
+    }
+
+    fn extract_repetition_group(&self, tokens: &[TokenInfo]) -> Result<(Vec<TokenInfo>, usize), String> {
+        if tokens.is_empty() || tokens[0].token != Token::Dollar {
+            return Err("Expected '$' at beginning of repetition group.".to_string());
+        }
+        let mut collected = Vec::new();
+        let mut i = 0;
+        collected.push(tokens[i].clone());
+        i += 1;
+        if i >= tokens.len() || tokens[i].token != Token::LeftParen {
+            return Err("Expected '(' after '$' in repetition group.".to_string());
+        }
+        collected.push(tokens[i].clone());
+        i += 1;
+
+        let mut nesting = 1;
+        while i < tokens.len() {
+            let t = &tokens[i];
+            match t.token {
+                Token::LeftParen => {
+                    nesting += 1;
+                }
+                Token::RightParen => {
+                    nesting -= 1;
+                    collected.push(t.clone());
+                    i += 1;
+                    if nesting == 0 {
+                        break;
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+            collected.push(t.clone());
+            i += 1;
+        }
+
+        if nesting != 0 {
+            return Err("Unmatched '(' in repetition group.".to_string());
+        }
+
+        if i < tokens.len() && tokens[i].token == Token::Comma {
+            collected.push(tokens[i].clone());
+            i += 1;
+        }
+
+        if i < tokens.len() {
+            match tokens[i].token {
+                Token::Star | Token::Plus => {
+                    collected.push(tokens[i].clone());
+                    i += 1;
+                }
+                _ => {
+                    return Err("Expected repetition operator '*' or '+' after repetition group.".to_string());
+                }
+            }
+        } else {
+            return Err("Unexpected end of tokens during parsing repetition group.".to_string());
+        }
+        Ok((collected, i))
     }
 
     fn process_nested_macros(&mut self, expr: &Expr, depth: usize) -> Result<Expr, String> {
