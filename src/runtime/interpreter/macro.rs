@@ -677,6 +677,10 @@ fn extract_branch_pattern(tokens: &[TokenInfo]) -> Result<(Vec<Token>, Vec<Macro
     let mut params = Vec::new();
     let mut i = 0;
 
+    if i < arrow_pos && (tokens[i].token == Token::LeftParen || tokens[i].token == Token::LeftBrace || tokens[i].token == Token::LeftBracket) {
+        i += 1;
+    }
+
     while i < arrow_pos {
         if tokens[i].token == Token::Dollar {
             let pattern_tokens = &tokens[i..arrow_pos];
@@ -753,9 +757,26 @@ fn match_branch_literals(literals: &[Token], args: &[Vec<TokenInfo>]) -> bool {
             return false;
         }
 
-        if &args[i][0].token != literal {
-            debug!("Literal token mismatch: expected {:?}, got {:?}", literal, args[i][0].token);
-            return false;
+        let arg_token = &args[i][0].token;
+
+        match literal {
+            Token::Identifier(lit_name) => {
+                if let Token::Identifier(arg_name) = arg_token {
+                    if lit_name != arg_name {
+                        debug!("Identifier mismatch: expected '{}', got '{}'", lit_name, arg_name);
+                        return false;
+                    }
+                } else {
+                    debug!("Token type mismatch: expected Identifier, got {:?}", arg_token);
+                    return false;
+                }
+            }
+            _ => {
+                if arg_token != literal {
+                    debug!("Literal token mismatch: expected {:?}, got {:?}", literal, arg_token);
+                    return false;
+                }
+            }
         }
     }
 

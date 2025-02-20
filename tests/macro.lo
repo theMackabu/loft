@@ -17,21 +17,21 @@
 //    }
 // }
 
-// macro_rules! log {
-//    (error, $($arg:tt)*) => {
-//       println!("[ERROR] {}", format!($($arg)*))
-//    };
-//    (warn, $($arg:tt)*) => {
-//       println!("[WARN] {}", format!($($arg)*))
-//    };
-//    (info, $($arg:tt)*) => {
-//       println!("[INFO] {}", format!($($arg)*))
-//    };
-// }
-
-macro_rules! tuple {
-   ($($item:expr),*) => (($($item),*));
+macro_rules! log {
+   (error, $($arg:tt)*) => {
+      println!("[ERROR] {}", format!($($arg)*))
+   };
+   (warn, $($arg:tt)*) => {
+      println!("[WARN] {}", format!($($arg)*))
+   };
+   (info, $($arg:tt)*) => {
+      println!("[INFO] {}", format!($($arg)*))
+   };
 }
+
+// macro_rules! tuple {
+//    ($($item:expr),*) => (($($item),*));
+// }
 
 fn main() {   
    // say_hello!();
@@ -42,6 +42,6 @@ fn main() {
    log!(warn, "testing");
    // println!("{}", count_exprs!(1, "hello", 3.14));
    
-   let tpl = tuple!(1, "hello", true);
-   io::println(tpl);
+   // let tpl = tuple!(1, "hello", true);
+   // io::println(tpl);
 }
