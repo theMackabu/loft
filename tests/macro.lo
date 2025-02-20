@@ -5,7 +5,8 @@ macro_rules! add {
 }
 
 fn main() {
-   add!(5, 3);
+   let val = add!(5, 3);
+   io::println(val);
 }
 
 /*

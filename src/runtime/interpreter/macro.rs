@@ -28,6 +28,18 @@ macro_rules! trace {
     }};
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum MacroParamKind {
+    Expr,
+    // later add other kinds like Type, Block, etc.
+}
+
+#[derive(Clone, Debug)]
+pub struct MacroParameter {
+    pub name: String,
+    pub kind: MacroParamKind,
+}
+
 #[derive(Clone, Debug)]
 pub struct RepetitionBlock {
     variable: String,
@@ -126,23 +138,45 @@ impl<'st> Interpreter<'st> {
         }
     }
 
-    fn extract_macro_parameters(&self, tokens: &[TokenInfo]) -> Result<Vec<String>, String> {
+    fn extract_macro_parameters(&self, tokens: &[TokenInfo]) -> Result<Vec<MacroParameter>, String> {
         debug!("Extracting macro parameters from {} tokens", tokens.len());
         let mut params = Vec::new();
         let mut i = 0;
 
         while i < tokens.len() {
             if let Token::Fat = tokens[i].token {
-                debug!("Found fat arrow token at position {}, ending parameter extraction", i);
                 break;
             }
 
             if let Token::Dollar = tokens[i].token {
                 if i + 1 < tokens.len() {
                     if let Token::Identifier(ref name) = tokens[i + 1].token {
-                        debug!("Found parameter '{}' at position {}", name, i);
-                        params.push(name.clone());
-                        i += 2;
+                        let param_name = name.clone();
+                        let mut param_kind = MacroParamKind::Expr;
+
+                        i += 2; // skip '$' and the parameter name
+
+                        if i < tokens.len() && matches!(tokens[i].token, Token::Colon) {
+                            i += 1; // skip colon
+
+                            if i < tokens.len() {
+                                if let Token::Identifier(ref type_spec) = tokens[i].token {
+                                    if type_spec == "expr" {
+                                        param_kind = MacroParamKind::Expr;
+                                    } else {
+                                        return Err(format!("Unsupported macro parameter specifier: {}", type_spec));
+                                    }
+                                    i += 1; // skip the type specifier
+                                } else {
+                                    return Err("Expected type specifier after colon".to_string());
+                                }
+                            } else {
+                                return Err("Unexpected end of tokens after colon".to_string());
+                            }
+                        }
+
+                        debug!("Found parameter '{}' with kind '{:?}'", param_name, param_kind);
+                        params.push(MacroParameter { name: param_name, kind: param_kind });
                         continue;
                     } else {
                         warn!("Expected identifier after '$' at position {}", i);
@@ -186,7 +220,7 @@ impl<'st> Interpreter<'st> {
         Ok(body_tokens)
     }
 
-    fn substitute_macro_tokens(&self, def_tokens: &[TokenInfo], params: &[String], args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
+    fn substitute_macro_tokens(&self, def_tokens: &[TokenInfo], params: &[MacroParameter], args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
         debug!(
             "Substituting macro tokens: {} parameters, {} arguments in {} definition tokens",
             params.len(),
@@ -194,20 +228,27 @@ impl<'st> Interpreter<'st> {
             def_tokens.len()
         );
         let mut result = Vec::new();
+        let mut i = 0;
 
-        for (i, token_info) in def_tokens.iter().enumerate() {
-            if let Token::Identifier(name) = &token_info.token {
-                if name.starts_with('$') {
-                    let param_name = if name.contains(':') { &name[1..name.find(':').unwrap()] } else { &name[1..] };
-
-                    if let Some(index) = params.iter().position(|p| p == param_name) {
-                        debug!("Substituting parameter '{}' at position {} with argument {}", param_name, i, index);
-                        result.extend_from_slice(&args[index]);
-                        continue;
+        while i < def_tokens.len() {
+            if let Token::Dollar = def_tokens[i].token {
+                if i + 1 < def_tokens.len() {
+                    if let Token::Identifier(ref name) = def_tokens[i + 1].token {
+                        if let Some(index) = params.iter().position(|p| p.name == *name) {
+                            if params[index].kind != MacroParamKind::Expr {
+                                return Err(format!("Unsupported macro parameter kind for ${}", params[index].name));
+                            }
+                            debug!("Substituting parameter '{}' with {} argument tokens", name, args[index].len());
+                            result.extend_from_slice(&args[index]);
+                            i += 2; // skip both '$' and the identifier
+                            continue;
+                        }
                     }
                 }
             }
-            result.push(token_info.clone());
+
+            result.push(def_tokens[i].clone());
+            i += 1;
         }
 
         debug!("Substituted tokens: {} original tokens expanded to {} tokens", def_tokens.len(), result.len());
