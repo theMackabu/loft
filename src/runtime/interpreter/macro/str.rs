@@ -11,7 +11,7 @@ pub fn tokens_to_string(tokens: &[TokenInfo]) -> String {
     result.trim_end().to_string()
 }
 
-fn token_to_string(token: &Token) -> String {
+pub fn token_to_string(token: &Token) -> String {
     match token {
         Token::Pound => "#".to_string(),
         Token::Dollar => "$".to_string(),

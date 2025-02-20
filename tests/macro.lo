@@ -1,30 +1,17 @@
-macro_rules! add {
-   ($a:expr, $b:expr) => {
-      $a + $b
-   };
-}
-
-fn main() {
-   let val = add!(5, 3);
-   io::println(val);
-}
-
-/*
-macro_rules! add {
-   ($a:expr, $b:expr) => {
-      $a + $b
-   };
-}
+// macro_rules! add {
+//    ($a:expr, $b:expr) => {
+//       $a + $b
+//    };
+// }
 
 macro_rules! tuple {
    ($($item:expr),*) => (($($item),*));
 }
 
 fn main() {
-   let sum = add!(5, 3);
-   println!("{sum}");
+   // let val = add!(5, 3);
+   // io::println(val);
    
-   let t = tuple!(1, "hello", true);
-   println!("{tuple}");
+   let tpl = tuple!(1, "hello", true);
+   io::println(tpl);
 }
-*/

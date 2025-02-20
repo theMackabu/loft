@@ -1,44 +1,11 @@
+mod parse;
 mod proc;
 mod str;
 
 use super::*;
 use crate::parser::ast::NumericType;
-
-macro_rules! debug {
-    ($($arg:tt)*) => {{
-        let light_blue = "\x1b[94m";
-        let reset = "\x1b[0m";
-        eprintln!("{}[DEBUG] {}{}", light_blue, format_args!($($arg)*), reset);
-    }};
-}
-
-macro_rules! warn {
-    ($($arg:tt)*) => {{
-        let yellow = "\x1b[38;5;11m";
-        let reset = "\x1b[0m";
-        eprintln!("{}[WARN] {}{}", yellow, format_args!($($arg)*), reset);
-    }};
-}
-
-macro_rules! trace {
-    ($($arg:tt)*) => {{
-        let pink = "\x1b[38;5;13m";
-        let reset = "\x1b[0m";
-        eprintln!("{}[TRACE] {}{}", pink, format_args!($($arg)*), reset);
-    }};
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum MacroParamKind {
-    Expr,
-    // later add other kinds like Type, Block, etc.
-}
-
-#[derive(Clone, Debug)]
-pub struct MacroParameter {
-    pub name: String,
-    pub kind: MacroParamKind,
-}
+use crate::{debug, trace, warn};
+use parse::{MacroParamKind, MacroParameter};
 
 #[derive(Clone, Debug)]
 pub struct RepetitionBlock {
@@ -138,56 +105,10 @@ impl<'st> Interpreter<'st> {
         }
     }
 
-    fn extract_macro_parameters(&self, tokens: &[TokenInfo]) -> Result<Vec<MacroParameter>, String> {
+    fn extract_macro_parameters(&self, tokens: &[TokenInfo]) -> Result<Vec<parse::MacroParameter>, String> {
         debug!("Extracting macro parameters from {} tokens", tokens.len());
-        let mut params = Vec::new();
-        let mut i = 0;
-
-        while i < tokens.len() {
-            if let Token::Fat = tokens[i].token {
-                break;
-            }
-
-            if let Token::Dollar = tokens[i].token {
-                if i + 1 < tokens.len() {
-                    if let Token::Identifier(ref name) = tokens[i + 1].token {
-                        let param_name = name.clone();
-                        let mut param_kind = MacroParamKind::Expr;
-
-                        i += 2; // skip '$' and the parameter name
-
-                        if i < tokens.len() && matches!(tokens[i].token, Token::Colon) {
-                            i += 1; // skip colon
-
-                            if i < tokens.len() {
-                                if let Token::Identifier(ref type_spec) = tokens[i].token {
-                                    if type_spec == "expr" {
-                                        param_kind = MacroParamKind::Expr;
-                                    } else {
-                                        return Err(format!("Unsupported macro parameter specifier: {}", type_spec));
-                                    }
-                                    i += 1; // skip the type specifier
-                                } else {
-                                    return Err("Expected type specifier after colon".to_string());
-                                }
-                            } else {
-                                return Err("Unexpected end of tokens after colon".to_string());
-                            }
-                        }
-
-                        debug!("Found parameter '{}' with kind '{:?}'", param_name, param_kind);
-                        params.push(MacroParameter { name: param_name, kind: param_kind });
-                        continue;
-                    } else {
-                        warn!("Expected identifier after '$' at position {}", i);
-                        return Err("Expected identifier after '$' in macro parameters".to_string());
-                    }
-                }
-            }
-
-            i += 1;
-        }
-
+        let parser = parse::MacroParamParser::new(tokens);
+        let params = parser.parse()?;
         debug!("Extracted {} parameters: {:?}", params.len(), params);
         Ok(params)
     }
