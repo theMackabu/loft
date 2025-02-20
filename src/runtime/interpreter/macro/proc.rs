@@ -129,11 +129,7 @@ pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<T
                     token: Token::String("\n".to_string()),
                     location: first_location.clone(),
                 });
-            } else if let Some(TokenInfo {
-                token: Token::String(ref s),
-                location,
-            }) = tokens.first()
-            {
+            } else if let Some(TokenInfo { token: Token::String(s), location }) = tokens.first() {
                 let mut new_format_string = s.clone();
                 new_format_string.push('\n');
 
@@ -266,7 +262,7 @@ pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<T
             let mut named_args = std::collections::HashMap::new();
 
             for arg in &args {
-                if let Some(Token::Identifier(ref name)) = arg.first().map(|t| &t.token) {
+                if let Some(Token::Identifier(name)) = arg.first().map(|t| &t.token) {
                     named_args.insert(name.clone(), arg.clone());
                 }
             }

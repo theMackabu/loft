@@ -118,15 +118,7 @@ impl<'st> Interpreter<'st> {
         let branch_args = if !params.is_empty() && args.len() > 0 {
             let first_is_branch = args[0].len() == 1 && (matches!(args[0][0].token, Token::Identifier(_)) || args[0][0].token.is_identifier());
 
-            if first_is_branch {
-                if args.len() > 1 {
-                    &args[1..]
-                } else {
-                    &[]
-                }
-            } else {
-                args
-            }
+            if first_is_branch { if args.len() > 1 { &args[1..] } else { &[] } } else { args }
         } else {
             args
         };
@@ -142,7 +134,7 @@ impl<'st> Interpreter<'st> {
                             i += group_len;
                             continue;
                         }
-                        Token::Identifier(ref name) => {
+                        Token::Identifier(name) => {
                             if let Some(index) = params.iter().position(|p| p.name == *name) {
                                 if params[index].kind != MacroParamKind::Expr {
                                     return Err(format!("Unsupported macro parameter kind for ${}", params[index].name));

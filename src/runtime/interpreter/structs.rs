@@ -41,7 +41,7 @@ impl<'st> Interpreter<'st> {
             let mut cell = value.borrow_mut();
 
             match cell.inner_mut() {
-                ValueType::StructDef { ref mut methods, .. } => {
+                ValueType::StructDef { methods, .. } => {
                     for method_stmt in items {
                         if let Stmt::Function { name: method_name, params, body, .. } = method_stmt {
                             let is_static = params.is_empty() || {
@@ -64,7 +64,7 @@ impl<'st> Interpreter<'st> {
                     }
                 }
 
-                ValueType::EnumDef { ref mut methods, .. } => {
+                ValueType::EnumDef { methods, .. } => {
                     for method_stmt in items {
                         if let Stmt::Function { name: method_name, params, body, .. } = method_stmt {
                             let is_static = params.is_empty() || {

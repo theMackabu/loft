@@ -94,8 +94,8 @@ impl<'st> Interpreter<'st> {
 
                 {
                     let mut slice_ref = slice_value.borrow_mut();
-                    if let ValueType::Slice { el: ref mut elements, .. } = slice_ref.inner_mut() {
-                        elements.push(new_element);
+                    if let ValueType::Slice { el, .. } = slice_ref.inner_mut() {
+                        el.push(new_element);
                     }
                 }
 
@@ -126,7 +126,7 @@ impl<'st> Interpreter<'st> {
 
                 let popped = {
                     let mut slice_ref = slice_value.borrow_mut();
-                    if let ValueType::Slice { ref mut el, .. } = slice_ref.inner_mut() {
+                    if let ValueType::Slice { el, .. } = slice_ref.inner_mut() {
                         el.pop().unwrap()
                     } else {
                         unreachable!("Already verified this is a slice")

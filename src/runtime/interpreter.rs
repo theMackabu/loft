@@ -582,7 +582,7 @@ impl<'st> Interpreter<'st> {
                 },
 
                 Expr::CompoundAssignment { target, operator, value } => {
-                    let identifier = if let Expr::Identifier(ref name) = target.as_ref() {
+                    let identifier = if let Expr::Identifier(name) = target.as_ref() {
                         name.clone()
                     } else {
                         return Err("Invalid assignment target".to_string());
