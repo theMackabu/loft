@@ -20,7 +20,7 @@ impl Result<T, E> {
     pub fn unwrap(self) -> T {
         match self {
             Ok(t) => t,
-            Err(_) => core::panic("called `Result::unwrap()` on an `Err` value"),
+            Err(e) => panic!("called `Result::unwrap()` on an `Err` value: {e}"),
         }
     }
 }
@@ -36,7 +36,7 @@ impl Option<T> {
     pub fn unwrap(self) -> T {
         match self {
             Some(v) => v,
-            None => core::panic("called `Option::unwrap()` on a `none` value")
+            None => panic!("called `Option::unwrap()` on a `none` value")
         }
     }
 }

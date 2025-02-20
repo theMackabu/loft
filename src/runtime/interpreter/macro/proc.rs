@@ -54,6 +54,57 @@ pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<T
             }
         }
 
+        "panic" => {
+            let mut format_invocation = Vec::new();
+            let first_location = tokens.first().map_or(Location { line: 0, column: 0 }, |t| t.location.clone());
+
+            format_invocation.push(TokenInfo {
+                token: Token::Identifier("format".to_string()),
+                location: first_location.clone(),
+            });
+
+            format_invocation.push(TokenInfo {
+                token: Token::Not,
+                location: first_location.clone(),
+            });
+
+            format_invocation.push(TokenInfo {
+                token: Token::LeftParen,
+                location: first_location.clone(),
+            });
+
+            format_invocation.extend_from_slice(tokens);
+            format_invocation.push(TokenInfo {
+                token: Token::RightParen,
+                location: first_location.clone(),
+            });
+
+            // core::panic( format!( ... ) )
+            let mut result_tokens = Vec::new();
+            result_tokens.push(TokenInfo {
+                token: Token::Identifier("core".to_string()),
+                location: first_location.clone(),
+            });
+            result_tokens.push(TokenInfo {
+                token: Token::DoubleColon,
+                location: first_location.clone(),
+            });
+            result_tokens.push(TokenInfo {
+                token: Token::Identifier("panic".to_string()),
+                location: first_location.clone(),
+            });
+            result_tokens.push(TokenInfo {
+                token: Token::LeftParen,
+                location: first_location.clone(),
+            });
+            result_tokens.extend(format_invocation);
+            result_tokens.push(TokenInfo {
+                token: Token::RightParen,
+                location: first_location,
+            });
+            Ok(result_tokens)
+        }
+
         "println" => {
             let mut format_invocation = Vec::new();
             let first_location = tokens.first().map_or(Location { line: 0, column: 0 }, |t| t.location.clone());

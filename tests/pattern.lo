@@ -28,7 +28,7 @@ fn main() {
    println!("should print 'error message'\n - error_msg: {error_msg}\n");
    println!("should print 123\n - opt_value: {opt_value}\n");
    println!("should print 999\n - default: {default}\n");
-   
+      
    let value = 0;
    
    println!("should print 'zero'\n - value: {}", match value {
