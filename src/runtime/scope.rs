@@ -20,14 +20,32 @@ pub struct SymbolInfo {
 #[derive(Debug)]
 pub struct Scope {
     scopes: Vec<HashMap<String, SymbolInfo>>,
+    function_boundaries: Vec<usize>,
 }
 
 impl Scope {
-    pub fn new() -> Self { Scope { scopes: vec![HashMap::new()] } }
+    pub fn new() -> Self {
+        Scope {
+            scopes: vec![HashMap::new()],
+            function_boundaries: vec![0],
+        }
+    }
 
     pub fn enter_scope(&mut self) { self.scopes.push(HashMap::new()); }
 
     pub fn exit_scope(&mut self) { self.scopes.pop(); }
+
+    pub fn enter_function_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+        self.function_boundaries.push(self.scopes.len() - 1);
+    }
+
+    pub fn exit_function_scope(&mut self) {
+        while self.scopes.len() > self.function_boundaries.last().cloned().unwrap_or(0) {
+            self.scopes.pop();
+        }
+        self.function_boundaries.pop();
+    }
 
     pub fn resolve_program(&self, statements: &[Stmt]) -> Result<(), String> {
         let mut env = Self::new();
@@ -126,12 +144,15 @@ impl Scope {
     }
 
     pub fn resolve(&self, name: &str) -> Option<&SymbolInfo> {
-        for scope in self.scopes.iter().rev() {
+        let current_boundary = *self.function_boundaries.last().unwrap_or(&0);
+
+        for scope in self.scopes[current_boundary..].iter().rev() {
             if let Some(info) = scope.get(name) {
                 return Some(info);
             }
         }
-        None
+
+        if current_boundary > 0 { self.scopes[0].get(name) } else { None }
     }
 }
 

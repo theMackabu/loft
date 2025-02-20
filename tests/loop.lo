@@ -1,24 +1,24 @@
 fn test_loop() {
    // loop { 
-   //    io::println("I live."); 
+   //    println!("I live."); 
    // }
    
    'outer: loop {
-      io::println("Entered the outer loop");
+      println!("Entered the outer loop");
       
       'inner: loop {
-         io::println("Entered the inner loop");
+         println!("Entered the inner loop");
          break 'outer;
       }
       
-      io::println("This point will never be reached");
+      println!("This point will never be reached");
    }
    
    'a: loop {
       'a: loop {
          break 'a;
       }
-      io::print("outer loop");
+      print!("outer loop");
       break 'a;
    }
 }
@@ -37,39 +37,48 @@ fn test_assign() {
       b = c;
    };
    
-   io::println(result);
+   println!("{result}");
 }
 
 fn test_while() {
    let mut i = 0;
    while i < 10 {
-      io::println("balls"); 
+      println!("ball(s) {i}"); 
       i += 1;
    }
    
    let x = [1, 2, 3, 4, 5];
    while let Some(y) = x.pop() {
-      io::println("y = {}", y);
+      println!("y = {}", y);
    }
    
    while let _ = 5 {
-      io::print("irrefutable patterns are always true");
+      println!("irrefutable patterns are always true");
       break;
    }
 }
 
 fn test_for() {
    for i in 0..10 {
-      io::println(i);
+      println!("index: {i}");
    }
    
    let strs = ["cats", "dogs"];
    for text in strs {
-      io::println("I like {}.", text);
+      println!("I like {}.", text);
    }
 }
 
-fn main() {     
+fn main() {
+   fn fizzbuzzer(n: u64) -> Cow<'static, str> {
+       match (n%3, n%5) {
+           (0, 0) =>"FizzBuzz".into(),
+           (0, _) => "Fizz".into(),
+           (_, 0) => "Buzz".into(),
+           (_, _) => n.to_string().into(),
+       }
+   }
+     
    test_loop();
    test_assign();
    test_while();

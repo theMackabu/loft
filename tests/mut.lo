@@ -1,7 +1,7 @@
 fn test_assignment(val: &mut i32) -> &mut i32 {
    *val += 3;
    
-   println!("value(2) is: {value}");   
+   println!("value(2) is: {val}");   
    return val;
 }
 

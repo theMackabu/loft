@@ -338,7 +338,7 @@ impl<'st> Interpreter<'st> {
                 }
 
                 self.env.scope_resolver.declare_function(name)?;
-                self.env.enter_scope();
+                self.env.enter_function_scope();
 
                 for (pat, ty) in params {
                     if let Pattern::Identifier { name, mutable } = pat {
@@ -362,7 +362,7 @@ impl<'st> Interpreter<'st> {
                     }
                 };
 
-                self.env.exit_scope();
+                self.env.exit_function_scope();
                 Ok(return_val)
             }
 
@@ -1480,8 +1480,7 @@ impl<'st> Interpreter<'st> {
                             return Err(format!("Function '{}' expects {} arguments but got {}", name, params.len(), arg_values.len()));
                         }
 
-                        let scope_depth = self.env.scopes.len();
-                        self.env.enter_scope();
+                        self.env.enter_function_scope();
 
                         for ((param, param_type), value) in params.iter().zip(arg_values) {
                             if let Pattern::Identifier { name, .. } = param {
@@ -1517,10 +1516,7 @@ impl<'st> Interpreter<'st> {
                         }
 
                         let result = self.execute(&body);
-
-                        while self.env.scopes.len() > scope_depth {
-                            self.env.exit_scope();
-                        }
+                        self.env.exit_function_scope();
 
                         result
                     }

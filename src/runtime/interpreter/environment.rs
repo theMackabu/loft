@@ -6,6 +6,7 @@ pub struct Environment {
     pub scopes: Vec<HashMap<String, Value>>,
     pub scope_resolver: Scope,
     pub next_ref_id: usize,
+    pub function_boundaries: Vec<usize>,
 }
 
 impl Environment {
@@ -14,7 +15,9 @@ impl Environment {
         Self {
             scopes: vec![HashMap::new()],
             scope_resolver: Scope::new(),
+
             next_ref_id: 0,
+            function_boundaries: vec![0],
         }
     }
 
@@ -27,10 +30,26 @@ impl Environment {
         self.scope_resolver.enter_scope();
     }
 
+    /// Adds a new function scope to the environment.
+    pub fn enter_function_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+        self.scope_resolver.enter_function_scope();
+        self.function_boundaries.push(self.scopes.len() - 1);
+    }
+
     /// Removes the current block scope.
     pub fn exit_scope(&mut self) {
         self.scopes.pop();
         self.scope_resolver.exit_scope();
+    }
+
+    /// Removes the current function scope.
+    pub fn exit_function_scope(&mut self) {
+        while self.scopes.len() > self.function_boundaries.last().cloned().unwrap_or(0) {
+            self.scopes.pop();
+            self.scope_resolver.exit_function_scope();
+        }
+        self.function_boundaries.pop();
     }
 
     /// Retrieves the value of a variable from the environment.
@@ -38,7 +57,20 @@ impl Environment {
         if self.scope_resolver.resolve(name).is_none() {
             return None;
         }
-        self.scopes.iter().rev().find_map(|scope| scope.get(name))
+
+        let current_function_start = *self.function_boundaries.last().unwrap_or(&0);
+
+        for scope in self.scopes[current_function_start..].iter().rev() {
+            if let Some(value) = scope.get(name) {
+                return Some(value);
+            }
+        }
+
+        if current_function_start > 0 {
+            return self.scopes[0].get(name);
+        }
+
+        None
     }
 
     /// Sets the value of a declared variable in the current scope.
@@ -119,11 +151,20 @@ impl Environment {
 
     /// Searches for a variable within all active scopes.
     pub fn find_variable(&self, name: &str) -> Option<(usize, &Value)> {
-        for (index, scope) in self.scopes.iter().enumerate().rev() {
+        let current_function_start = *self.function_boundaries.last().unwrap_or(&0);
+
+        for (index, scope) in self.scopes[current_function_start..].iter().enumerate().rev() {
             if let Some(value) = scope.get(name) {
-                return Some((index, value));
+                return Some((current_function_start + index, value));
             }
         }
+
+        if current_function_start > 0 {
+            if let Some(value) = self.scopes[0].get(name) {
+                return Some((0, value));
+            }
+        }
+
         None
     }
 
