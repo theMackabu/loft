@@ -4,7 +4,7 @@ version = "0.0.1-alpha.12"
 edition = "2021"
 license = "MIT"
 
-description = "..."
+description = "'rust at home'"
 repository = "https://github.com/themackabu/loft"
 
 [lib]

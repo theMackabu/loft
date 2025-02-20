@@ -300,10 +300,15 @@ impl<'st> Interpreter<'st> {
 
     fn process_repetition_pattern(&self, tokens: &[TokenInfo], args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
         debug!("Processing repetition patterns in {} tokens", tokens.len());
-        let mut result = Vec::new();
         let mut repetition_blocks = self.find_repetition_blocks(tokens)?;
         debug!("Found {} repetition blocks", repetition_blocks.len());
 
+        if repetition_blocks.is_empty() {
+            debug!("No repetition blocks found, returning original tokens");
+            return Ok(tokens.to_vec());
+        }
+
+        let mut result = Vec::new();
         for (i, block) in repetition_blocks.iter_mut().enumerate() {
             debug!("Expanding repetition block {} with variable '{}'", i, block.variable);
             let expanded = self.expand_repetition_block(block, args)?;
