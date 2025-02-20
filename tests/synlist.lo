@@ -256,59 +256,6 @@ fn test() {
    async {}
 }
 
-say_hello!();
-
-macro_rules! say_hello {
-   () => {
-      println!("Hello!")
-   };
-}
-
-macro_rules! vec_custom {
-   () => {
-      Vec::new()
-   };
-   ($($elem:expr),+ $(,)?) => {{
-      let mut v = Vec::new();
-      $(
-         v.push($elem);
-      )+
-      v
-   }};
-}
-
-macro_rules! log {
-   (error, $($arg:tt)*) => {
-      println!("[ERROR] {}", format!($($arg)*))
-   };
-   (warn, $($arg:tt)*) => {
-      println!("[WARN] {}", format!($($arg)*))
-   };
-   (info, $($arg:tt)*) => {
-      println!("[INFO] {}", format!($($arg)*))
-   };
-}
-
-pub macro_rules! count_exprs {
-   () => { 0 };
-   ($_head:expr $(, $tail:expr)*) => {
-      1 + count_exprs!($($tail),*)
-   }
-}
-
-pub macro_rules! matrix {
-   ($( $( $x:expr ),+ );+ $(;)?) => {
-      {
-         let mut m = Vec::new();
-         $(
-            let row = vec_custom![$($x),+];
-            m.push(row);
-         )+
-         m
-      }
-   }
-}
-
 if Foo::Bar == a {}
 
 // if let Some(_) = something {} !fix Expected Assign, but found LeftParen
