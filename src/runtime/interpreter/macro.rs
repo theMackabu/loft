@@ -81,10 +81,7 @@ impl<'st> Interpreter<'st> {
             let args = extract_macro_arguments(tokens)?;
             debug!("Extracted {} arguments", args.len());
 
-            if params.len() != args.len() {
-                warn!("Parameter/argument count mismatch for '{}': expected {}, got {}", name, params.len(), args.len());
-                return Err(format!("Macro '{}' expected {} arguments, got {}", name, params.len(), args.len()));
-            }
+            validate_arguments(&params, &args)?;
 
             debug!("Finding macro body tokens");
             let body_tokens = self.extract_macro_body(def_tokens)?;
@@ -470,6 +467,34 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
 
     debug!("Extracted {} total arguments", args.len());
     Ok(args)
+}
+
+fn validate_arguments(params: &[MacroParameter], args: &[Vec<TokenInfo>]) -> Result<(), String> {
+    let mut required_count = 0;
+    let mut has_repeated = false;
+
+    for param in params {
+        if param.repeated {
+            has_repeated = true;
+        } else {
+            required_count += 1;
+        }
+    }
+
+    let valid = match has_repeated {
+        true => args.len() >= required_count,
+        false => args.len() == required_count,
+    };
+
+    if !valid {
+        Err(format!(
+            "Expected {} arguments, got {}",
+            if has_repeated { format!("at least {}", required_count) } else { required_count.to_string() },
+            args.len()
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn extract_macro_delimiter(tokens: &[TokenInfo]) -> Result<MacroDelimiter, String> {

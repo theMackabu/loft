@@ -9,7 +9,7 @@ pub enum Option<T> {
 }
 
 impl Result<T, E> {
-    fn is_ok(&self) -> bool {
+    pub fn is_ok(&self) -> bool {
         match *self {
             Ok(_) => true,
             _ => false
@@ -26,20 +26,22 @@ impl Result<T, E> {
 }
 
 impl Option<T> {
-    fn is_some(&self) -> bool {
+    pub fn is_some(&self) -> bool {
         match *self {
             Some(_) => true,
             _ => false
         }
     }
     
-    fn unwrap(self) -> T {
+    pub fn unwrap(self) -> T {
         match self {
             Some(v) => v,
             None => core::panic("called `Option::unwrap()` on a `none` value")
         }
     }
 }
+
+pub fn drop<T>(_x: T) {}
 
 // pub struct String {
 //     data: [u8],

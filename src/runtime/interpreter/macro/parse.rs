@@ -13,6 +13,7 @@ pub enum MacroParamKind {
 pub struct MacroParameter {
     pub name: String,
     pub kind: MacroParamKind,
+    pub repeated: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -60,25 +61,16 @@ impl<'a> MacroParamParser<'a> {
         if self.peek_next() == Some(&Token::LeftParen) {
             self.handle_repetition_pattern()
         } else {
-            self.handle_parameter()
+            self.handle_single_parameter()
         }
     }
 
-    fn handle_repetition_pattern(&mut self) -> Result<(), String> {
-        debug!("Found repetition pattern at position {}", self.position);
-        self.advance(); // skip $
-        self.advance(); // skip (
-        self.in_repetition = true;
-        self.delimiter_stack.push(Token::LeftParen);
-        Ok(())
-    }
-
-    fn handle_parameter(&mut self) -> Result<(), String> {
+    fn handle_single_parameter(&mut self) -> Result<(), String> {
         self.advance(); // skip $
 
         let ident = match self.current_token() {
-            Some(t) => t.token.as_identifier().map(|s| s.to_string()).ok_or("Expected identifier after '$'".to_string())?,
-            None => return Err("Unexpected end of tokens".to_string()),
+            Some(t) => t.token.as_identifier().ok_or("Expected identifier after '$'")?.to_string(),
+            None => return Err("Unexpected end of tokens".into()),
         };
 
         self.advance(); // skip identifier
@@ -89,7 +81,37 @@ impl<'a> MacroParamParser<'a> {
             kind = self.parse_param_kind()?;
         }
 
-        self.params.push(MacroParameter { name: ident.to_string(), kind });
+        self.params.push(MacroParameter {
+            name: ident,
+            kind,
+            repeated: self.in_repetition,
+        });
+
+        Ok(())
+    }
+
+    fn handle_repetition_pattern(&mut self) -> Result<(), String> {
+        self.advance(); // skip $
+        self.advance(); // skip (
+        self.delimiter_stack.push(Token::LeftParen);
+        self.in_repetition = true;
+
+        while self.position < self.tokens.len() {
+            let current = self.current_token().ok_or("Unexpected end of repetition")?;
+
+            if current.token == Token::RightParen && self.delimiter_stack.last() == Some(&Token::LeftParen) {
+                self.delimiter_stack.pop();
+                self.advance(); // skip )
+                self.in_repetition = false;
+                break;
+            }
+
+            if current.token == Token::Dollar {
+                self.handle_single_parameter()?;
+            } else {
+                self.advance();
+            }
+        }
 
         Ok(())
     }
