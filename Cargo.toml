@@ -1,6 +1,6 @@
 [package]
 name = "loft"
-version = "0.0.1-alpha.10"
+version = "0.0.1-alpha.12"
 edition = "2021"
 license = "MIT"
 

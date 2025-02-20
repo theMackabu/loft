@@ -1,5 +1,10 @@
 use super::{str, *};
 
+enum Placeholder {
+    Named(String),
+    Positional(Option<usize>),
+}
+
 pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<TokenInfo>, Option<String>> {
     match name {
         "stringify" => {

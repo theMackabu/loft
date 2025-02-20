@@ -368,7 +368,7 @@ impl<'st> Interpreter<'st> {
             }
 
             Expr::MacroInvocation { name, delimiter, tokens } => {
-                let expanded = self.expand_macro_with_recursion_check(name, delimiter, tokens, 0)?;
+                let expanded = self.expand_macro(name, delimiter, tokens, 0)?;
                 self.evaluate_expression(&expanded)
             }
 

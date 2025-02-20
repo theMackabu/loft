@@ -4,14 +4,6 @@ macro_rules! add {
    };
 }
 
-macro_rules! tuple {
-   ($($item:expr),*) => (($($item),*));
-}
-
 fn main() {
-   let sum = add!(5, 3);
-   println!("{sum}");
-   
-   let t = tuple!(1, "hello", true);
-   println!("{tuple}");
+   add!(5, 3);
 }

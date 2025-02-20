@@ -11,11 +11,6 @@ pub struct RepetitionBlock {
     separator: Option<Token>,
 }
 
-enum Placeholder {
-    Named(String),
-    Positional(Option<usize>),
-}
-
 impl<'st> Interpreter<'st> {
     pub fn handle_macro_definition(&mut self, name: &str, tokens: &[TokenInfo]) -> Result<(), String> {
         let delimiter = extract_macro_delimiter(tokens)?;
@@ -23,18 +18,26 @@ impl<'st> Interpreter<'st> {
         Ok(())
     }
 
-    pub fn expand_macro_with_recursion_check(&mut self, name: &str, delimiter: &MacroDelimiter, tokens: &[TokenInfo], depth: usize) -> Result<Expr, String> {
+    pub fn expand_macro(&mut self, name: &str, delimiter: &MacroDelimiter, tokens: &[TokenInfo], depth: usize) -> Result<Expr, String> {
         if depth > 100 {
             return Err("Maximum macro recursion depth exceeded".to_string());
         }
 
-        let expanded = self.expand_macro(name, delimiter, tokens)?;
+        let expanded = self.expand_macro_inner(name, delimiter, tokens)?;
         self.process_nested_macros(&expanded, depth + 1)
     }
 
-    fn expand_macro(&mut self, name: &str, delimiter: &MacroDelimiter, tokens: &[TokenInfo]) -> Result<Expr, String> {
+    fn parse_expanded_tokens(&self, tokens: &[TokenInfo]) -> Result<Expr, String> {
+        let input = str::tokens_to_string(tokens);
+        let lexer = Lexer::new(input);
+        let mut parser = crate::parser::Parser::new(lexer);
+
+        parser.parse_expression(0).map_err(|e| format!("Failed to parse expanded macro: {}", e))
+    }
+
+    fn expand_macro_inner(&mut self, name: &str, delimiter: &MacroDelimiter, tokens: &[TokenInfo]) -> Result<Expr, String> {
         match proc::handle_procedural_macro(name, tokens) {
-            Ok(expanded_tokens) => return self.parse_expanded_tokens(expanded_tokens),
+            Ok(expanded_tokens) => return self.parse_expanded_tokens(&expanded_tokens),
             Err(e) if e.is_none() => {}
             Err(e) => return Err(e.unwrap()),
         }
@@ -54,7 +57,7 @@ impl<'st> Interpreter<'st> {
             let processed_tokens = self.process_repetition_pattern(def_tokens, &args)?;
             let expanded_tokens = self.substitute_macro_tokens(&processed_tokens, &params, &args)?;
 
-            self.parse_expanded_tokens(expanded_tokens)
+            self.parse_expanded_tokens(&expanded_tokens)
         } else {
             Err(format!("Macro '{}' not found", name))
         }
@@ -87,14 +90,6 @@ impl<'st> Interpreter<'st> {
         Ok(params)
     }
 
-    fn parse_expanded_tokens(&self, tokens: Vec<TokenInfo>) -> Result<Expr, String> {
-        let input = str::tokens_to_string(&tokens);
-        let lexer = Lexer::new(input);
-        let mut parser = crate::parser::Parser::new(lexer);
-
-        parser.parse_expression(0).map_err(|e| format!("Failed to parse expanded macro: {}", e))
-    }
-
     fn substitute_macro_tokens(&self, def_tokens: &[TokenInfo], params: &[String], args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
         let mut result = Vec::new();
 
@@ -124,7 +119,7 @@ impl<'st> Interpreter<'st> {
 
     fn process_nested_macros(&mut self, expr: &Expr, depth: usize) -> Result<Expr, String> {
         match expr {
-            Expr::MacroInvocation { name, delimiter, tokens } => self.expand_macro_with_recursion_check(name, delimiter, tokens, depth),
+            Expr::MacroInvocation { name, delimiter, tokens } => self.expand_macro(name, delimiter, tokens, depth),
 
             Expr::Block { statements, value, returns, is_async } => {
                 let mut processed_stmts = Vec::new();
