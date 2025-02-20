@@ -1,9 +1,10 @@
+mod r#enum;
+mod r#macro;
+
 mod array;
 mod assign;
 mod cast;
-mod r#enum;
 mod environment;
-mod macros;
 mod methods;
 mod pointer;
 mod structs;
