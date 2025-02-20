@@ -6,9 +6,9 @@ use crate::parser::ast::NumericType;
 
 macro_rules! debug {
     ($($arg:tt)*) => {{
-        let blue = "\x1b[38;5;27m";
+        let light_blue = "\x1b[94m";
         let reset = "\x1b[0m";
-        eprintln!("{}[DEBUG] {}{}", blue, format_args!($($arg)*), reset);
+        eprintln!("{}[DEBUG] {}{}", light_blue, format_args!($($arg)*), reset);
     }};
 }
 
@@ -107,8 +107,12 @@ impl<'st> Interpreter<'st> {
                 return Err(format!("Macro '{}' expected {} arguments, got {}", name, params.len(), args.len()));
             }
 
+            debug!("Finding macro body tokens");
+            let body_tokens = self.extract_macro_body(def_tokens)?;
+            debug!("Found {} body tokens", body_tokens.len());
+
             debug!("Processing repetition patterns");
-            let processed_tokens = self.process_repetition_pattern(def_tokens, &args)?;
+            let processed_tokens = self.process_repetition_pattern(&body_tokens, &args)?;
             debug!("Processed {} tokens with repetition patterns", processed_tokens.len());
 
             debug!("Substituting macro tokens");
@@ -154,33 +158,56 @@ impl<'st> Interpreter<'st> {
         Ok(params)
     }
 
+    fn extract_macro_body(&self, tokens: &[TokenInfo]) -> Result<Vec<TokenInfo>, String> {
+        debug!("Extracting macro body from {} tokens", tokens.len());
+        let mut body_tokens = Vec::new();
+        let mut found_arrow = false;
+
+        for token_info in tokens {
+            if found_arrow {
+                body_tokens.push(token_info.clone());
+            } else if let Token::Fat = token_info.token {
+                found_arrow = true;
+            }
+        }
+
+        if !found_arrow {
+            warn!("Macro definition missing fat arrow (=>)");
+            return Err("Macro definition missing fat arrow (=>)".to_string());
+        }
+
+        if !body_tokens.is_empty() {
+            if matches!(body_tokens.last().unwrap().token, Token::RightParen | Token::RightBrace | Token::RightBracket) {
+                body_tokens.pop();
+            }
+        }
+
+        debug!("Extracted {} body tokens", body_tokens.len());
+        Ok(body_tokens)
+    }
+
     fn substitute_macro_tokens(&self, def_tokens: &[TokenInfo], params: &[String], args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
-        debug!("Substituting macro tokens: {} parameters, {} arguments", params.len(), args.len());
+        debug!(
+            "Substituting macro tokens: {} parameters, {} arguments in {} definition tokens",
+            params.len(),
+            args.len(),
+            def_tokens.len()
+        );
         let mut result = Vec::new();
 
         for (i, token_info) in def_tokens.iter().enumerate() {
             if let Token::Identifier(name) = &token_info.token {
                 if name.starts_with('$') {
-                    let param_name = &name[1..];
+                    let param_name = if name.contains(':') { &name[1..name.find(':').unwrap()] } else { &name[1..] };
+
                     if let Some(index) = params.iter().position(|p| p == param_name) {
                         debug!("Substituting parameter '{}' at position {} with argument {}", param_name, i, index);
-                        // insert the argument tokens
                         result.extend_from_slice(&args[index]);
-                    } else {
-                        // keep the token as is
-                        trace!("Unknown parameter '{}' at position {}, keeping as is", param_name, i);
-                        result.push(token_info.clone());
+                        continue;
                     }
-                } else {
-                    // regular identifier
-                    trace!("Regular identifier '{}' at position {}", name, i);
-                    result.push(token_info.clone());
                 }
-            } else {
-                // non-identifier token
-                trace!("Non-identifier token at position {}: {:?}", i, token_info.token);
-                result.push(token_info.clone());
             }
+            result.push(token_info.clone());
         }
 
         debug!("Substituted tokens: {} original tokens expanded to {} tokens", def_tokens.len(), result.len());
