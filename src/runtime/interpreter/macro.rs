@@ -565,21 +565,29 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
     let mut current_arg = Vec::new();
     let mut nesting = 0;
 
-    for (i, token) in tokens.iter().enumerate() {
-        match &token.token {
+    fn is_delimiter(token: &Token) -> bool {
+        matches!(
+            token,
+            Token::At | Token::Arrow | Token::Dot | Token::Comma | Token::LeftAngle | Token::RightAngle | Token::Question | Token::Pound | Token::Colon | Token::Semicolon | Token::Equals | Token::Fat
+        )
+    }
+
+    for (i, token_info) in tokens.iter().enumerate() {
+        match &token_info.token {
             Token::LeftParen | Token::LeftBrace | Token::LeftBracket => {
                 nesting += 1;
                 trace!("Nesting increased to {} at position {}", nesting, i);
-                current_arg.push(token.clone());
+                current_arg.push(token_info.clone());
             }
             Token::RightParen | Token::RightBrace | Token::RightBracket => {
                 nesting -= 1;
                 trace!("Nesting decreased to {} at position {}", nesting, i);
-                current_arg.push(token.clone());
+                current_arg.push(token_info.clone());
             }
-            Token::Comma if nesting == 0 => {
+            token if nesting == 0 && is_delimiter(token) => {
                 if !current_arg.is_empty() {
-                    debug!("Found argument with {} tokens at comma", current_arg.len());
+                    current_arg.push(token_info.clone());
+                    debug!("Found argument with {} tokens at delimiter {:?}", current_arg.len(), token);
                     args.push(current_arg);
                     current_arg = Vec::new();
                 }
@@ -590,22 +598,23 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
                         match &prev.token {
                             Token::Identifier(s) => prev.location.column + s.len(),
                             Token::String(s) => prev.location.column + s.len() + 2,
+                            token if is_delimiter(token) => prev.location.column + 1,
                             _ => prev.location.column + 1,
                         }
                     } else {
                         0
                     };
 
-                    if token.location.column > prev_token_end + 1 {
+                    if token_info.location.column > prev_token_end + 1 {
                         debug!("Found space gap between tokens");
                         args.push(current_arg);
                         current_arg = Vec::new();
                     }
                 }
-                current_arg.push(token.clone());
+                current_arg.push(token_info.clone());
             }
             _ => {
-                current_arg.push(token.clone());
+                current_arg.push(token_info.clone());
             }
         }
     }

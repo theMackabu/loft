@@ -14,6 +14,7 @@ pub fn tokens_to_string(tokens: &[TokenInfo]) -> String {
 pub fn token_to_string(token: &Token) -> String {
     match token {
         Token::Pound => "#".to_string(),
+        Token::At => "@".to_string(),
         Token::Dollar => "$".to_string(),
         Token::MacroRules => "macro_rules!".to_string(),
 

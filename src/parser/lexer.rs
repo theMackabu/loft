@@ -4,6 +4,7 @@ use super::ast::NumericType;
 pub enum Token {
     // definitions
     Pound,      // #
+    At,         // @
     Dollar,     // $
     MacroRules, // macro_rules!
 
@@ -407,6 +408,11 @@ impl Lexer {
                 '#' => {
                     self.advance();
                     Token::Pound
+                }
+
+                '@' => {
+                    self.advance();
+                    Token::At
                 }
 
                 '?' => {
