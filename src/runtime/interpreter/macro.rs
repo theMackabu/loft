@@ -23,27 +23,19 @@ pub struct RepetitionBlock {
 
 impl<'st> Interpreter<'st> {
     pub fn handle_macro_definition(&mut self, name: &str, tokens: &[TokenInfo]) -> Result<(), String> {
-        debug!("Handling macro definition: '{}'", name);
-
         let delimiter = extract_macro_delimiter(tokens)?;
-        debug!("Extracted delimiter: {:?}", delimiter);
-
         let branches = extract_macro_branches(tokens)?;
-        debug!("Extracted {} branches for macro '{}'", branches.len(), name);
 
         self.mcs.insert(name.to_string(), (delimiter, tokens.to_vec(), branches));
         Ok(())
     }
 
     pub fn expand_macro(&mut self, name: &str, delimiter: &MacroDelimiter, tokens: &[TokenInfo], depth: usize) -> Result<Expr, String> {
-        debug!("Expanding macro '{}' at depth {}", name, depth);
         if depth > 100 {
-            debug!("Maximum macro recursion depth exceeded for '{}'", name);
             return Err("Maximum macro recursion depth exceeded".to_string());
         }
 
         let expanded = self.expand_macro_inner(name, delimiter, tokens)?;
-        debug!("Macro '{}' expanded, processing nested macros", name);
         self.process_nested_macros(&expanded, depth + 1)
     }
 
@@ -78,7 +70,7 @@ impl<'st> Interpreter<'st> {
             }
         }
 
-        if let Some((def_delimiter, def_tokens, branches)) = self.mcs.get(name) {
+        if let Some((def_delimiter, _, branches)) = self.mcs.get(name) {
             if delimiter != def_delimiter {
                 warn!("Macro '{}' invoked with wrong delimiter: expected {:?}, got {:?}", name, def_delimiter, delimiter);
                 return Err(format!("Macro '{}' invoked with wrong delimiter", name));
@@ -88,7 +80,6 @@ impl<'st> Interpreter<'st> {
             let args = extract_macro_arguments(tokens)?;
             debug!("Extracted {} arguments", args.len());
 
-            // Try matching branches
             for (i, branch) in branches.iter().enumerate() {
                 debug!("Trying to match branch {} of macro '{}'", i, name);
                 if match_branch_literals(&branch.literal_tokens, &args) && validate_branch_params(&branch.params, &args).is_ok() {
@@ -124,13 +115,15 @@ impl<'st> Interpreter<'st> {
         let mut result = Vec::new();
         let mut i = 0;
 
+        let format_args = if args.len() > 1 { &args[1..] } else { &[] };
+
         while i < def_tokens.len() {
             if def_tokens[i].token == Token::Dollar {
                 if i + 1 < def_tokens.len() {
                     match &def_tokens[i + 1].token {
                         Token::LeftParen => {
                             let (group_tokens, group_len) = self.extract_repetition_group(&def_tokens[i..])?;
-                            let expanded = self.expand_repetition_group(&group_tokens, params, args)?;
+                            let expanded = self.expand_repetition_group(&group_tokens, params, format_args)?;
                             result.extend(expanded);
                             i += group_len;
                             continue;
@@ -140,8 +133,10 @@ impl<'st> Interpreter<'st> {
                                 if params[index].kind != MacroParamKind::Expr {
                                     return Err(format!("Unsupported macro parameter kind for ${}", params[index].name));
                                 }
-                                debug!("Substituting parameter '{}' with {} argument tokens", name, args[index].len());
-                                result.extend_from_slice(&args[index]);
+                                if index < format_args.len() {
+                                    debug!("Substituting parameter '{}' with {} argument tokens", name, format_args[index].len());
+                                    result.extend_from_slice(&format_args[index]);
+                                }
                                 i += 2; // skip '$' and the identifier
                                 continue;
                             }
@@ -739,6 +734,13 @@ fn extract_branch_body(tokens: &[TokenInfo], start_pos: usize) -> Result<(Vec<To
 
 fn match_branch_literals(literals: &[Token], args: &[Vec<TokenInfo>]) -> bool {
     debug!("Matching {} literal tokens against {} arguments", literals.len(), args.len());
+
+    if literals.len() == 1 && args.is_empty() {
+        if let Token::RightParen = &literals[0] {
+            debug!("Matched empty macro invocation pattern");
+            return true;
+        }
+    }
 
     if literals.is_empty() {
         return true;

@@ -1,21 +1,21 @@
-// macro_rules! add {
-//    ($a:expr, $b:expr) => {
-//       $a + $b
-//    };
-// }
-// 
-// macro_rules! say_hello {
-//    () => { 
-//       println!("Hello!") 
-//    };
-// }
-// 
-// macro_rules! count_exprs {
-//    () => { 0 };
-//    ($_head:expr $(, $tail:expr)*) => {
-//       1 + count_exprs!($($tail),*)
-//    }
-// }
+macro_rules! add {
+   ($a:expr, $b:expr) => {
+      $a + $b
+   };
+}
+
+macro_rules! say_hello {
+   () => { 
+      println!("Hello!") 
+   };
+}
+
+macro_rules! count_exprs {
+   () => { 0 };
+   ($_head:expr $(, $tail:expr)*) => {
+      1 + count_exprs!($($tail),*)
+   }
+}
 
 macro_rules! log {
    (error, $($arg:tt)*) => {
@@ -29,19 +29,20 @@ macro_rules! log {
    };
 }
 
-// macro_rules! tuple {
-//    ($($item:expr),*) => (($($item),*));
-// }
+macro_rules! tuple {
+   ($($item:expr),*) => (($($item),*));
+}
 
 fn main() {   
-   // say_hello!();
+   say_hello!();
    
    // let val = add!(5, 3);
    // io::println(val);
-   
+   // 
    log!(warn, "testing");
-   // println!("{}", count_exprs!(1, "hello", 3.14));
+   let val = count_exprs!(1, "hello", 3.14);
+   io::println(val);
    
-   // let tpl = tuple!(1, "hello", true);
-   // io::println(tpl);
+   let tpl = tuple!(1, "hello", true);
+   io::println(tpl);
 }
