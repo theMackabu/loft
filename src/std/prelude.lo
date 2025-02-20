@@ -42,23 +42,3 @@ impl Option<T> {
 }
 
 pub fn drop<T>(_x: T) {}
-
-// pub struct String {
-//     data: [u8],
-// }
-// 
-// impl String {
-//     pub fn new() -> String {
-//         String { data: [] }
-//     }
-//     
-//     pub fn push_str(&mut self, s: &str) {
-//         for byte in s.bytes() {
-//             self.data.push(byte);
-//         }
-//     }
-//     
-//     pub fn len(&self) -> usize {
-//         self.data.len()
-//     }
-// }

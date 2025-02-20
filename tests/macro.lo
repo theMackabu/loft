@@ -8,13 +8,6 @@ macro_rules! add {
    };
 }
 
-macro_rules! count_exprs {
-   () => { 0 };
-   ($_head:expr $(, $tail:expr)*) => {
-      1 + count_exprs!($($tail),*)
-   }
-}
-
 macro_rules! tuple {
    ($($item:expr),*) => (($($item),*));
 }
