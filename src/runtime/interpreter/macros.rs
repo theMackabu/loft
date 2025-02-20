@@ -8,6 +8,11 @@ pub struct RepetitionBlock {
     separator: Option<Token>,
 }
 
+enum Placeholder {
+    Named(String),
+    Positional(Option<usize>),
+}
+
 impl<'st> Interpreter<'st> {
     pub fn handle_macro_definition(&mut self, name: &str, tokens: &[TokenInfo]) -> Result<(), String> {
         let delimiter = self.extract_macro_delimiter(tokens)?;
@@ -45,6 +50,7 @@ impl<'st> Interpreter<'st> {
 
             let processed_tokens = self.process_repetition_pattern(def_tokens, &args)?;
             let expanded_tokens = self.substitute_macro_tokens(&processed_tokens, &params, &args)?;
+
             self.parse_expanded_tokens(expanded_tokens)
         } else {
             Err(format!("Macro '{}' not found", name))
@@ -100,100 +106,63 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
-            "format" => {
-                if tokens.is_empty() {
-                    return Ok(vec![TokenInfo {
-                        token: Token::String("".to_string()),
-                        location: Location { line: 0, column: 0 },
-                    }]);
-                }
+            "println" => {
+                let mut format_invocation = Vec::new();
+                let first_location = tokens.first().map_or(Location { line: 0, column: 0 }, |t| t.location.clone());
 
-                let fmt_token = &tokens[0];
-                let fmt_str = if let Token::String(ref s) = fmt_token.token {
-                    s.clone()
-                } else {
-                    return Err(Some("format! requires a string literal as its first argument".to_string()));
-                };
-
-                let mut parts = Vec::new();
-                let mut placeholders = 0;
-                let mut current_part = String::new();
-                let mut i = 0;
-
-                while i < fmt_str.len() {
-                    if fmt_str[i..].starts_with("{}") {
-                        parts.push(current_part);
-                        current_part = String::new();
-                        placeholders += 1;
-                        i += 2;
-                    } else {
-                        current_part.push(fmt_str.chars().nth(i).unwrap());
-                        i += 1;
-                    }
-                }
-
-                parts.push(current_part);
-
-                let args = self.extract_macro_arguments(&tokens[1..])?;
-                if placeholders != args.len() {
-                    return Err(Some(format!("format! expected {} arguments, got {}", placeholders, args.len())));
-                }
-
-                let mut new_tokens = Vec::new();
-                let first_location = fmt_token.location.clone();
-
-                new_tokens.push(TokenInfo {
-                    token: Token::Identifier("core".to_string()),
+                format_invocation.push(TokenInfo {
+                    token: Token::Identifier("print".to_string()),
                     location: first_location.clone(),
                 });
 
-                new_tokens.push(TokenInfo {
-                    token: Token::DoubleColon,
+                format_invocation.push(TokenInfo {
+                    token: Token::Not,
                     location: first_location.clone(),
                 });
 
-                new_tokens.push(TokenInfo {
-                    token: Token::Identifier("concat".to_string()),
-                    location: first_location.clone(),
-                });
-
-                new_tokens.push(TokenInfo {
+                format_invocation.push(TokenInfo {
                     token: Token::LeftParen,
                     location: first_location.clone(),
                 });
 
-                for (i, part) in parts.iter().enumerate() {
-                    new_tokens.push(TokenInfo {
-                        token: Token::String(part.clone()),
+                if tokens.is_empty() {
+                    format_invocation.push(TokenInfo {
+                        token: Token::String("\n".to_string()),
                         location: first_location.clone(),
                     });
+                } else if let Some(TokenInfo {
+                    token: Token::String(ref s),
+                    location,
+                }) = tokens.first()
+                {
+                    let mut new_format_string = s.clone();
+                    new_format_string.push('\n');
 
-                    if i < args.len() {
-                        new_tokens.push(TokenInfo {
+                    format_invocation.push(TokenInfo {
+                        token: Token::String(new_format_string),
+                        location: location.clone(),
+                    });
+
+                    if tokens.len() > 1 {
+                        format_invocation.push(TokenInfo {
                             token: Token::Comma,
-                            location: first_location.clone(),
+                            location: location.clone(),
                         });
-
-                        new_tokens.extend(args[i].clone());
+                        format_invocation.extend_from_slice(&tokens[1..]);
                     }
-
-                    if i < parts.len() - 1 {
-                        new_tokens.push(TokenInfo {
-                            token: Token::Comma,
-                            location: first_location.clone(),
-                        });
-                    }
+                } else {
+                    return Err(Some("println! requires a string literal as its first argument".to_string()));
                 }
 
-                new_tokens.push(TokenInfo {
+                format_invocation.push(TokenInfo {
                     token: Token::RightParen,
                     location: first_location.clone(),
                 });
 
-                Ok(new_tokens)
+                Ok(format_invocation)
             }
 
-            "println" => {
+            "print" => {
                 let mut format_invocation = Vec::new();
                 let first_location = tokens.first().map_or(Location { line: 0, column: 0 }, |t| t.location.clone());
 
@@ -229,7 +198,7 @@ impl<'st> Interpreter<'st> {
                     location: first_location.clone(),
                 });
                 result_tokens.push(TokenInfo {
-                    token: Token::Identifier("println".to_string()),
+                    token: Token::Identifier("print".to_string()),
                     location: first_location.clone(),
                 });
                 result_tokens.push(TokenInfo {
@@ -242,6 +211,158 @@ impl<'st> Interpreter<'st> {
                     location: first_location,
                 });
                 Ok(result_tokens)
+            }
+
+            "format" => {
+                if tokens.is_empty() {
+                    return Ok(vec![TokenInfo {
+                        token: Token::String("".to_string()),
+                        location: Location { line: 0, column: 0 },
+                    }]);
+                }
+
+                let fmt_token = &tokens[0];
+                let fmt_str = if let Token::String(ref s) = fmt_token.token {
+                    s.clone()
+                } else {
+                    return Err(Some("format! requires a string literal as its first argument".to_string()));
+                };
+
+                let mut parts = Vec::new();
+                let mut placeholders = Vec::new();
+                let mut current_part = String::new();
+                let mut i = 0;
+
+                while i < fmt_str.len() {
+                    if fmt_str[i..].starts_with("{}") {
+                        parts.push(current_part);
+                        current_part = String::new();
+                        placeholders.push(Placeholder::Positional(None));
+                        i += 2;
+                    } else if fmt_str[i..].starts_with('{') {
+                        if let Some(end) = fmt_str[i..].find('}') {
+                            let content = &fmt_str[i + 1..i + end];
+                            parts.push(current_part);
+                            current_part = String::new();
+
+                            if let Ok(index) = content.parse::<usize>() {
+                                placeholders.push(Placeholder::Positional(Some(index)));
+                            } else {
+                                placeholders.push(Placeholder::Named(content.to_string()));
+                            }
+
+                            i += end + 1;
+                        } else {
+                            return Err(Some("Unmatched '{' in format string".to_string()));
+                        }
+                    } else {
+                        current_part.push(fmt_str.chars().nth(i).unwrap());
+                        i += 1;
+                    }
+                }
+
+                parts.push(current_part);
+
+                let args = self.extract_macro_arguments(&tokens[1..])?;
+                let mut named_args = std::collections::HashMap::new();
+
+                for arg in &args {
+                    if let Some(Token::Identifier(ref name)) = arg.first().map(|t| &t.token) {
+                        named_args.insert(name.clone(), arg.clone());
+                    }
+                }
+
+                let mut new_tokens = Vec::new();
+                let first_location = fmt_token.location.clone();
+
+                new_tokens.push(TokenInfo {
+                    token: Token::Identifier("core".to_string()),
+                    location: first_location.clone(),
+                });
+
+                new_tokens.push(TokenInfo {
+                    token: Token::DoubleColon,
+                    location: first_location.clone(),
+                });
+
+                new_tokens.push(TokenInfo {
+                    token: Token::Identifier("concat".to_string()),
+                    location: first_location.clone(),
+                });
+
+                new_tokens.push(TokenInfo {
+                    token: Token::LeftParen,
+                    location: first_location.clone(),
+                });
+
+                let mut positional_index = 0;
+
+                for (i, part) in parts.iter().enumerate() {
+                    new_tokens.push(TokenInfo {
+                        token: Token::String(part.clone()),
+                        location: first_location.clone(),
+                    });
+
+                    if i < placeholders.len() {
+                        match &placeholders[i] {
+                            Placeholder::Positional(Some(index)) => {
+                                if *index < args.len() {
+                                    new_tokens.push(TokenInfo {
+                                        token: Token::Comma,
+                                        location: first_location.clone(),
+                                    });
+                                    new_tokens.extend(args[*index].clone());
+                                } else {
+                                    return Err(Some(format!("format! expected argument at index {}, but got {} arguments", index, args.len())));
+                                }
+                            }
+                            Placeholder::Positional(None) => {
+                                if positional_index < args.len() {
+                                    new_tokens.push(TokenInfo {
+                                        token: Token::Comma,
+                                        location: first_location.clone(),
+                                    });
+                                    new_tokens.extend(args[positional_index].clone());
+                                    positional_index += 1;
+                                } else {
+                                    return Err(Some(format!("format! expected {} arguments, got {}", positional_index + 1, args.len())));
+                                }
+                            }
+                            Placeholder::Named(name) => {
+                                if let Some(arg_tokens) = named_args.get(name) {
+                                    new_tokens.push(TokenInfo {
+                                        token: Token::Comma,
+                                        location: first_location.clone(),
+                                    });
+                                    new_tokens.extend(arg_tokens.clone());
+                                } else {
+                                    new_tokens.push(TokenInfo {
+                                        token: Token::Comma,
+                                        location: first_location.clone(),
+                                    });
+                                    new_tokens.push(TokenInfo {
+                                        token: Token::Identifier(name.clone()),
+                                        location: first_location.clone(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    if i < parts.len() - 1 {
+                        new_tokens.push(TokenInfo {
+                            token: Token::Comma,
+                            location: first_location.clone(),
+                        });
+                    }
+                }
+
+                new_tokens.push(TokenInfo {
+                    token: Token::RightParen,
+                    location: first_location.clone(),
+                });
+
+                Ok(new_tokens)
             }
 
             // add more built-in procedural macros later
@@ -264,13 +385,28 @@ impl<'st> Interpreter<'st> {
 
     fn extract_macro_parameters(&self, tokens: &[TokenInfo]) -> Result<Vec<String>, String> {
         let mut params = Vec::new();
-        for token_info in tokens {
-            if let Token::Identifier(name) = &token_info.token {
-                if name.starts_with('$') {
-                    params.push(name[1..].to_string());
+        let mut i = 0;
+
+        while i < tokens.len() {
+            if let Token::Fat = tokens[i].token {
+                break;
+            }
+
+            if let Token::Dollar = tokens[i].token {
+                if i + 1 < tokens.len() {
+                    if let Token::Identifier(ref name) = tokens[i + 1].token {
+                        params.push(name.clone());
+                        i += 2;
+                        continue;
+                    } else {
+                        return Err("Expected identifier after '$' in macro parameters".to_string());
+                    }
                 }
             }
+
+            i += 1;
         }
+
         Ok(params)
     }
 

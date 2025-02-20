@@ -16,10 +16,7 @@ impl Info {
    
    fn set_name(&mut self, name: &str) {
       self.name = name;
-      
-      io::print("set_name (self for info): ");
-      io::println(self);
-      io::println("");
+      println!("set_name (self for info): {self}\n");
    }
 }
 
@@ -29,31 +26,16 @@ impl Triangle {
    }
    
    fn display(&self) {      
-      io::println("called self.display():\n");
-      
-      io::print(" - self.base: ");
-      io::println(self.base);
-      io::println("");
-      
-      io::print(" - self.height: ");
-      io::println(self.height);
-      io::println("");
-      
-      io::print(" - self.info.id: ");
-      io::println(self.info.id);
-      io::println("");
-      
-      io::print(" - self.info.get_name(): ");
-      io::println(self.info.get_name());
-      io::println("");
+      println!("called self.display():\n");
+      println!(" - self.base: {}\n", self.base);
+      println!(" - self.height: {}\n", self.height);
+      println!(" - self.info.id: {}\n", self.info.id);
+      println!(" - self.info.get_name() {}\n", self.info.get_name());
    }
    
    fn set_base(&mut self, base: i32) {
       self.base = base;
-      
-      io::print("set_base (self for triangle): ");
-      io::println(self);
-      io::println("");
+      println!("set_base (self for triangle): {self}\n");
    }
    
    fn change_stuff(&mut self) {

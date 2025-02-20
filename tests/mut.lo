@@ -1,23 +1,19 @@
 fn test_assignment(val: &mut i32) -> &mut i32 {
    *val += 3;
    
-   io::print("value(2) is: ");
-   io::println(value);
-   
+   println!("value(2) is: {value}");   
    return val;
 }
 
 fn main() -> Result<(), &str> {
    let mut value = 5;
-   
-   io::print("value(1) is: ");
-   io::println(value);
+
+   println!("value(1) is: {value}");
 
    let val2 = test_assignment(&mut value);
    *val2 += 10;
       
-   io::print("value(3) is: ");
-   io::println(value);
+   println!("value(3) is: {value}");
       
    Result::Ok(())
 }

@@ -123,6 +123,10 @@ impl<'st> Interpreter<'st> {
                     self.handle_enum_def(name, variants.to_owned())?;
                 }
 
+                Stmt::MacroDefinition { name, tokens, .. } => {
+                    self.handle_macro_definition(name, tokens)?;
+                }
+
                 Stmt::Module { name, body, .. } => {
                     self.env.scope_resolver.declare_module(name)?;
                     self.env.enter_scope();
@@ -400,7 +404,9 @@ impl<'st> Interpreter<'st> {
                 NumericType::U128 => ValueType::U128(*value as u128),
                 NumericType::USize => ValueType::USize(*value as usize),
 
-                _ => unreachable!(), // cannot hit this
+                // fix??
+                NumericType::F32 => ValueType::F32(*value as f32),
+                NumericType::F64 => ValueType::F64(*value as f64),
             })),
 
             Expr::Float(value, ty) => Ok(val!(match ty.to_owned().unwrap_or(NumericType::F64) {

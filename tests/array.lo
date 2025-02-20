@@ -14,9 +14,10 @@ fn main() {
    analyze(s);
    analyze(xs);
    analyze(ys[1 .. 4]);
-
-   match xs.get(1) {
-      Some(xval) => println!("{xval}"),
-      None => io::println("nope"),
+   
+   let val = 1;
+   match xs.get(val) {
+      Some(val) => println!("The found value is {val}"),
+      None => println!("Cannot find {val} in xs"),
    }
 }
