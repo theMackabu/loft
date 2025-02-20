@@ -134,11 +134,12 @@ impl<'st> Interpreter<'st> {
                             continue;
                         }
                         Token::Identifier(name) => {
-                            if let Some(index) = params.iter().position(|p| p.name == *name) {
-                                if params[index].kind != MacroParamKind::Expr {
-                                    return Err(format!("Unsupported macro parameter kind for ${}", params[index].name));
+                            if let Some(param_idx) = params.iter().position(|p| p.name == *name) {
+                                if params[param_idx].kind != MacroParamKind::Expr {
+                                    return Err(format!("Unsupported macro parameter kind for ${}", params[param_idx].name));
                                 }
-                                if let Some(arg_tokens) = branch_args.get(0) {
+                                if let Some(arg_tokens) = args.get(param_idx) {
+                                    // Use param_idx instead of 0
                                     debug!("Substituting parameter '{}' with {} argument tokens", name, arg_tokens.len());
                                     result.extend_from_slice(arg_tokens);
                                 }
@@ -572,6 +573,9 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
         )
     }
 
+    // Skip the first token if it's a Not (!)
+    let tokens = if !tokens.is_empty() && tokens[0].token == Token::Not { &tokens[1..] } else { tokens };
+
     for (i, token_info) in tokens.iter().enumerate() {
         match &token_info.token {
             Token::LeftParen | Token::LeftBrace | Token::LeftBracket => {
@@ -585,11 +589,22 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
                 current_arg.push(token_info.clone());
             }
             token if nesting == 0 && is_delimiter(token) => {
-                if !current_arg.is_empty() {
+                // Special handling for commas vs other delimiters
+                if matches!(token, Token::Comma) {
+                    // For commas, don't include the delimiter
+                    if !current_arg.is_empty() {
+                        debug!("Found argument with {} tokens at delimiter {:?}", current_arg.len(), token);
+                        args.push(current_arg);
+                        current_arg = Vec::new();
+                    }
+                } else {
+                    // For other delimiters, include them with their argument
                     current_arg.push(token_info.clone());
-                    debug!("Found argument with {} tokens at delimiter {:?}", current_arg.len(), token);
-                    args.push(current_arg);
-                    current_arg = Vec::new();
+                    if !current_arg.is_empty() {
+                        debug!("Found argument with {} tokens at delimiter {:?}", current_arg.len(), token);
+                        args.push(current_arg);
+                        current_arg = Vec::new();
+                    }
                 }
             }
             _ if nesting == 0 => {
@@ -607,8 +622,10 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
 
                     if token_info.location.column > prev_token_end + 1 {
                         debug!("Found space gap between tokens");
-                        args.push(current_arg);
-                        current_arg = Vec::new();
+                        if !current_arg.is_empty() {
+                            args.push(current_arg);
+                            current_arg = Vec::new();
+                        }
                     }
                 }
                 current_arg.push(token_info.clone());
@@ -624,8 +641,11 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
         args.push(current_arg);
     }
 
-    debug!("Extracted {} total arguments", args.len());
-    Ok(args)
+    // Filter out any empty arguments
+    let filtered_args: Vec<Vec<TokenInfo>> = args.into_iter().filter(|arg| !arg.is_empty()).collect();
+
+    debug!("Extracted {} total arguments", filtered_args.len());
+    Ok(filtered_args)
 }
 
 fn extract_macro_delimiter(tokens: &[TokenInfo]) -> Result<MacroDelimiter, String> {
