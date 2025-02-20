@@ -33,12 +33,12 @@ macro_rules! tuple {
    ($($item:expr),*) => (($($item),*));
 }
 
-fn main() {   
+fn main() {
    say_hello!();
    
-   // let val = add!(5, 3);
-   // io::println(val);
-   // 
+   let val = add!(5, 3);
+   io::println(val);
+   
    log!(warn, "testing");
    let val = count_exprs!(1, "hello", 3.14);
    io::println(val);

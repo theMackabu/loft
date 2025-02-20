@@ -115,7 +115,21 @@ impl<'st> Interpreter<'st> {
         let mut result = Vec::new();
         let mut i = 0;
 
-        let format_args = if args.len() > 1 { &args[1..] } else { &[] };
+        let branch_args = if !params.is_empty() && args.len() > 0 {
+            let first_is_branch = args[0].len() == 1 && (matches!(args[0][0].token, Token::Identifier(_)) || args[0][0].token.is_identifier());
+
+            if first_is_branch {
+                if args.len() > 1 {
+                    &args[1..]
+                } else {
+                    &[]
+                }
+            } else {
+                args
+            }
+        } else {
+            args
+        };
 
         while i < def_tokens.len() {
             if def_tokens[i].token == Token::Dollar {
@@ -123,7 +137,7 @@ impl<'st> Interpreter<'st> {
                     match &def_tokens[i + 1].token {
                         Token::LeftParen => {
                             let (group_tokens, group_len) = self.extract_repetition_group(&def_tokens[i..])?;
-                            let expanded = self.expand_repetition_group(&group_tokens, params, format_args)?;
+                            let expanded = self.expand_repetition_group(&group_tokens, params, branch_args)?;
                             result.extend(expanded);
                             i += group_len;
                             continue;
@@ -133,9 +147,9 @@ impl<'st> Interpreter<'st> {
                                 if params[index].kind != MacroParamKind::Expr {
                                     return Err(format!("Unsupported macro parameter kind for ${}", params[index].name));
                                 }
-                                if index < format_args.len() {
-                                    debug!("Substituting parameter '{}' with {} argument tokens", name, format_args[index].len());
-                                    result.extend_from_slice(&format_args[index]);
+                                if index < branch_args.len() {
+                                    debug!("Substituting parameter '{}' with {} argument tokens", name, branch_args[index].len());
+                                    result.extend_from_slice(&branch_args[index]);
                                 }
                                 i += 2; // skip '$' and the identifier
                                 continue;
