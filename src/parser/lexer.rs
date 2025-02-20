@@ -364,6 +364,25 @@ impl Lexer {
                         Some('r') => string.push('\r'),
                         Some('"') => string.push('"'),
                         Some('\\') => string.push('\\'),
+                        Some('x') => {
+                            self.advance(); // consume 'x'
+                            let mut hex = String::new();
+                            for _ in 0..2 {
+                                match self.current_char {
+                                    Some(c) if c.is_ascii_hexdigit() => {
+                                        hex.push(c);
+                                        self.advance();
+                                    }
+                                    _ => return Err("Invalid hex escape sequence"),
+                                }
+                            }
+                            if let Ok(value) = u8::from_str_radix(&hex, 16) {
+                                string.push(value as char);
+                            } else {
+                                return Err("Invalid hex escape sequence");
+                            }
+                            continue;
+                        }
                         _ => return Err("Invalid escape sequence"),
                     }
                     self.advance();

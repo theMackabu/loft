@@ -4,7 +4,6 @@ mod str;
 
 use super::*;
 use crate::parser::ast::NumericType;
-use crate::{debug, trace, warn};
 use parse::{MacroParamKind, MacroParameter};
 
 #[derive(Clone, Debug)]
@@ -40,87 +39,46 @@ impl<'st> Interpreter<'st> {
     }
 
     fn parse_expanded_tokens(&self, tokens: &[TokenInfo]) -> Result<Expr, String> {
-        debug!("Parsing expanded tokens (count: {})", tokens.len());
         let input = str::tokens_to_string(tokens);
-        trace!("Expanded tokens as string: {}", input);
         let lexer = Lexer::new(input);
         let mut parser = crate::parser::Parser::new(lexer);
 
-        let result = parser.parse_expression(0).map_err(|e| {
-            warn!("Failed to parse expanded macro: {}", e);
-            format!("Failed to parse expanded macro: {}", e)
-        });
-        debug!("Expanded tokens parsed successfully");
-        result
+        parser.parse_expression(0).map_err(|e| format!("Failed to parse expanded macro: {}", e))
     }
 
     fn expand_macro_inner(&mut self, name: &str, delimiter: &MacroDelimiter, tokens: &[TokenInfo]) -> Result<Expr, String> {
-        debug!("Expanding macro inner: '{}'", name);
         match proc::handle_procedural_macro(name, tokens) {
-            Ok(expanded_tokens) => {
-                debug!("Procedural macro '{}' handled successfully", name);
-                return self.parse_expanded_tokens(&expanded_tokens);
-            }
-            Err(e) if e.is_none() => {
-                debug!("Not a procedural macro, continuing with regular macro expansion");
-            }
-            Err(e) => {
-                warn!("Procedural macro '{}' failed: {:?}", name, e);
-                return Err(e.unwrap());
-            }
+            Ok(expanded_tokens) => return self.parse_expanded_tokens(&expanded_tokens),
+            Err(e) if e.is_none() => {}
+            Err(e) => return Err(e.unwrap()),
         }
 
         if let Some((def_delimiter, _, branches)) = self.mcs.get(name) {
             if delimiter != def_delimiter {
-                warn!("Macro '{}' invoked with wrong delimiter: expected {:?}, got {:?}", name, def_delimiter, delimiter);
                 return Err(format!("Macro '{}' invoked with wrong delimiter", name));
             }
 
-            debug!("Extracting macro arguments");
             let args = extract_macro_arguments(tokens)?;
-            debug!("Extracted {} arguments", args.len());
 
-            for (i, branch) in branches.iter().enumerate() {
-                debug!("Trying to match branch {} of macro '{}'", i, name);
+            for branch in branches.iter() {
                 if match_branch_literals(&branch.literal_tokens, &args) && validate_branch_params(&branch.params, &args).is_ok() {
-                    debug!("Branch {} matched successfully", i);
-
-                    debug!("Processing repetition patterns");
+                    let substitution_args = if !branch.literal_tokens.is_empty() && !args.is_empty() { &args[1..] } else { &args };
                     let processed_tokens = self.process_repetition_pattern(&branch.body_tokens, &args)?;
-                    debug!("Processed {} tokens with repetition patterns", processed_tokens.len());
-
-                    debug!("Substituting macro tokens");
-                    let expanded_tokens = self.substitute_macro_tokens(&processed_tokens, &branch.params, &args)?;
-                    debug!("Substituted tokens, final expansion has {} tokens", expanded_tokens.len());
+                    let expanded_tokens = self.substitute_macro_tokens(&processed_tokens, &branch.params, substitution_args)?;
 
                     return self.parse_expanded_tokens(&expanded_tokens);
                 }
             }
 
-            warn!("No matching branch found for macro '{}'", name);
             return Err(format!("No matching branch found for macro '{}'", name));
         } else {
-            warn!("Macro '{}' not found", name);
             Err(format!("Macro '{}' not found", name))
         }
     }
 
     fn substitute_macro_tokens(&self, def_tokens: &[TokenInfo], params: &[MacroParameter], args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
-        debug!(
-            "Substituting macro tokens: {} parameters, {} arguments in {} definition tokens",
-            params.len(),
-            args.len(),
-            def_tokens.len()
-        );
         let mut result = Vec::new();
         let mut i = 0;
-
-        let branch_args = if !params.is_empty() && args.len() > 0 {
-            // Skip the pattern tokens (first argument)
-            if args.len() > 1 { &args[1..] } else { &[] }
-        } else {
-            args
-        };
 
         while i < def_tokens.len() {
             if def_tokens[i].token == Token::Dollar {
@@ -128,7 +86,7 @@ impl<'st> Interpreter<'st> {
                     match &def_tokens[i + 1].token {
                         Token::LeftParen => {
                             let (group_tokens, group_len) = self.extract_repetition_group(&def_tokens[i..])?;
-                            let expanded = self.expand_repetition_group(&group_tokens, params, branch_args)?;
+                            let expanded = self.expand_repetition_group(&group_tokens, params, args)?;
                             result.extend(expanded);
                             i += group_len;
                             continue;
@@ -139,11 +97,9 @@ impl<'st> Interpreter<'st> {
                                     return Err(format!("Unsupported macro parameter kind for ${}", params[param_idx].name));
                                 }
                                 if let Some(arg_tokens) = args.get(param_idx) {
-                                    // Use param_idx instead of 0
-                                    debug!("Substituting parameter '{}' with {} argument tokens", name, arg_tokens.len());
                                     result.extend_from_slice(arg_tokens);
                                 }
-                                i += 2; // skip '$' and the identifier
+                                i += 2;
                                 continue;
                             }
                         }
@@ -156,7 +112,6 @@ impl<'st> Interpreter<'st> {
             i += 1;
         }
 
-        debug!("Substituted tokens: {} original tokens expanded to {} tokens", def_tokens.len(), result.len());
         Ok(result)
     }
 
@@ -304,31 +259,19 @@ impl<'st> Interpreter<'st> {
     }
 
     fn process_nested_macros(&mut self, expr: &Expr, depth: usize) -> Result<Expr, String> {
-        debug!("Processing nested macros at depth {}", depth);
         match expr {
-            Expr::MacroInvocation { name, delimiter, tokens } => {
-                debug!("Found nested macro invocation '{}' at depth {}", name, depth);
-                self.expand_macro(name, delimiter, tokens, depth)
-            }
+            Expr::MacroInvocation { name, delimiter, tokens } => self.expand_macro(name, delimiter, tokens, depth),
 
             Expr::Block { statements, value, returns, is_async } => {
-                debug!("Processing nested macros in block with {} statements", statements.len());
                 let mut processed_stmts = Vec::new();
 
-                for (i, stmt) in statements.iter().enumerate() {
-                    debug!("Processing statement {} in block", i);
+                for stmt in statements.iter() {
                     let processed_stmt = self.process_nested_macros_in_stmt(stmt, depth)?;
                     processed_stmts.push(processed_stmt);
                 }
 
-                let processed_value = if let Some(val) = value {
-                    debug!("Processing block value expression");
-                    Some(Box::new(self.process_nested_macros(val, depth)?))
-                } else {
-                    None
-                };
+                let processed_value = if let Some(val) = value { Some(Box::new(self.process_nested_macros(val, depth)?)) } else { None };
 
-                debug!("Block processed with {} statements", processed_stmts.len());
                 Ok(Expr::Block {
                     statements: processed_stmts,
                     value: processed_value,
@@ -339,21 +282,13 @@ impl<'st> Interpreter<'st> {
 
             // process other expression types recursively
             // ... handle other expression types
-            _ => {
-                trace!("Skipping non-macro expression type: {:?}", expr);
-                Ok(expr.clone())
-            }
+            _ => Ok(expr.clone()),
         }
     }
 
     fn process_nested_macros_in_stmt(&mut self, stmt: &Stmt, depth: usize) -> Result<Stmt, String> {
-        debug!("Processing nested macros in statement at depth {}", depth);
         match stmt {
-            Stmt::ExpressionStmt(expr) => {
-                debug!("Processing expression statement");
-                let processed = self.process_nested_macros(expr, depth)?;
-                Ok(Stmt::ExpressionStmt(processed))
-            }
+            Stmt::ExpressionStmt(expr) => Ok(Stmt::ExpressionStmt(self.process_nested_macros(expr, depth)?)),
 
             Stmt::Let {
                 pattern,
@@ -361,12 +296,9 @@ impl<'st> Interpreter<'st> {
                 initializer,
                 attributes,
             } => {
-                debug!("Processing let statement with pattern: {:?}", pattern);
                 let processed_init = if let Some(init) = initializer {
-                    debug!("Processing let statement initializer");
                     Some(Box::new(self.process_nested_macros(init, depth)?))
                 } else {
-                    debug!("Let statement has no initializer");
                     None
                 };
 
@@ -380,37 +312,26 @@ impl<'st> Interpreter<'st> {
 
             // process other statement types
             // ... handle other statement types
-            _ => {
-                trace!("Skipping non-macro statement type: {:?}", stmt);
-                Ok(stmt.clone())
-            }
+            _ => Ok(stmt.clone()),
         }
     }
 
     fn process_repetition_pattern(&self, tokens: &[TokenInfo], args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
-        debug!("Processing repetition patterns in {} tokens", tokens.len());
         let mut repetition_blocks = self.find_repetition_blocks(tokens)?;
-        debug!("Found {} repetition blocks", repetition_blocks.len());
 
         if repetition_blocks.is_empty() {
-            debug!("No repetition blocks found, returning original tokens");
             return Ok(tokens.to_vec());
         }
 
         let mut result = Vec::new();
-        for (i, block) in repetition_blocks.iter_mut().enumerate() {
-            debug!("Expanding repetition block {} with variable '{}'", i, block.variable);
-            let expanded = self.expand_repetition_block(block, args)?;
-            debug!("Block {} expanded to {} tokens", i, expanded.len());
-            result.extend(expanded);
+        for block in repetition_blocks.iter_mut() {
+            result.extend(self.expand_repetition_block(block, args)?);
         }
 
-        debug!("Processed repetition patterns: {} tokens", result.len());
         Ok(result)
     }
 
     fn find_repetition_blocks(&self, tokens: &[TokenInfo]) -> Result<Vec<RepetitionBlock>, String> {
-        debug!("Finding repetition blocks in {} tokens", tokens.len());
         let mut blocks = Vec::new();
         let mut i = 0;
 
@@ -419,13 +340,8 @@ impl<'st> Interpreter<'st> {
                 if name.starts_with('$') && i + 3 < tokens.len() {
                     if matches!(tokens[i + 1].token, Token::Colon) {
                         let var_name = name[1..].to_string();
-                        debug!("Found potential repetition block with variable '{}' at position {}", var_name, i);
-
                         let (block_start, block_end) = self.find_repetition_bounds(&tokens[i + 2..])?;
-                        debug!("Found repetition bounds: start={}, end={}", block_start, block_end);
-
                         let separator = self.find_separator(&tokens[i + 2 + block_end..])?;
-                        debug!("Repetition separator: {:?}", separator);
 
                         blocks.push(RepetitionBlock {
                             variable: var_name,
@@ -441,19 +357,16 @@ impl<'st> Interpreter<'st> {
             i += 1;
         }
 
-        debug!("Found {} repetition blocks", blocks.len());
         Ok(blocks)
     }
 
     fn find_repetition_bounds(&self, tokens: &[TokenInfo]) -> Result<(usize, usize), String> {
-        debug!("Finding repetition bounds in {} tokens", tokens.len());
         let mut nesting = 0;
         let mut start = 0;
 
         while start < tokens.len() {
             match tokens[start].token {
                 Token::LeftParen | Token::LeftBrace | Token::LeftBracket => {
-                    debug!("Found starting delimiter at position {}: {:?}", start, tokens[start].token);
                     nesting = 1;
                     break;
                 }
@@ -462,7 +375,6 @@ impl<'st> Interpreter<'st> {
         }
 
         if start >= tokens.len() {
-            warn!("Missing repetition block start delimiter");
             return Err("Missing repetition block start delimiter".to_string());
         }
 
@@ -471,13 +383,10 @@ impl<'st> Interpreter<'st> {
             match tokens[end].token {
                 Token::LeftParen | Token::LeftBrace | Token::LeftBracket => {
                     nesting += 1;
-                    trace!("Nesting increased to {} at position {}", nesting, end);
                 }
                 Token::RightParen | Token::RightBrace | Token::RightBracket => {
                     nesting -= 1;
-                    trace!("Nesting decreased to {} at position {}", nesting, end);
                     if nesting == 0 {
-                        debug!("Found matching delimiter at position {}", end);
                         return Ok((start, end + 1));
                     }
                 }
@@ -486,33 +395,25 @@ impl<'st> Interpreter<'st> {
             end += 1;
         }
 
-        warn!("Unmatched repetition block delimiter");
         Err("Unmatched repetition block delimiter".to_string())
     }
 
     fn find_separator(&self, tokens: &[TokenInfo]) -> Result<Option<Token>, String> {
-        debug!("Looking for separator in {} tokens", tokens.len());
         if tokens.len() >= 2 && matches!(tokens[0].token, Token::Star) {
             // $(...) * token
-            debug!("Found separator: {:?}", tokens[1].token);
             Ok(Some(tokens[1].token.clone()))
         } else {
-            debug!("No separator found");
             Ok(None) // no separator
         }
     }
 
     fn expand_repetition_block(&self, block: &RepetitionBlock, args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
-        debug!("Expanding repetition block with variable '{}', {} tokens", block.variable, block.tokens.len());
         let mut result = Vec::new();
-
         let matched_args = args.iter().filter(|arg| self.contains_variable(&block.variable, arg)).collect::<Vec<_>>();
-        debug!("Found {} matching arguments for variable '{}'", matched_args.len(), block.variable);
 
         for (i, arg) in matched_args.iter().enumerate() {
             if i > 0 {
                 if let Some(separator) = &block.separator {
-                    debug!("Adding separator between repetitions {}-{}", i - 1, i);
                     result.push(TokenInfo {
                         token: separator.clone(),
                         location: block.tokens.first().unwrap().location.clone(),
@@ -520,48 +421,34 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
-            debug!("Substituting variables in repetition {} for '{}'", i, block.variable);
-            let expanded = self.substitute_variables_in_block(&block.tokens, &block.variable, arg)?;
-            debug!("Repetition {} expanded to {} tokens", i, expanded.len());
-            result.extend(expanded);
+            result.extend(self.substitute_variables_in_block(&block.tokens, &block.variable, arg)?);
         }
 
-        debug!("Expanded repetition block to {} tokens", result.len());
         Ok(result)
     }
 
-    fn contains_variable(&self, var_name: &str, arg: &[TokenInfo]) -> bool {
-        let contains = arg.iter().any(|token| if let Token::Identifier(name) = &token.token { name == var_name } else { false });
-        trace!("Checking if argument contains variable '{}': {}", var_name, contains);
-        contains
-    }
+    fn contains_variable(&self, var_name: &str, arg: &[TokenInfo]) -> bool { arg.iter().any(|token| if let Token::Identifier(name) = &token.token { name == var_name } else { false }) }
 
     fn substitute_variables_in_block(&self, block_tokens: &[TokenInfo], var_name: &str, arg_tokens: &[TokenInfo]) -> Result<Vec<TokenInfo>, String> {
-        debug!("Substituting variable '{}' in {} block tokens", var_name, block_tokens.len());
         let mut result = Vec::new();
 
-        for (i, token) in block_tokens.iter().enumerate() {
+        for token in block_tokens.iter() {
             if let Token::Identifier(name) = &token.token {
                 if name == var_name {
-                    debug!("Replacing variable '{}' at position {} with {} argument tokens", var_name, i, arg_tokens.len());
                     result.extend_from_slice(arg_tokens);
                 } else {
-                    trace!("Keeping identifier '{}' at position {}", name, i);
                     result.push(token.clone());
                 }
             } else {
-                trace!("Keeping non-identifier token at position {}", i);
                 result.push(token.clone());
             }
         }
 
-        debug!("Substituted {} block tokens to {} result tokens", block_tokens.len(), result.len());
         Ok(result)
     }
 }
 
 fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, String> {
-    debug!("Extracting macro arguments from {} tokens", tokens.len());
     let mut args = Vec::new();
     let mut current_arg = Vec::new();
     let mut nesting = 0;
@@ -573,35 +460,27 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
         )
     }
 
-    // Skip the first token if it's a Not (!)
     let tokens = if !tokens.is_empty() && tokens[0].token == Token::Not { &tokens[1..] } else { tokens };
 
     for (i, token_info) in tokens.iter().enumerate() {
         match &token_info.token {
             Token::LeftParen | Token::LeftBrace | Token::LeftBracket => {
                 nesting += 1;
-                trace!("Nesting increased to {} at position {}", nesting, i);
                 current_arg.push(token_info.clone());
             }
             Token::RightParen | Token::RightBrace | Token::RightBracket => {
                 nesting -= 1;
-                trace!("Nesting decreased to {} at position {}", nesting, i);
                 current_arg.push(token_info.clone());
             }
             token if nesting == 0 && is_delimiter(token) => {
-                // Special handling for commas vs other delimiters
                 if matches!(token, Token::Comma) {
-                    // For commas, don't include the delimiter
                     if !current_arg.is_empty() {
-                        debug!("Found argument with {} tokens at delimiter {:?}", current_arg.len(), token);
                         args.push(current_arg);
                         current_arg = Vec::new();
                     }
                 } else {
-                    // For other delimiters, include them with their argument
                     current_arg.push(token_info.clone());
                     if !current_arg.is_empty() {
-                        debug!("Found argument with {} tokens at delimiter {:?}", current_arg.len(), token);
                         args.push(current_arg);
                         current_arg = Vec::new();
                     }
@@ -621,7 +500,6 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
                     };
 
                     if token_info.location.column > prev_token_end + 1 {
-                        debug!("Found space gap between tokens");
                         if !current_arg.is_empty() {
                             args.push(current_arg);
                             current_arg = Vec::new();
@@ -637,43 +515,26 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
     }
 
     if !current_arg.is_empty() {
-        debug!("Found final argument with {} tokens", current_arg.len());
         args.push(current_arg);
     }
 
-    // Filter out any empty arguments
-    let filtered_args: Vec<Vec<TokenInfo>> = args.into_iter().filter(|arg| !arg.is_empty()).collect();
-
-    debug!("Extracted {} total arguments", filtered_args.len());
-    Ok(filtered_args)
+    Ok(args.into_iter().filter(|arg| !arg.is_empty()).collect())
 }
 
 fn extract_macro_delimiter(tokens: &[TokenInfo]) -> Result<MacroDelimiter, String> {
-    debug!("Extracting macro delimiter from {} tokens", tokens.len());
-    for (i, token_info) in tokens.iter().enumerate() {
+    for token_info in tokens.iter() {
         match token_info.token {
-            Token::LeftParen => {
-                debug!("Found parenthesis delimiter at position {}", i);
-                return Ok(MacroDelimiter::Paren);
-            }
-            Token::LeftBracket => {
-                debug!("Found bracket delimiter at position {}", i);
-                return Ok(MacroDelimiter::Bracket);
-            }
-            Token::LeftBrace => {
-                debug!("Found brace delimiter at position {}", i);
-                return Ok(MacroDelimiter::Brace);
-            }
+            Token::LeftParen => return Ok(MacroDelimiter::Paren),
+            Token::LeftBracket => return Ok(MacroDelimiter::Bracket),
+            Token::LeftBrace => return Ok(MacroDelimiter::Brace),
             _ => continue,
         }
     }
 
-    warn!("Macro definition missing delimiter");
     Err("Macro definition missing delimiter".to_string())
 }
 
 fn extract_macro_branches(tokens: &[TokenInfo]) -> Result<Vec<MacroBranch>, String> {
-    debug!("Extracting macro branches from {} tokens", tokens.len());
     let mut branches = Vec::new();
     let mut branch_start = 0;
 
@@ -703,12 +564,10 @@ fn extract_macro_branches(tokens: &[TokenInfo]) -> Result<Vec<MacroBranch>, Stri
         return Err("No valid branches found in macro definition".to_string());
     }
 
-    debug!("Extracted {} macro branches", branches.len());
     Ok(branches)
 }
 
 fn extract_branch_pattern(tokens: &[TokenInfo]) -> Result<(Vec<Token>, Vec<MacroParameter>, usize), String> {
-    debug!("Extracting branch pattern from {} tokens", tokens.len());
     let mut arrow_pos = 0;
 
     for (i, token_info) in tokens.iter().enumerate() {
@@ -719,7 +578,6 @@ fn extract_branch_pattern(tokens: &[TokenInfo]) -> Result<(Vec<Token>, Vec<Macro
     }
 
     if arrow_pos == 0 {
-        debug!("No fat arrow found, no more branches");
         return Ok((Vec::new(), Vec::new(), 0));
     }
 
@@ -739,19 +597,16 @@ fn extract_branch_pattern(tokens: &[TokenInfo]) -> Result<(Vec<Token>, Vec<Macro
             params.extend(pattern_params);
             break;
         } else if tokens[i].token != Token::Comma {
-            debug!("Found literal token in branch pattern: {:?}", tokens[i].token);
             literal_tokens.push(tokens[i].token.clone());
         }
 
         i += 1;
     }
 
-    debug!("Extracted {} literal tokens and {} parameters for branch", literal_tokens.len(), params.len());
     Ok((literal_tokens, params, arrow_pos))
 }
 
 fn extract_branch_body(tokens: &[TokenInfo], start_pos: usize) -> Result<(Vec<TokenInfo>, usize), String> {
-    debug!("Extracting branch body from {} tokens", tokens.len());
     let mut body_tokens = Vec::new();
     let mut nesting = 0;
     let mut end_pos = 0;
@@ -783,16 +638,12 @@ fn extract_branch_body(tokens: &[TokenInfo], start_pos: usize) -> Result<(Vec<To
         end_pos = tokens.len();
     }
 
-    debug!("Extracted {} body tokens for branch", body_tokens.len());
     Ok((body_tokens, start_pos + end_pos))
 }
 
 fn match_branch_literals(literals: &[Token], args: &[Vec<TokenInfo>]) -> bool {
-    debug!("Matching {} literal tokens against {} arguments", literals.len(), args.len());
-
     if literals.len() == 1 && args.is_empty() {
         if let Token::RightParen = &literals[0] {
-            debug!("Matched empty macro invocation pattern");
             return true;
         }
     }
@@ -805,25 +656,18 @@ fn match_branch_literals(literals: &[Token], args: &[Vec<TokenInfo>]) -> bool {
         return false;
     }
 
-    // Get the flattened tokens from the first argument
     let arg_tokens: Vec<&Token> = args[0].iter().map(|t| &t.token).collect();
-    debug!("Comparing literal pattern {:?} with argument tokens {:?}", literals, arg_tokens);
 
-    // If lengths match, compare each token
     if literals.len() == arg_tokens.len() {
         let matches = literals.iter().zip(arg_tokens.iter()).all(|(lit, arg)| match_token(lit, arg));
-        debug!("Full pattern match result: {}", matches);
         return matches;
     }
 
-    // If lengths don't match, try to match just the first token
     if literals.len() == 1 && arg_tokens.len() == 1 {
         let matches = match_token(&literals[0], arg_tokens[0]);
-        debug!("Single token match result: {}", matches);
         return matches;
     }
 
-    debug!("No branch pattern match found");
     false
 }
 
@@ -831,16 +675,12 @@ fn match_token(expected: &Token, actual: &Token) -> bool {
     match (expected, actual) {
         (Token::Identifier(lit_name), Token::Identifier(arg_name)) => {
             let matches = lit_name == arg_name;
-            if !matches {
-                debug!("Identifier mismatch: expected '{}', got '{}'", lit_name, arg_name);
-            }
+            if !matches {}
             matches
         }
         _ => {
             let matches = expected == actual;
-            if !matches {
-                debug!("Token mismatch: expected {:?}, got {:?}", expected, actual);
-            }
+            if !matches {}
             matches
         }
     }

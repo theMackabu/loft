@@ -171,6 +171,16 @@ impl<'st> Interpreter<'st> {
         match stmt {
             Stmt::ExpressionValue(expr) => self.evaluate_expression(expr),
 
+            Stmt::Struct { name, fields, .. } => {
+                self.handle_struct_def(name, fields.to_owned())?;
+                Ok(ValueEnum::unit())
+            }
+
+            Stmt::Enum { name, variants, .. } => {
+                self.handle_enum_def(name, variants.to_owned())?;
+                Ok(ValueEnum::unit())
+            }
+
             Stmt::MacroDefinition { name, tokens, .. } => {
                 self.handle_macro_definition(name, tokens)?;
                 Ok(ValueEnum::unit())
@@ -195,6 +205,34 @@ impl<'st> Interpreter<'st> {
                 let result = self.execute(body)?;
                 self.env.exit_scope();
                 Ok(result)
+            }
+
+            Stmt::Const {
+                name, initializer, type_annotation, ..
+            } => {
+                let value = self.evaluate_expression(initializer)?;
+                let value = self.perform_cast(value.clone(), type_annotation.as_ref().expect("expected op level types")).unwrap_or(value);
+
+                self.env.scope_resolver.declare_variable(name, false);
+                if let Some(scope) = self.env.scopes.first_mut() {
+                    scope.insert(name.clone(), value);
+                }
+
+                Ok(ValueEnum::unit())
+            }
+
+            Stmt::Static {
+                name, initializer, type_annotation, ..
+            } => {
+                let value = self.evaluate_expression(initializer)?;
+                let value = self.perform_cast(value.clone(), type_annotation.as_ref().expect("expected op level types")).unwrap_or(value);
+
+                self.env.scope_resolver.declare_variable(name, false);
+                if let Some(scope) = self.env.scopes.first_mut() {
+                    scope.insert(name.clone(), value);
+                }
+
+                Ok(ValueEnum::unit())
             }
 
             Stmt::Let {

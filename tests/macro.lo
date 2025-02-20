@@ -1,12 +1,10 @@
+macro_rules! say_hello {
+   () => println!("Hello world!");
+}
+
 macro_rules! add {
    ($a:expr, $b:expr) => {
       $a + $b
-   };
-}
-
-macro_rules! say_hello {
-   () => { 
-      println!("Hello!") 
    };
 }
 
@@ -23,27 +21,33 @@ macro_rules! tuple {
 
 macro_rules! log {
    (error, $($arg:tt)*) => {
-      println!("[ERROR] {}", format!($($arg)*))
+      println!("\x1b[31;40m[ERROR] {}\x1b[0m", format!($($arg)*))
    };
    (warn -> $($arg:tt)*) => {
-      println!("[WARN] {}", format!($($arg)*))
+      println!("\x1b[38;5;11m[WARN] {}\x1b[0m", format!($($arg)*))
    };
    (info: $($arg:tt)*) => {
-      println!("[INFO] {}", format!($($arg)*))
+      println!("\x1b[94m[INFO] {}\x1b[0m", format!($($arg)*))
+   };
+   (success @ $($arg:tt)*) => {
+      println!("\x1b[92m[SUCCESS] {}\x1b[0m", format!($($arg)*))
    };
 }
 
 fn main() {
+   const LIGHT_RED: &str = "\x1b[91m";
+   const RESET: &str = "\x1b[0m";
+   
+   println!("{LIGHT_RED}this macro system needs to be refactored.");
+   println!("this macro system is temporary.{RESET}\n");
+
    say_hello!();
    
-   let val = add!(5, 3);
-   io::println(val);
+   println!("5 + 3 is {}", add!(5, 3));
+   println!("{}\n", tuple!(1, "hello", true));
    
-   let tpl = tuple!(1, "hello", true);
-   io::println(tpl);
-   
-   let val = count_exprs!(1, "hello", 3.14);
-   io::println(val);
-   
-   log!(info: "testing");
+   log!(success @ "this is a success msg");
+   log!(info: "this is a info msg");
+   log!(warn -> "this is a warning msg");
+   log!(error, "this is a error msg");
 }

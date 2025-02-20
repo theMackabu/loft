@@ -30,14 +30,17 @@ impl Display for Error {
         let line = line!();
         let column = column!();
 
+        let yellow = "\x1b[38;5;11m";
+        let reset = "\x1b[0m";
+
         let thread_name = std::thread::current().name().unwrap_or("unnamed").to_string();
 
         match self {
-            Error::IoError(err) => write!(f, "thread '{thread_name}' panicked at 'io error: {err}', {file}:{line}:{column}"),
-            Error::ParseError(err) => write!(f, "thread '{thread_name}' panicked at 'parse error: {err}', {file}:{line}:{column}"),
-            Error::MissingArgument => write!(f, "thread '{thread_name}' panicked at 'missing file argument', {file}:{line}:{column}"),
-            Error::RuntimeError(err) => write!(f, "thread '{thread_name}' panicked at '{err}', {file}:{line}:{column}"),
-            Error::UnexpectedReturnValue(err) => write!(f, "thread '{thread_name}' panicked at 'unexpected return value: {err:?}', {file}:{line}:{column}"),
+            Error::IoError(err) => write!(f, "{yellow}thread '{thread_name}' panicked at 'io error: {err}', {file}:{line}:{column}{reset}"),
+            Error::ParseError(err) => write!(f, "{yellow}thread '{thread_name}' panicked at 'parse error: {err}', {file}:{line}:{column}{reset}"),
+            Error::MissingArgument => write!(f, "{yellow}thread '{thread_name}' panicked at 'missing file argument', {file}:{line}:{column}{reset}"),
+            Error::RuntimeError(err) => write!(f, "{yellow}thread '{thread_name}' panicked at '{err}', {file}:{line}:{column}{reset}"),
+            Error::UnexpectedReturnValue(err) => write!(f, "{yellow}thread '{thread_name}' panicked at 'unexpected return value: {err:?}', {file}:{line}:{column}{reset}"),
         }
     }
 }

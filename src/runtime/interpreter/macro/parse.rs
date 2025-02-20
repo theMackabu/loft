@@ -7,7 +7,6 @@ pub enum MacroParamKind {
     Type,
     Ident,
     TokenTree,
-    // later add other kinds like Block, etc.
 }
 
 #[derive(Clone, Debug)]
