@@ -104,7 +104,24 @@ impl<'st> Interpreter<'st> {
 
     fn extract_macro_parameters(&self, tokens: &[TokenInfo]) -> Result<Vec<parse::MacroParameter>, String> {
         debug!("Extracting macro parameters from {} tokens", tokens.len());
-        let parser = parse::MacroParamParser::new(tokens);
+        let mut param_tokens = Vec::new();
+        let mut found_arrow = false;
+
+        for token_info in tokens {
+            if found_arrow {
+                break;
+            } else if let Token::Fat = token_info.token {
+                found_arrow = true;
+            } else {
+                param_tokens.push(token_info.clone());
+            }
+        }
+
+        if !found_arrow {
+            return Err("Macro definition missing fat arrow (=>)".to_string());
+        }
+
+        let parser = parse::MacroParamParser::new(&param_tokens);
         let params = parser.parse()?;
         debug!("Extracted {} parameters: {:?}", params.len(), params);
         Ok(params)
