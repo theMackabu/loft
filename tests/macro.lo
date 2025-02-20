@@ -3,13 +3,13 @@
 //       $a + $b
 //    };
 // }
-
+// 
 // macro_rules! say_hello {
 //    () => { 
 //       println!("Hello!") 
 //    };
 // }
-
+// 
 // macro_rules! count_exprs {
 //    () => { 0 };
 //    ($_head:expr $(, $tail:expr)*) => {
@@ -34,11 +34,12 @@ macro_rules! tuple {
 }
 
 fn main() {   
+   // say_hello!();
+   
    // let val = add!(5, 3);
    // io::println(val);
    
-   // log!(warn, "testing");
-   // say_hello!();
+   log!(warn, "testing");
    // println!("{}", count_exprs!(1, "hello", 3.14));
    
    let tpl = tuple!(1, "hello", true);

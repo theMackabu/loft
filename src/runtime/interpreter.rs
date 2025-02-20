@@ -18,10 +18,12 @@ use environment::Environment;
 use std::collections::HashMap;
 use std::{cell::RefCell, rc::Rc};
 
+type Macro = (MacroDelimiter, Vec<TokenInfo>, Vec<r#macro::MacroBranch>);
+
 pub struct Interpreter<'st> {
     env: Environment,
     fnc: HashMap<String, &'st Stmt>,
-    mcs: HashMap<String, (MacroDelimiter, Vec<TokenInfo>)>,
+    mcs: HashMap<String, Macro>,
 }
 
 impl<'st> Interpreter<'st> {

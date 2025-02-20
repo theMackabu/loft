@@ -8,6 +8,13 @@ use crate::{debug, trace, warn};
 use parse::{MacroParamKind, MacroParameter};
 
 #[derive(Clone, Debug)]
+pub struct MacroBranch {
+    literal_tokens: Vec<Token>,
+    params: Vec<MacroParameter>,
+    body_tokens: Vec<TokenInfo>,
+}
+
+#[derive(Clone, Debug)]
 pub struct RepetitionBlock {
     variable: String,
     tokens: Vec<TokenInfo>,
@@ -17,10 +24,14 @@ pub struct RepetitionBlock {
 impl<'st> Interpreter<'st> {
     pub fn handle_macro_definition(&mut self, name: &str, tokens: &[TokenInfo]) -> Result<(), String> {
         debug!("Handling macro definition: '{}'", name);
+
         let delimiter = extract_macro_delimiter(tokens)?;
         debug!("Extracted delimiter: {:?}", delimiter);
-        self.mcs.insert(name.to_string(), (delimiter, tokens.to_vec()));
-        debug!("Macro '{}' successfully defined", name);
+
+        let branches = extract_macro_branches(tokens)?;
+        debug!("Extracted {} branches for macro '{}'", branches.len(), name);
+
+        self.mcs.insert(name.to_string(), (delimiter, tokens.to_vec(), branches));
         Ok(())
     }
 
@@ -67,92 +78,40 @@ impl<'st> Interpreter<'st> {
             }
         }
 
-        if let Some((def_delimiter, def_tokens)) = self.mcs.get(name) {
+        if let Some((def_delimiter, def_tokens, branches)) = self.mcs.get(name) {
             if delimiter != def_delimiter {
                 warn!("Macro '{}' invoked with wrong delimiter: expected {:?}, got {:?}", name, def_delimiter, delimiter);
                 return Err(format!("Macro '{}' invoked with wrong delimiter", name));
             }
 
-            debug!("Extracting macro parameters");
-            let params = self.extract_macro_parameters(def_tokens)?;
-            debug!("Extracted {} parameters: {:?}", params.len(), params);
-
             debug!("Extracting macro arguments");
             let args = extract_macro_arguments(tokens)?;
             debug!("Extracted {} arguments", args.len());
 
-            validate_arguments(&params, &args)?;
+            // Try matching branches
+            for (i, branch) in branches.iter().enumerate() {
+                debug!("Trying to match branch {} of macro '{}'", i, name);
+                if match_branch_literals(&branch.literal_tokens, &args) && validate_branch_params(&branch.params, &args).is_ok() {
+                    debug!("Branch {} matched successfully", i);
 
-            debug!("Finding macro body tokens");
-            let body_tokens = self.extract_macro_body(def_tokens)?;
-            debug!("Found {} body tokens", body_tokens.len());
+                    debug!("Processing repetition patterns");
+                    let processed_tokens = self.process_repetition_pattern(&branch.body_tokens, &args)?;
+                    debug!("Processed {} tokens with repetition patterns", processed_tokens.len());
 
-            debug!("Processing repetition patterns");
-            let processed_tokens = self.process_repetition_pattern(&body_tokens, &args)?;
-            debug!("Processed {} tokens with repetition patterns", processed_tokens.len());
+                    debug!("Substituting macro tokens");
+                    let expanded_tokens = self.substitute_macro_tokens(&processed_tokens, &branch.params, &args)?;
+                    debug!("Substituted tokens, final expansion has {} tokens", expanded_tokens.len());
 
-            debug!("Substituting macro tokens");
-            let expanded_tokens = self.substitute_macro_tokens(&processed_tokens, &params, &args)?;
-            debug!("Substituted tokens, final expansion has {} tokens", expanded_tokens.len());
+                    return self.parse_expanded_tokens(&expanded_tokens);
+                }
+            }
 
-            self.parse_expanded_tokens(&expanded_tokens)
+            warn!("No matching branch found for macro '{}'", name);
+            return Err(format!("No matching branch found for macro '{}'", name));
         } else {
             warn!("Macro '{}' not found", name);
             Err(format!("Macro '{}' not found", name))
         }
-    }
-
-    fn extract_macro_parameters(&self, tokens: &[TokenInfo]) -> Result<Vec<parse::MacroParameter>, String> {
-        debug!("Extracting macro parameters from {} tokens", tokens.len());
-        let mut param_tokens = Vec::new();
-        let mut found_arrow = false;
-
-        for token_info in tokens {
-            if found_arrow {
-                break;
-            } else if let Token::Fat = token_info.token {
-                found_arrow = true;
-            } else {
-                param_tokens.push(token_info.clone());
-            }
-        }
-
-        if !found_arrow {
-            return Err("Macro definition missing fat arrow (=>)".to_string());
-        }
-
-        let parser = parse::MacroParamParser::new(&param_tokens);
-        let params = parser.parse()?;
-        debug!("Extracted {} parameters: {:?}", params.len(), params);
-        Ok(params)
-    }
-
-    fn extract_macro_body(&self, tokens: &[TokenInfo]) -> Result<Vec<TokenInfo>, String> {
-        debug!("Extracting macro body from {} tokens", tokens.len());
-        let mut body_tokens = Vec::new();
-        let mut found_arrow = false;
-
-        for token_info in tokens {
-            if found_arrow {
-                body_tokens.push(token_info.clone());
-            } else if let Token::Fat = token_info.token {
-                found_arrow = true;
-            }
-        }
-
-        if !found_arrow {
-            warn!("Macro definition missing fat arrow (=>)");
-            return Err("Macro definition missing fat arrow (=>)".to_string());
-        }
-
-        if !body_tokens.is_empty() {
-            if matches!(body_tokens.last().unwrap().token, Token::RightParen | Token::RightBrace | Token::RightBracket) {
-                body_tokens.pop();
-            }
-        }
-
-        debug!("Extracted {} body tokens", body_tokens.len());
-        Ok(body_tokens)
     }
 
     fn substitute_macro_tokens(&self, def_tokens: &[TokenInfo], params: &[MacroParameter], args: &[Vec<TokenInfo>]) -> Result<Vec<TokenInfo>, String> {
@@ -639,7 +598,172 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
     Ok(args)
 }
 
-fn validate_arguments(params: &[MacroParameter], args: &[Vec<TokenInfo>]) -> Result<(), String> {
+fn extract_macro_delimiter(tokens: &[TokenInfo]) -> Result<MacroDelimiter, String> {
+    debug!("Extracting macro delimiter from {} tokens", tokens.len());
+    for (i, token_info) in tokens.iter().enumerate() {
+        match token_info.token {
+            Token::LeftParen => {
+                debug!("Found parenthesis delimiter at position {}", i);
+                return Ok(MacroDelimiter::Paren);
+            }
+            Token::LeftBracket => {
+                debug!("Found bracket delimiter at position {}", i);
+                return Ok(MacroDelimiter::Bracket);
+            }
+            Token::LeftBrace => {
+                debug!("Found brace delimiter at position {}", i);
+                return Ok(MacroDelimiter::Brace);
+            }
+            _ => continue,
+        }
+    }
+
+    warn!("Macro definition missing delimiter");
+    Err("Macro definition missing delimiter".to_string())
+}
+
+fn extract_macro_branches(tokens: &[TokenInfo]) -> Result<Vec<MacroBranch>, String> {
+    debug!("Extracting macro branches from {} tokens", tokens.len());
+    let mut branches = Vec::new();
+    let mut branch_start = 0;
+
+    while branch_start < tokens.len() {
+        let (literals, params, arrow_pos) = extract_branch_pattern(&tokens[branch_start..])?;
+        if arrow_pos == 0 {
+            break;
+        }
+
+        let absolute_arrow_pos = branch_start + arrow_pos;
+        let (body_tokens, next_branch_start) = extract_branch_body(&tokens[absolute_arrow_pos + 1..], branch_start + arrow_pos + 1)?;
+
+        branches.push(MacroBranch {
+            literal_tokens: literals,
+            params,
+            body_tokens,
+        });
+
+        branch_start = next_branch_start;
+
+        if branch_start < tokens.len() && tokens[branch_start].token == Token::Semicolon {
+            branch_start += 1;
+        }
+    }
+
+    if branches.is_empty() {
+        return Err("No valid branches found in macro definition".to_string());
+    }
+
+    debug!("Extracted {} macro branches", branches.len());
+    Ok(branches)
+}
+
+fn extract_branch_pattern(tokens: &[TokenInfo]) -> Result<(Vec<Token>, Vec<MacroParameter>, usize), String> {
+    debug!("Extracting branch pattern from {} tokens", tokens.len());
+    let mut arrow_pos = 0;
+
+    for (i, token_info) in tokens.iter().enumerate() {
+        if token_info.token == Token::Fat {
+            arrow_pos = i;
+            break;
+        }
+    }
+
+    if arrow_pos == 0 {
+        debug!("No fat arrow found, no more branches");
+        return Ok((Vec::new(), Vec::new(), 0));
+    }
+
+    let mut literal_tokens = Vec::new();
+    let mut params = Vec::new();
+    let mut i = 0;
+
+    while i < arrow_pos {
+        if tokens[i].token == Token::Dollar {
+            let pattern_tokens = &tokens[i..arrow_pos];
+            let parser = parse::MacroParamParser::new(pattern_tokens);
+            let pattern_params = parser.parse()?;
+            params.extend(pattern_params);
+            break;
+        } else if tokens[i].token != Token::Comma {
+            debug!("Found literal token in branch pattern: {:?}", tokens[i].token);
+            literal_tokens.push(tokens[i].token.clone());
+        }
+
+        i += 1;
+    }
+
+    debug!("Extracted {} literal tokens and {} parameters for branch", literal_tokens.len(), params.len());
+    Ok((literal_tokens, params, arrow_pos))
+}
+
+fn extract_branch_body(tokens: &[TokenInfo], start_pos: usize) -> Result<(Vec<TokenInfo>, usize), String> {
+    debug!("Extracting branch body from {} tokens", tokens.len());
+    let mut body_tokens = Vec::new();
+    let mut nesting = 0;
+    let mut end_pos = 0;
+
+    for (i, token_info) in tokens.iter().enumerate() {
+        match token_info.token {
+            Token::LeftParen | Token::LeftBrace | Token::LeftBracket => {
+                nesting += 1;
+                body_tokens.push(token_info.clone());
+            }
+            Token::RightParen | Token::RightBrace | Token::RightBracket => {
+                nesting -= 1;
+                body_tokens.push(token_info.clone());
+
+                if nesting == 0 {
+                    end_pos = i + 1;
+                    break;
+                }
+            }
+            Token::Semicolon if nesting == 0 => {
+                end_pos = i;
+                break;
+            }
+            _ => body_tokens.push(token_info.clone()),
+        }
+    }
+
+    if end_pos == 0 && !tokens.is_empty() {
+        end_pos = tokens.len();
+    }
+
+    debug!("Extracted {} body tokens for branch", body_tokens.len());
+    Ok((body_tokens, start_pos + end_pos))
+}
+
+fn match_branch_literals(literals: &[Token], args: &[Vec<TokenInfo>]) -> bool {
+    debug!("Matching {} literal tokens against {} arguments", literals.len(), args.len());
+
+    if literals.is_empty() {
+        return true;
+    }
+
+    if args.is_empty() {
+        return false;
+    }
+
+    for (i, literal) in literals.iter().enumerate() {
+        if i >= args.len() {
+            return false;
+        }
+
+        if args[i].len() != 1 {
+            return false;
+        }
+
+        if &args[i][0].token != literal {
+            debug!("Literal token mismatch: expected {:?}, got {:?}", literal, args[i][0].token);
+            return false;
+        }
+    }
+
+    debug!("All literal tokens matched successfully");
+    true
+}
+
+fn validate_branch_params(params: &[MacroParameter], args: &[Vec<TokenInfo>]) -> Result<(), String> {
     let mut required_count = 0;
     let mut has_repeated = false;
 
@@ -665,28 +789,4 @@ fn validate_arguments(params: &[MacroParameter], args: &[Vec<TokenInfo>]) -> Res
     } else {
         Ok(())
     }
-}
-
-fn extract_macro_delimiter(tokens: &[TokenInfo]) -> Result<MacroDelimiter, String> {
-    debug!("Extracting macro delimiter from {} tokens", tokens.len());
-    for (i, token_info) in tokens.iter().enumerate() {
-        match token_info.token {
-            Token::LeftParen => {
-                debug!("Found parenthesis delimiter at position {}", i);
-                return Ok(MacroDelimiter::Paren);
-            }
-            Token::LeftBracket => {
-                debug!("Found bracket delimiter at position {}", i);
-                return Ok(MacroDelimiter::Bracket);
-            }
-            Token::LeftBrace => {
-                debug!("Found brace delimiter at position {}", i);
-                return Ok(MacroDelimiter::Brace);
-            }
-            _ => continue,
-        }
-    }
-
-    warn!("Macro definition missing delimiter");
-    Err("Macro definition missing delimiter".to_string())
 }

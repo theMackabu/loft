@@ -6,6 +6,7 @@ pub enum MacroParamKind {
     Expr,
     Type,
     Ident,
+    TokenTree,
     // later add other kinds like Block, etc.
 }
 
@@ -123,6 +124,7 @@ impl<'a> MacroParamParser<'a> {
                     "expr" => MacroParamKind::Expr,
                     "ty" => MacroParamKind::Type,
                     "ident" => MacroParamKind::Ident,
+                    "tt" => MacroParamKind::TokenTree,
                     _ => return Err(format!("Unsupported parameter kind: {}", token_to_string(&t.token))),
                 };
                 self.advance();
