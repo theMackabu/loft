@@ -5,7 +5,9 @@ mod array;
 mod assign;
 mod cast;
 mod environment;
+mod loops;
 mod methods;
+mod pattern;
 mod pointer;
 mod structs;
 
@@ -199,6 +201,13 @@ impl<'st> Interpreter<'st> {
 
                 Ok(res.into_return())
             }
+
+            Stmt::Break(label, value) => {
+                let break_value = if let Some(expr) = value { Some(self.evaluate_expression(expr)?) } else { None };
+                Ok(val!(ValueType::Break(label.clone(), break_value)))
+            }
+
+            Stmt::Continue(label) => Ok(val!(ValueType::Continue(label.clone()))),
 
             Stmt::Module { body, .. } => {
                 self.env.enter_scope();
@@ -427,6 +436,18 @@ impl<'st> Interpreter<'st> {
             }
 
             Expr::Boolean(b) => Ok(val!(ValueType::Boolean(*b))),
+
+            Expr::Loop { label, body } => self.handle_loop(label, body),
+
+            Expr::While { label, condition, body } => self.handle_while(label, condition, body),
+
+            Expr::For { label, pattern, iterable, body } => self.handle_for(label, pattern, iterable, body),
+
+            Expr::Range { start, end } => {
+                let start_val = self.evaluate_expression(start)?;
+                let end_val = self.evaluate_expression(end)?;
+                Ok(val!(ValueType::Range { start: start_val, end: end_val }))
+            }
 
             Expr::Integer(value, ty) => Ok(val!(match ty.to_owned().unwrap_or(NumericType::I32) {
                 NumericType::I8 => ValueType::I8(*value as i8),

@@ -67,19 +67,18 @@ fn test_for() {
    for text in strs {
       println!("I like {}.", text);
    }
+   
+   for i in 0..10 {
+      if i % 2 == 0 {
+         continue;
+      }
+      println!("{i}");
+   }
 }
 
 fn main() {
-   fn fizzbuzzer(n: u64) -> Cow<'static, str> {
-       match (n%3, n%5) {
-           (0, 0) =>"FizzBuzz".into(),
-           (0, _) => "Fizz".into(),
-           (_, 0) => "Buzz".into(),
-           (_, _) => n.to_string().into(),
-       }
-   }
-     
-   test_loop();
-   test_assign();
+   // test_loop();
+   // test_assign();
    test_while();
+   // test_for();
 }

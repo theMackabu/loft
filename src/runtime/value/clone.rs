@@ -30,6 +30,10 @@ impl ValueType {
 
             ValueType::Return(v) => ValueType::Return(v.borrow().deep_clone()),
 
+            ValueType::Continue(v) => ValueType::Continue(v.clone()),
+
+            ValueType::Break(b, v) => ValueType::Break(b.clone(), v.clone()),
+
             ValueType::Struct { name, fields } => {
                 let cloned_fields = fields.iter().map(|(k, v)| (k.clone(), v.borrow().deep_clone())).collect();
                 ValueType::Struct {
@@ -85,6 +89,11 @@ impl ValueType {
                 struct_name: struct_name.clone(),
                 method: method.clone(),
                 function: function.clone(),
+            },
+
+            ValueType::Range { start, end } => ValueType::Range {
+                start: start.borrow().deep_clone(),
+                end: end.borrow().deep_clone(),
             },
 
             ValueType::Array { ty, el, len } => ValueType::Array {

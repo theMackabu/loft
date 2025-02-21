@@ -1,0 +1,26 @@
+fn fizzbuzz(n: i32) -> str {
+   if n <= 0 {
+      return "";
+   }
+
+   let mut result = fizzbuzz(n - 1);
+   
+   // allow !val
+   if !result.is_empty() {
+      result.push("\n");
+   }
+
+   // add .push and .is_empty() to str methods
+   result.push(&match (n % 3, n % 5) {
+      (0, 0) => "FizzBuzz",
+      (0, _) => "Fizz",
+      (_, 0) => "Buzz",
+      (_, _) => n.as_str(),
+   });
+
+   result
+}
+
+fn main() {
+   println!("{}", fizzbuzz(10));
+}

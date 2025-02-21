@@ -36,9 +36,16 @@ pub enum ValueType {
     Str(String),
     Pointer(Ptr),
     Boolean(bool),
-
     Tuple(Vec<Value>),
+
     Return(Value),
+    Continue(Option<String>),
+    Break(Option<String>, Option<Value>),
+
+    Range {
+        start: Value,
+        end: Value,
+    },
 
     Struct {
         name: String,
@@ -209,9 +216,11 @@ impl ValueEnum {
             ValueType::Str(_) => String::from("str"),
             ValueType::Pointer(_) => String::from("pointer"),
             ValueType::Boolean(_) => String::from("bool"),
-
             ValueType::Tuple(_) => String::from("tuple"),
+
             ValueType::Return(_) => String::from("return"),
+            ValueType::Continue(_) => String::from("continue"),
+            ValueType::Break(_, _) => String::from("break"),
 
             ValueType::StructDef { name, .. } => name,
             ValueType::EnumDef { name, .. } => name,
@@ -226,6 +235,7 @@ impl ValueEnum {
             ValueType::Reference { .. } => String::from("reference"),
             ValueType::StaticMethod { .. } => String::from("static_method"),
 
+            ValueType::Range { .. } => String::from("range"),
             ValueType::Array { .. } => String::from("array"),
             ValueType::Slice { .. } => String::from("slice"),
 

@@ -41,11 +41,17 @@ impl fmt::Display for ValueEnum {
 
             ValueType::Return(v) => write!(f, "{}", v.borrow()),
 
+            ValueType::Continue(_) => write!(f, "continue"),
+
+            ValueType::Break(_, _) => write!(f, "break"),
+
             ValueType::Pointer(ptr) => write!(f, "{:p}", ptr),
 
             ValueType::StructDef { name, .. } => write!(f, "<struct {name}>"),
 
             ValueType::EnumDef { name, .. } => write!(f, "<enum {name}>"),
+
+            ValueType::Range { start, end } => write!(f, "{}..{}", start.borrow(), end.borrow()),
 
             ValueType::StaticMethod { struct_name, method, .. } => write!(f, "{}::{}", struct_name, method),
 
@@ -80,11 +86,7 @@ impl fmt::Display for ValueEnum {
                 if !original_ptr.is_null() {
                     unsafe { write!(f, "{}", (*original_ptr).borrow()) }
                 } else if let Some(name) = source_name {
-                    if self.is_mutable() {
-                        write!(f, "&mut {name}")
-                    } else {
-                        write!(f, "&{name}")
-                    }
+                    if self.is_mutable() { write!(f, "&mut {name}") } else { write!(f, "&{name}") }
                 } else {
                     write!(f, "&<unnamed>")
                 }
