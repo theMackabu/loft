@@ -1,3 +1,7 @@
+macro_rules! test {
+   ($($arg:tt)*) => println!("\n\x1b[94m{}\x1b[0m", format!($($arg)*));
+}
+
 fn test_loop() {
    // let mut i = 0;
    // 
@@ -54,11 +58,13 @@ fn test_while() {
    //    i += 1;
    // }
    
+   test!("testing while let with slice");
    let mut x = [1, 2, 3, 4, 5].to_slice();   
    while let Some(y) = x.pop() {
       println!("y = {}", y);
    }
    
+   test!("testing while let with irrefutable");
    while let _ = 5 {
       println!("irrefutable patterns are always true");
       break;
@@ -66,26 +72,29 @@ fn test_while() {
 }
 
 fn test_for() {
+   test!("testing range 0..10");
    for i in 0..10 {
       println!("index: {i}");
    }
    
+   test!("testing for in arr");
    let strs = ["cats", "dogs"];
    for text in strs {
       println!("I like {}.", text);
    }
    
+   test!("testing range with continue");
    for i in 0..10 {
       if i % 2 == 0 {
          continue;
       }
-      println!("{i}");
+      println!("{i} is odd");
    }
 }
 
 fn main() {
-   test_loop();
+   // test_loop();
    // test_assign();
-   // test_while();
-   // test_for();
+   test_while();
+   test_for();
 }

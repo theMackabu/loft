@@ -20,7 +20,11 @@ macro_rules! val {
 
 #[macro_export]
 macro_rules! impl_binary_ops {
-    (($left_val:expr, $operator:expr, $right_val:expr), $($type:ident),*) => {
+    (
+        ($left_val:expr, $operator:expr, $right_val:expr),
+        [$($num:ident),*],
+        [$($int:ident),*]
+    ) => {
         {
             let left = unwrap_value(&$left_val);
             let right = unwrap_value(&$right_val);
@@ -30,19 +34,53 @@ macro_rules! impl_binary_ops {
 
             match (left_borrowed.inner(), $operator, right_borrowed.inner()) {
                 $(
-                    (ValueType::$type(l), Token::Plus, ValueType::$type(r)) => Ok(val!(ValueType::$type(l + r))),
-                    (ValueType::$type(l), Token::Minus, ValueType::$type(r)) => Ok(val!(ValueType::$type(l - r))),
-                    (ValueType::$type(l), Token::Star, ValueType::$type(r)) => Ok(val!(ValueType::$type(l * r))),
-                    (ValueType::$type(l), Token::Slash, ValueType::$type(r)) => Ok(val!(ValueType::$type(l / r))),
+                    (ValueType::$num(l), Token::Plus, ValueType::$num(r)) => Ok(val!(ValueType::$num(l + r))),
+                    (ValueType::$num(l), Token::Minus, ValueType::$num(r)) => Ok(val!(ValueType::$num(l - r))),
+                    (ValueType::$num(l), Token::Star, ValueType::$num(r)) => Ok(val!(ValueType::$num(l * r))),
+                    (ValueType::$num(l), Token::Slash, ValueType::$num(r)) => Ok(val!(ValueType::$num(l / r))),
+                    (ValueType::$num(l), Token::Rem, ValueType::$num(r)) => Ok(val!(ValueType::$num(l % r))),
 
-                    (ValueType::$type(l), Token::LeftAngle, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l < r))),
-                    (ValueType::$type(l), Token::RightAngle, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l > r))),
-                    (ValueType::$type(l), Token::LessEquals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l <= r))),
-                    (ValueType::$type(l), Token::GreaterEquals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l >= r))),
-                    (ValueType::$type(l), Token::Equals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l == r))),
-                    (ValueType::$type(l), Token::NotEquals, ValueType::$type(r)) => Ok(val!(ValueType::Boolean(l != r))),
+                    (ValueType::$num(l), Token::LeftAngle, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l < r))),
+                    (ValueType::$num(l), Token::RightAngle, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l > r))),
+                    (ValueType::$num(l), Token::LessEquals, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l <= r))),
+                    (ValueType::$num(l), Token::GreaterEquals, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l >= r))),
+                    (ValueType::$num(l), Token::Equals, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l == r))),
+                    (ValueType::$num(l), Token::NotEquals, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l != r))),
                 )*
-                _ => Err(format!("Invalid binary operation: {:?} {:?} {:?}", left_borrowed.inner(), $operator, right_borrowed.inner())),
+
+                (ValueType::Boolean(l), Token::And, ValueType::Boolean(r)) => Ok(val!(ValueType::Boolean(l && r))),
+                (ValueType::Boolean(l), Token::Or, ValueType::Boolean(r)) => Ok(val!(ValueType::Boolean(l || r))),
+
+                $(
+                    (ValueType::$int(l), Token::BitAnd, ValueType::$int(r)) => Ok(val!(ValueType::$int(l & r))),
+                    (ValueType::$int(l), Token::BitOr,  ValueType::$int(r)) => Ok(val!(ValueType::$int(l | r))),
+                    (ValueType::$int(l), Token::BitXor, ValueType::$int(r)) => Ok(val!(ValueType::$int(l ^ r))),
+                    (ValueType::$int(l), Token::Shl, ValueType::$int(r)) => Ok(val!(ValueType::$int(l << r))),
+                    (ValueType::$int(l), Token::Shr, ValueType::$int(r)) => Ok(val!(ValueType::$int(l >> r))),
+                )*
+
+                (_, Token::Assign, _)
+                | (_, Token::PlusEquals, _)
+                | (_, Token::MinusEquals, _)
+                | (_, Token::StarEquals, _)
+                | (_, Token::SlashEquals, _)
+                | (_, Token::RemAssign, _)
+                | (_, Token::BitAndAssign, _)
+                | (_, Token::BitOrAssign, _)
+                | (_, Token::BitXorAssign, _)
+                | (_, Token::ShlAssign, _)
+                | (_, Token::ShrAssign, _)
+                    => Err(format!(
+                        "Operator {:?} is not supported in binary operations",
+                        $operator
+                    )),
+
+                _ => Err(format!(
+                    "Invalid binary operation: {:?} {:?} {:?}",
+                    left_borrowed.inner(),
+                    $operator,
+                    right_borrowed.inner()
+                )),
             }
         }
     }

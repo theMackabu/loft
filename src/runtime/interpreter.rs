@@ -799,12 +799,11 @@ impl<'st> Interpreter<'st> {
                 let left_val = self.evaluate_expression(left)?;
                 let right_val = self.evaluate_expression(right)?;
 
-                let result = impl_binary_ops! {
+                let result = impl_binary_ops!(
                     (left_val, operator, right_val),
-                    I8, U8, I16, U16, I32, U32, F32,
-                    I64, U64, F64, I128, U128,
-                    ISize, USize
-                };
+                    [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64],
+                    [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize]
+                );
 
                 if result.is_ok() {
                     return result;
@@ -823,9 +822,8 @@ impl<'st> Interpreter<'st> {
                 } {
                     return impl_binary_ops! {
                         (left_val, operator, promoted),
-                        I8, U8, I16, U16, I32, U32, F32,
-                        I64, U64, F64, I128, U128,
-                        ISize, USize
+                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64],
+                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize]
                     };
                 }
 
@@ -842,9 +840,8 @@ impl<'st> Interpreter<'st> {
                 } {
                     return impl_binary_ops! {
                         (promoted, operator, right_val),
-                        I8, U8, I16, U16, I32, U32, F32,
-                        I64, U64, F64, I128, U128,
-                        ISize, USize
+                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64],
+                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize]
                     };
                 }
 
