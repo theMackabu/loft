@@ -82,13 +82,21 @@ impl Environment {
                 self.make_deeply_immutable(value.clone())
             };
 
-            if let Some(scope) = self.scopes.last_mut() {
-                if let Some(existing) = scope.get(name) {
-                    let new_val = value.borrow().clone();
-                    *existing.borrow_mut() = new_val;
-                } else {
-                    scope.insert(name.to_string(), value);
+            let current_function_start = *self.function_boundaries.last().unwrap_or(&0);
+            for scope in self.scopes[current_function_start..].iter_mut().rev() {
+                if scope.contains_key(name) {
+                    if let Some(existing) = scope.get_mut(name) {
+                        let new_value = value.borrow().clone();
+                        let mut existing_ref = existing.borrow_mut();
+
+                        *existing_ref = new_value;
+                        return Ok(());
+                    }
                 }
+            }
+
+            if let Some(scope) = self.scopes.last_mut() {
+                scope.insert(name.to_string(), value);
                 Ok(())
             } else {
                 Err("No active scope".to_string())

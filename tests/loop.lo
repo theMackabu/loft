@@ -3,17 +3,27 @@ macro_rules! test {
 }
 
 fn test_loop() {
-   // let mut i = 0;
-   // 
-   // loop { 
-   //    if i < 5 {
-   //       break;
-   //    }
-   //    
-   //    println!("I live.");
-   //    i+=1;
-   // }
+   test!("testing loop breaks");
+   let mut i = 0;
+   loop { 
+      if i > 5 {
+         break;
+      }
+      
+      println!("I live. ({i})");
+      i+=1;
+   }
    
+   test!("testing inner loop");
+   'a: loop {
+      'b: loop {
+         break 'b;
+      }
+      println!("Hit outer loop");
+      break 'a;
+   }
+   
+   test!("testing never reached");
    'outer: loop {
       println!("Entered the outer loop");
       
@@ -24,17 +34,11 @@ fn test_loop() {
       
       println!("This point will never be reached");
    }
-   
-   'a: loop {
-      'b: loop {
-         break 'b;
-      }
-      println!("Hit outer loop");
-      break 'a;
-   }
 }
 
 fn test_assign() {
+   test!("testing assignment");
+   
    let mut a = 1;
    let mut b = 1;
    
@@ -48,10 +52,11 @@ fn test_assign() {
       b = c;
    };
    
-   println!("{result}");
+   println!("the result is {result}");
 }
 
 fn test_while() {
+   test!("testing while val < int");
    let mut i = 0;
    while i < 10 {
       println!("ball(s) {i}"); 
@@ -93,8 +98,8 @@ fn test_for() {
 }
 
 fn main() {
-   // test_loop();
-   // test_assign();
+   test_loop();
+   test_assign();
    test_while();
    test_for();
 }
