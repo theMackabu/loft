@@ -271,12 +271,25 @@ impl<'st> Interpreter<'st> {
 
                 match pattern {
                     Pattern::Identifier { name, mutable } => {
-                        let is_ref = matches!(value.borrow().inner(), ValueType::Reference { .. });
-                        let declared_mutability = if is_ref { value.borrow().is_mutable() } else { *mutable };
+                        let declared_mutability = *mutable;
+                        let value_inner = { value.borrow().inner() };
 
-                        self.env.scope_resolver.declare_variable(name, declared_mutability);
+                        if let ValueType::Reference { source_name, .. } = value_inner {
+                            if source_name.is_none() {
+                                self.env.scope_resolver.declare_variable(name, declared_mutability);
 
-                        if !is_ref {
+                                let mut value_ref = value.borrow_mut();
+                                *value_ref = if declared_mutability {
+                                    value_ref.clone().into_mutable()
+                                } else {
+                                    value_ref.clone().into_immutable()
+                                };
+                            } else {
+                                self.env.scope_resolver.declare_variable(name, value.borrow().is_mutable());
+                            }
+                        } else {
+                            self.env.scope_resolver.declare_variable(name, declared_mutability);
+
                             let mut value_ref = value.borrow_mut();
                             *value_ref = if declared_mutability {
                                 value_ref.clone().into_mutable()
@@ -802,7 +815,8 @@ impl<'st> Interpreter<'st> {
                 let result = impl_binary_ops!(
                     (left_val, operator, right_val),
                     [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64],
-                    [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize]
+                    [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize],
+                    [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64, Str, Pointer]
                 );
 
                 if result.is_ok() {
@@ -823,7 +837,8 @@ impl<'st> Interpreter<'st> {
                     return impl_binary_ops! {
                         (left_val, operator, promoted),
                         [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64],
-                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize]
+                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize],
+                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64, Str, Pointer]
                     };
                 }
 
@@ -841,7 +856,8 @@ impl<'st> Interpreter<'st> {
                     return impl_binary_ops! {
                         (promoted, operator, right_val),
                         [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64],
-                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize]
+                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize],
+                        [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64, Str, Pointer]
                     };
                 }
 

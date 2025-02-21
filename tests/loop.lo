@@ -52,11 +52,11 @@ fn test_assign() {
 }
 
 fn test_while() {
-   // let mut i = 0;
-   // while i < 10 {
-   //    println!("ball(s) {i}"); 
-   //    i += 1;
-   // }
+   let mut i = 0;
+   while i < 10 {
+      println!("ball(s) {i}"); 
+      i += 1;
+   }
    
    test!("testing while let with slice");
    let mut x = [1, 2, 3, 4, 5].to_slice();   

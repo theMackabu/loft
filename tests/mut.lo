@@ -5,7 +5,17 @@ fn test_assignment(val: &mut i32) -> &mut i32 {
    return val;
 }
 
-fn main() -> Result<(), &str> {
+fn test_inner() {
+   let mut val = "outer";
+   
+   if val == "outer" {
+      val = "inner";
+   }
+   
+   println!("\nset value should be {val}");
+}
+
+fn main() {
    let mut value = 5;
 
    println!("value(1) is: {value}");
@@ -15,6 +25,6 @@ fn main() -> Result<(), &str> {
       
    println!("value(3) is: {value}");
       
-   Result::Ok(())
+   test_inner();
 }
 

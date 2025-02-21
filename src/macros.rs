@@ -23,7 +23,8 @@ macro_rules! impl_binary_ops {
     (
         ($left_val:expr, $operator:expr, $right_val:expr),
         [$($num:ident),*],
-        [$($int:ident),*]
+        [$($int:ident),*],
+        [$($else:ident),*]
     ) => {
         {
             let left = unwrap_value(&$left_val);
@@ -33,23 +34,25 @@ macro_rules! impl_binary_ops {
             let right_borrowed = right.borrow();
 
             match (left_borrowed.inner(), $operator, right_borrowed.inner()) {
+                (ValueType::Boolean(l), Token::And, ValueType::Boolean(r)) => Ok(val!(ValueType::Boolean(l && r))),
+                (ValueType::Boolean(l), Token::Or, ValueType::Boolean(r)) => Ok(val!(ValueType::Boolean(l || r))),
+
                 $(
                     (ValueType::$num(l), Token::Plus, ValueType::$num(r)) => Ok(val!(ValueType::$num(l + r))),
                     (ValueType::$num(l), Token::Minus, ValueType::$num(r)) => Ok(val!(ValueType::$num(l - r))),
                     (ValueType::$num(l), Token::Star, ValueType::$num(r)) => Ok(val!(ValueType::$num(l * r))),
                     (ValueType::$num(l), Token::Slash, ValueType::$num(r)) => Ok(val!(ValueType::$num(l / r))),
                     (ValueType::$num(l), Token::Rem, ValueType::$num(r)) => Ok(val!(ValueType::$num(l % r))),
-
-                    (ValueType::$num(l), Token::LeftAngle, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l < r))),
-                    (ValueType::$num(l), Token::RightAngle, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l > r))),
-                    (ValueType::$num(l), Token::LessEquals, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l <= r))),
-                    (ValueType::$num(l), Token::GreaterEquals, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l >= r))),
-                    (ValueType::$num(l), Token::Equals, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l == r))),
-                    (ValueType::$num(l), Token::NotEquals, ValueType::$num(r)) => Ok(val!(ValueType::Boolean(l != r))),
                 )*
 
-                (ValueType::Boolean(l), Token::And, ValueType::Boolean(r)) => Ok(val!(ValueType::Boolean(l && r))),
-                (ValueType::Boolean(l), Token::Or, ValueType::Boolean(r)) => Ok(val!(ValueType::Boolean(l || r))),
+                $(
+                    (ValueType::$else(l), Token::LeftAngle, ValueType::$else(r)) => Ok(val!(ValueType::Boolean(l < r))),
+                    (ValueType::$else(l), Token::RightAngle, ValueType::$else(r)) => Ok(val!(ValueType::Boolean(l > r))),
+                    (ValueType::$else(l), Token::LessEquals, ValueType::$else(r)) => Ok(val!(ValueType::Boolean(l <= r))),
+                    (ValueType::$else(l), Token::GreaterEquals, ValueType::$else(r)) => Ok(val!(ValueType::Boolean(l >= r))),
+                    (ValueType::$else(l), Token::Equals, ValueType::$else(r)) => Ok(val!(ValueType::Boolean(l == r))),
+                    (ValueType::$else(l), Token::NotEquals, ValueType::$else(r)) => Ok(val!(ValueType::Boolean(l != r))),
+                )*
 
                 $(
                     (ValueType::$int(l), Token::BitAnd, ValueType::$int(r)) => Ok(val!(ValueType::$int(l & r))),
@@ -132,8 +135,8 @@ macro_rules! impl_compound_assignment {
         $(($type:ident, $rust_type:ty, $method:ident)),* $(,)?
     }) => {
         {
-            let left_inner = unwrap_value(&$env, &$left).borrow().inner();
-            let right_inner = unwrap_value(&$env, &$right).borrow().inner();
+            let left_inner = unwrap_assignment(&$env, &$left).borrow().inner();
+            let right_inner = unwrap_assignment(&$env, &$right).borrow().inner();
 
             match (left_inner, right_inner) {
                 $(

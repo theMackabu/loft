@@ -2,7 +2,7 @@ use super::*;
 use crate::impl_compound_assignment;
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub};
 
-fn unwrap_value<'a>(env: &'a Environment, mut val: &'a Value) -> &'a Value {
+fn unwrap_assignment<'a>(env: &'a Environment, mut val: &'a Value) -> &'a Value {
     while let ValueType::Reference {
         source_name: Some(ref s_name),
         source_scope: Some(scope_idx),

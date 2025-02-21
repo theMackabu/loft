@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     parser::ast::Pattern,
     runtime::value::{Value, ValueType}, // parser::ast::Type,
@@ -37,7 +39,7 @@ pub fn unwrap_value(val: &Value) -> Value {
         }
     }
 
-    current
+    Rc::new(RefCell::new(current.borrow().clone().into_immutable()))
 }
 
 // pub fn convert_type_annotation(ty: &Type) -> Result<Primitive, TypeError> {
