@@ -1,7 +1,6 @@
 mod r#enum;
 mod r#macro;
 
-mod array;
 mod assign;
 mod cast;
 mod environment;
@@ -867,21 +866,17 @@ impl<'st> Interpreter<'st> {
             Expr::If { condition, then_branch, else_branch } => {
                 let cond_value = self.evaluate_expression(condition)?;
 
-                let cond_inner = {
+                let cond_bool = {
                     let borrowed = cond_value.borrow();
-                    borrowed.inner()
+                    borrowed.inner().to_bool()?
                 };
 
-                match cond_inner {
-                    ValueType::Boolean(true) => self.evaluate_expression(then_branch),
-                    ValueType::Boolean(false) => {
-                        if let Some(else_expr) = else_branch {
-                            self.evaluate_expression(else_expr)
-                        } else {
-                            Ok(ValueEnum::unit())
-                        }
-                    }
-                    _ => Err("Condition must be boolean".to_string()),
+                if cond_bool {
+                    self.evaluate_expression(then_branch)
+                } else if let Some(else_expr) = else_branch {
+                    self.evaluate_expression(else_expr)
+                } else {
+                    Ok(ValueEnum::unit())
                 }
             }
 

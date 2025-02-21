@@ -1,3 +1,6 @@
+mod array;
+mod str;
+
 use super::*;
 use std::{cell::RefCell, rc::Rc};
 
@@ -10,6 +13,15 @@ impl<'st> Interpreter<'st> {
                 }
 
                 return Ok(object.borrow().deep_clone());
+            }
+
+            "is_empty" => {
+                if !args.is_empty() {
+                    return Err("is_empty method does not take any arguments".to_string());
+                }
+
+                let is_empty = object.borrow().inner().is_empty();
+                return Ok(val!(ValueType::Boolean(is_empty)));
             }
 
             "type_name" => {
@@ -109,7 +121,8 @@ impl<'st> Interpreter<'st> {
 
     fn dispatch_method_call(&mut self, (value_type, object): (ValueType, Value), method: &str, args: &[Expr]) -> Result<Value, String> {
         match value_type {
-            // object, method, etc, args, name (make into struct)
+            ValueType::Str(val) => self.handle_str_method_call(object, method, args, val),
+
             ValueType::Array { ref ty, ref el, len } => self.handle_array_method_call(object, method, args, ty, el, len),
 
             ValueType::Slice { ref ty, ref el } => self.handle_slice_method_call(object, method, args, ty, el),

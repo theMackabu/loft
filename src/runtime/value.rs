@@ -1,3 +1,4 @@
+mod bool;
 mod clone;
 mod display;
 
