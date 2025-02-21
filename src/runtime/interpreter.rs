@@ -96,7 +96,18 @@ impl<'st> Interpreter<'st> {
             };
 
             match inner_value {
-                ValueType::Return(val) => return Ok(val.clone()),
+                ValueType::Return(val) => {
+                    return Ok(val.clone());
+                }
+
+                ValueType::Break(_, _) => {
+                    return Err("break statement not allowed outside loop".into());
+                }
+
+                ValueType::Continue(_) => {
+                    return Err("continue statement not allowed outside loop".into());
+                }
+
                 _ => last_value = result,
             }
         }
@@ -173,6 +184,8 @@ impl<'st> Interpreter<'st> {
         match stmt {
             Stmt::ExpressionValue(expr) => self.evaluate_expression(expr),
 
+            Stmt::ExpressionStmt(expr) => self.evaluate_expression(expr),
+
             Stmt::Struct { name, fields, .. } => {
                 self.handle_struct_def(name, fields.to_owned())?;
                 Ok(ValueEnum::unit())
@@ -185,11 +198,6 @@ impl<'st> Interpreter<'st> {
 
             Stmt::MacroDefinition { name, tokens, .. } => {
                 self.handle_macro_definition(name, tokens)?;
-                Ok(ValueEnum::unit())
-            }
-
-            Stmt::ExpressionStmt(expr) => {
-                self.evaluate_expression(expr)?;
                 Ok(ValueEnum::unit())
             }
 
@@ -513,7 +521,7 @@ impl<'st> Interpreter<'st> {
 
                 for stmt in statements {
                     let result = self.execute_statement(stmt)?;
-                    if matches!(result.borrow().inner(), ValueType::Return(_)) {
+                    if matches!(result.borrow().inner(), ValueType::Return(_) | ValueType::Break(_, _) | ValueType::Continue(_)) {
                         self.env.exit_scope();
                         return Ok(result);
                     }

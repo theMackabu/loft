@@ -1,6 +1,13 @@
 fn test_loop() {
+   // let mut i = 0;
+   // 
    // loop { 
-   //    println!("I live."); 
+   //    if i < 5 {
+   //       break;
+   //    }
+   //    
+   //    println!("I live.");
+   //    i+=1;
    // }
    
    'outer: loop {
@@ -15,10 +22,10 @@ fn test_loop() {
    }
    
    'a: loop {
-      'a: loop {
-         break 'a;
+      'b: loop {
+         break 'b;
       }
-      print!("outer loop");
+      println!("Hit outer loop");
       break 'a;
    }
 }
@@ -41,13 +48,13 @@ fn test_assign() {
 }
 
 fn test_while() {
-   let mut i = 0;
-   while i < 10 {
-      println!("ball(s) {i}"); 
-      i += 1;
-   }
+   // let mut i = 0;
+   // while i < 10 {
+   //    println!("ball(s) {i}"); 
+   //    i += 1;
+   // }
    
-   let x = [1, 2, 3, 4, 5];
+   let mut x = [1, 2, 3, 4, 5].to_slice();   
    while let Some(y) = x.pop() {
       println!("y = {}", y);
    }
@@ -77,8 +84,8 @@ fn test_for() {
 }
 
 fn main() {
-   // test_loop();
+   test_loop();
    // test_assign();
-   test_while();
+   // test_while();
    // test_for();
 }
