@@ -19,7 +19,7 @@ fn test_loop() {
       'b: loop {
          break 'b;
       }
-      println!("Hit outer loop");
+      println!("Hit \"'a\" outer loop");
       break 'a;
    }
    

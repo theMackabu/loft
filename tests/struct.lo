@@ -55,10 +55,8 @@ fn main() {
          id: 2 
       }
    };
-
    
    trig1.display();
-   
    trig2.change_stuff();
    trig2.display();
 }

@@ -99,9 +99,9 @@ pub fn token_to_string(token: &Token) -> String {
         Token::BitOrAssign => "|=".to_string(),
         Token::Or => "||".to_string(),
 
-        Token::Identifier(s) => s.clone(),
-        Token::String(s) => format!("\"{}\"", s),
         Token::Lifetime(s) => s.clone(),
+        Token::Identifier(s) => s.clone(),
+        Token::String(s) => format!("\"{}\"", s.replace('"', "\\\"")),
 
         Token::Integer(val, maybe_suffix) => {
             let mut s = val.to_string();

@@ -6,8 +6,7 @@ enum FizzbuzzResult {
 }
 
 impl FizzbuzzResult {
-   fn get(&self) -> str {
-      // cant do *self
+   fn get(self) -> str {      
       match self {
          FizzbuzzResult::Fizz => "Fizz",
          FizzbuzzResult::Buzz => "Buzz",
