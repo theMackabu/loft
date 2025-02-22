@@ -91,9 +91,10 @@ impl ValueType {
                 function: function.clone(),
             },
 
-            ValueType::Range { start, end } => ValueType::Range {
+            ValueType::Range { start, end, inclusive } => ValueType::Range {
                 start: start.borrow().deep_clone(),
                 end: end.borrow().deep_clone(),
+                inclusive: inclusive.clone(),
             },
 
             ValueType::Array { ty, el, len } => ValueType::Array {

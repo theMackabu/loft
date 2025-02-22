@@ -463,10 +463,15 @@ impl<'st> Interpreter<'st> {
 
             Expr::For { label, pattern, iterable, body } => self.handle_for(label, pattern, iterable, body),
 
-            Expr::Range { start, end } => {
+            Expr::Range { start, end, inclusive } => {
                 let start_val = self.evaluate_expression(start)?;
                 let end_val = self.evaluate_expression(end)?;
-                Ok(val!(ValueType::Range { start: start_val, end: end_val }))
+
+                Ok(val!(ValueType::Range {
+                    start: start_val,
+                    end: end_val,
+                    inclusive: *inclusive
+                }))
             }
 
             Expr::Integer(value, ty) => Ok(val!(match ty.to_owned().unwrap_or(NumericType::I32) {
@@ -1002,7 +1007,7 @@ impl<'st> Interpreter<'st> {
             Expr::Index { array, index } => {
                 let array_value = self.evaluate_expression(array)?;
 
-                if let Expr::Range { ref start, ref end } = **index {
+                if let Expr::Range { ref start, ref end, ref inclusive } = **index {
                     let start_value = self.evaluate_expression(start)?;
                     let start_idx = get_index_as_usize(&start_value)?;
 
@@ -1011,7 +1016,11 @@ impl<'st> Interpreter<'st> {
                     match array_value {
                         ValueType::Array { el, len, ty } => {
                             let end_value = self.evaluate_expression(end)?;
-                            let end_idx = get_index_as_usize(&end_value)?;
+                            let mut end_idx = get_index_as_usize(&end_value)?;
+
+                            if *inclusive {
+                                end_idx += 1;
+                            }
 
                             if start_idx > end_idx || end_idx > len {
                                 return Err(format!("Invalid range: {}..{} (array length: {})", start_idx, end_idx, len));
@@ -1027,7 +1036,11 @@ impl<'st> Interpreter<'st> {
 
                         ValueType::Slice { el, ty } => {
                             let end_value = self.evaluate_expression(end)?;
-                            let end_idx = get_index_as_usize(&end_value)?;
+                            let mut end_idx = get_index_as_usize(&end_value)?;
+
+                            if *inclusive {
+                                end_idx += 1;
+                            }
 
                             if start_idx > end_idx || end_idx > el.len() {
                                 return Err(format!("Invalid range: {}..{} (slice length: {})", start_idx, end_idx, el.len()));

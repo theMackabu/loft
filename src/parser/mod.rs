@@ -1589,6 +1589,20 @@ impl Parser {
                 Ok(Expr::Range {
                     start: Box::new(left),
                     end: Box::new(right),
+                    inclusive: false,
+                })
+            }
+
+            Token::RangeInclusive => {
+                let operator = self.current.token.clone();
+                let precedence = self.get_precedence(&operator);
+
+                self.advance(); // consume ..=
+                let right = self.parse_expression(precedence)?;
+                Ok(Expr::Range {
+                    start: Box::new(left),
+                    end: Box::new(right),
+                    inclusive: true,
                 })
             }
 
@@ -2314,7 +2328,7 @@ impl Parser {
 
     fn get_precedence(&self, token: &Token) -> i32 {
         match token {
-            Token::Range => PRECEDENCE_RANGE,
+            Token::Range | Token::RangeInclusive => PRECEDENCE_RANGE,
             Token::Dot => PRECEDENCE_MEMBER,
             Token::LeftParen => PRECEDENCE_CALL,
             Token::Question => PRECEDENCE_QUESTION,

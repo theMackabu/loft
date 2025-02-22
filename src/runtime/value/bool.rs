@@ -12,7 +12,7 @@ impl ValueType {
             ValueType::Tuple(values) => values.is_empty(),
             ValueType::Struct { fields, .. } => fields.is_empty(),
             ValueType::Enum { data, .. } => data.as_ref().map_or(true, |d| d.is_empty()),
-            ValueType::Range { start, end } => start.borrow().inner().is_empty() && end.borrow().inner().is_empty(),
+            ValueType::Range { start, end, .. } => start.borrow().inner().is_empty() && end.borrow().inner().is_empty(),
 
             ValueType::Reference { original_ptr, _undropped, .. } => {
                 if (*original_ptr).is_null() {

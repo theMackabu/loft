@@ -46,6 +46,7 @@ pub enum ValueType {
     Range {
         start: Value,
         end: Value,
+        inclusive: bool,
     },
 
     Struct {

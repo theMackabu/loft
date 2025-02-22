@@ -51,6 +51,7 @@ pub fn token_to_string(token: &Token) -> String {
 
         Token::Dot => ".".to_string(),
         Token::Range => "..".to_string(),
+        Token::RangeInclusive => "..=".to_string(),
         Token::LeftParen => "(".to_string(),
         Token::RightParen => ")".to_string(),
         Token::LeftBracket => "[".to_string(),

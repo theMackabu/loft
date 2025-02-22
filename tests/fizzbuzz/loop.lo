@@ -1,0 +1,15 @@
+fn fizz_buzz(i: i32) -> Option<str> {
+   if i % 15 == 0 { Some("FizzBuzz") }
+   else if i % 5 == 0 { Some("Buzz") }
+   else if i % 3 == 0 { Some("Fizz") }
+   else { None }
+}
+
+fn main() {
+   for i in 1..=30 {
+      match fizz_buzz(i) {
+         Some(v) => println!("{v}"),
+         None => println!("{i}"),
+      }
+   }
+}

@@ -42,22 +42,23 @@ pub enum Token {
     DoubleColon, // ::
 
     // symbols
-    Dot,          // .
-    Range,        // ..
-    LeftParen,    //(
-    RightParen,   //)
-    LeftBracket,  // [
-    RightBracket, // ]
-    LeftBrace,    // {
-    RightBrace,   // }
-    Semicolon,    // ;
-    Colon,        // :
-    Comma,        // ,
-    Arrow,        // ->
-    LeftAngle,    // <
-    RightAngle,   // >
-    Question,     // ?
-    Fat,          // =>
+    Dot,            // .
+    Range,          // ..
+    RangeInclusive, // ..=
+    LeftParen,      //(
+    RightParen,     //)
+    LeftBracket,    // [
+    RightBracket,   // ]
+    LeftBrace,      // {
+    RightBrace,     // }
+    Semicolon,      // ;
+    Colon,          // :
+    Comma,          // ,
+    Arrow,          // ->
+    LeftAngle,      // <
+    RightAngle,     // >
+    Question,       // ?
+    Fat,            // =>
 
     // operators
     Plus,   // +
@@ -490,7 +491,12 @@ impl Lexer {
                     self.advance();
                     if self.current_char == Some('.') {
                         self.advance();
-                        Token::Range
+                        if self.current_char == Some('=') {
+                            self.advance();
+                            Token::RangeInclusive
+                        } else {
+                            Token::Range
+                        }
                     } else {
                         Token::Dot
                     }

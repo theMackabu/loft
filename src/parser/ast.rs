@@ -139,6 +139,7 @@ pub enum Expr {
     Range {
         start: Box<Expr>,
         end: Box<Expr>,
+        inclusive: bool,
     },
 
     ArrayRepeat {

@@ -186,13 +186,13 @@ impl<'st> Interpreter<'st> {
                     }
                 }
             }
-            ValueType::Range { start, end } => {
+            ValueType::Range { start, end, inclusive } => {
                 let start_val = start.borrow().inner();
                 let end_val = end.borrow().inner();
 
                 match (start_val, end_val) {
                     (ValueType::I32(s), ValueType::I32(e)) => {
-                        for i in s..e {
+                        for i in s..if inclusive { e + 1 } else { e } {
                             self.env.enter_scope();
                             self.match_pattern(pattern, &val!(ValueType::I32(i)), true)?;
 
