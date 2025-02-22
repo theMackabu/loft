@@ -69,7 +69,9 @@ pub enum Token {
 
     // advanced operators
     Not,           // !
+    BitNot,        // ~
     NotEquals,     // !=
+    BitNotEquals,  // ~=
     Rem,           // %
     RemAssign,     // %=
     BitAnd,        // &
@@ -598,6 +600,16 @@ impl Lexer {
                         Token::NotEquals
                     } else {
                         Token::Not
+                    }
+                }
+
+                '~' => {
+                    self.advance();
+                    if self.current_char == Some('=') {
+                        self.advance();
+                        Token::BitNotEquals
+                    } else {
+                        Token::BitNot
                     }
                 }
 

@@ -17,17 +17,35 @@ impl<'st> Interpreter<'st> {
                 }
 
                 let arg_value = self.evaluate_expression(&args[0])?;
-                if let ValueType::Str(push_value) = arg_value.borrow().inner() {
-                    if push_value.len() != 1 {
-                        return Err("push method requires a single character".to_string());
-                    }
+                let actual_value = match arg_value.borrow().inner() {
+                    ValueType::Reference {
+                        source_name: _,
+                        source_scope: _,
+                        original_ptr: _,
+                        _undropped: ref value,
+                    } => value.borrow().inner(),
+                    other => other,
+                };
 
+                if let ValueType::Str(push_value) = actual_value {
                     let mut object_mut = object.borrow_mut();
-                    if let ValueEnum::Mutable(ValueType::Str(ref mut string)) = *object_mut {
-                        string.push_str(&push_value);
-                        Ok(object.clone())
-                    } else {
-                        Err("Cannot call push on an immutable string".to_string())
+                    match *object_mut {
+                        ValueEnum::Mutable(ValueType::Str(ref mut string)) => {
+                            string.push_str(&push_value);
+                            Ok(object.clone())
+                        }
+
+                        ValueEnum::Mutable(ValueType::Reference { _undropped: ref value, .. }) => {
+                            let mut value_ref = value.borrow_mut();
+                            if let ValueEnum::Mutable(ValueType::Str(ref mut string)) = *value_ref {
+                                string.push_str(&push_value);
+                                Ok(object.clone())
+                            } else {
+                                Err("Cannot call push on an immutable string".to_string())
+                            }
+                        }
+
+                        _ => Err("Cannot call push on an immutable string".to_string()),
                     }
                 } else {
                     Err("push method requires a string argument".to_string())

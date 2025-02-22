@@ -74,7 +74,9 @@ pub fn token_to_string(token: &Token) -> String {
         Token::Equals => "==".to_string(),
 
         Token::Not => "!".to_string(),
+        Token::BitNot => "~".to_string(),
         Token::NotEquals => "!=".to_string(),
+        Token::BitNotEquals => "~=".to_string(),
         Token::Rem => "%".to_string(),
         Token::RemAssign => "%=".to_string(),
         Token::BitAnd => "&".to_string(),

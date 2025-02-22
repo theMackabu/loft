@@ -1,7 +1,7 @@
 use loft::{
     error::{Error, Result},
     // types::checker::TypeChecker,
-    parser::{lexer::Lexer, Parser},
+    parser::{Parser, lexer::Lexer},
     runtime::{interpreter::Interpreter, value::ValueType},
 };
 

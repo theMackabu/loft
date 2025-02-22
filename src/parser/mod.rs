@@ -1002,7 +1002,7 @@ impl Parser {
                         _ => {
                             return Err(ParseError::ExpectedExpression {
                                 location: self.current.location.clone(),
-                            })
+                            });
                         }
                     };
                     self.expect(Token::RightBracket)?;
@@ -1138,7 +1138,7 @@ impl Parser {
             _ => {
                 return Err(ParseError::ExpectedIdentifier {
                     location: self.current.location.to_owned(),
-                })
+                });
             }
         };
 
@@ -1221,7 +1221,7 @@ impl Parser {
 
             Token::For => return self.parse_for_expression(None),
 
-            Token::Minus | Token::Not => {
+            Token::Minus | Token::Not | Token::BitNot => {
                 let operator = self.current.token.clone();
                 self.advance();
                 let operand = Box::new(self.parse_expression(PRECEDENCE_PREFIX)?);
@@ -1359,7 +1359,7 @@ impl Parser {
             _ => {
                 return Err(ParseError::ExpectedIdentifier {
                     location: self.current.location.to_owned(),
-                })
+                });
             }
         }
     }
@@ -1462,7 +1462,7 @@ impl Parser {
                         return Err(ParseError::Custom {
                             message: "Cannot use Self outside of an impl block".to_string(),
                             location: self.current.location.clone(),
-                        })
+                        });
                     }
                 }
             } else {
@@ -1663,7 +1663,8 @@ impl Parser {
             | Token::Or
             | Token::BitAnd
             | Token::BitXor
-            | Token::Rem => {
+            | Token::Rem
+            | Token::BitNot => {
                 let operator = self.current.token.clone();
                 let precedence = self.get_precedence(&operator);
                 self.advance();
@@ -1684,7 +1685,8 @@ impl Parser {
             | Token::BitOrAssign
             | Token::BitXorAssign
             | Token::ShlAssign
-            | Token::ShrAssign => {
+            | Token::ShrAssign
+            | Token::BitNotEquals => {
                 let operator = self.current.token.clone();
                 self.advance();
                 let value = self.parse_expression(PRECEDENCE_ASSIGN - 1)?;
@@ -1724,7 +1726,8 @@ impl Parser {
                     | Token::BitOrAssign
                     | Token::BitXorAssign
                     | Token::ShlAssign
-                    | Token::ShrAssign => {
+                    | Token::ShrAssign
+                    | Token::BitNotEquals => {
                         let operator = self.current.token.clone();
                         self.advance();
                         let value = self.parse_expression(0)?;
@@ -2256,11 +2259,7 @@ impl Parser {
                         Token::Identifier(name) => {
                             let name = name.clone();
                             self.advance();
-                            if name == "_" {
-                                Ok(Pattern::Wildcard)
-                            } else {
-                                Ok(Pattern::Identifier { name, mutable: false })
-                            }
+                            if name == "_" { Ok(Pattern::Wildcard) } else { Ok(Pattern::Identifier { name, mutable: false }) }
                         }
 
                         Token::LeftBrace => {
@@ -2319,14 +2318,14 @@ impl Parser {
             Token::Dot => PRECEDENCE_MEMBER,
             Token::LeftParen => PRECEDENCE_CALL,
             Token::Question => PRECEDENCE_QUESTION,
-            Token::Equals | Token::NotEquals => PRECEDENCE_EQUALS,
+            Token::Equals | Token::NotEquals | Token::BitNotEquals => PRECEDENCE_EQUALS,
             Token::LeftAngle | Token::RightAngle | Token::LessEquals | Token::GreaterEquals => PRECEDENCE_COMPARE,
             Token::Or | Token::BitOr => PRECEDENCE_OR,
             Token::And | Token::BitAnd => PRECEDENCE_AND,
             Token::Plus | Token::Minus => PRECEDENCE_SUM,
             Token::Star | Token::Slash | Token::Rem => PRECEDENCE_PRODUCT,
             Token::BitXor => PRECEDENCE_OR,
-            Token::Not => PRECEDENCE_PREFIX,
+            Token::Not | Token::BitNot => PRECEDENCE_PREFIX,
             Token::LeftBracket => PRECEDENCE_INDEX,
             Token::As => PRECEDENCE_CALL,
             Token::RemAssign

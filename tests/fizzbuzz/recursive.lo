@@ -20,5 +20,5 @@ fn fizzbuzz(n: i32) -> str {
 }
 
 fn main() {
-   println!("{}", fizzbuzz(10));
+   println!("{}", fizzbuzz(30));
 }

@@ -501,7 +501,7 @@ impl<'st> Interpreter<'st> {
             })),
 
             Expr::String(value) => {
-                let rc = val!(ValueType::Str(value.to_owned()));
+                let rc = val!(mut ValueType::Str(value.to_owned()));
 
                 Ok(val!(ValueType::Reference {
                     source_name: None,
@@ -861,6 +861,39 @@ impl<'st> Interpreter<'st> {
                 }
 
                 Err(format!("Cannot perform operation between {:?} and {:?}", left_val, right_val))
+            }
+
+            Expr::Unary { operator, operand } => {
+                let operand_value = self.evaluate_expression(operand)?;
+
+                match operator {
+                    Token::Not => {
+                        let operand_inner = operand_value.borrow().inner();
+                        let bool_value = operand_inner.to_bool()?;
+                        Ok(val!(ValueType::Boolean(!bool_value)))
+                    }
+
+                    Token::BitNot => {
+                        let operand_inner = operand_value.borrow().inner();
+                        match operand_inner {
+                            ValueType::I8(v) => Ok(val!(ValueType::I8(!v))),
+                            ValueType::I16(v) => Ok(val!(ValueType::I16(!v))),
+                            ValueType::I32(v) => Ok(val!(ValueType::I32(!v))),
+                            ValueType::I64(v) => Ok(val!(ValueType::I64(!v))),
+                            ValueType::I128(v) => Ok(val!(ValueType::I128(!v))),
+                            ValueType::ISize(v) => Ok(val!(ValueType::ISize(!v))),
+                            ValueType::U8(v) => Ok(val!(ValueType::U8(!v))),
+                            ValueType::U16(v) => Ok(val!(ValueType::U16(!v))),
+                            ValueType::U32(v) => Ok(val!(ValueType::U32(!v))),
+                            ValueType::U64(v) => Ok(val!(ValueType::U64(!v))),
+                            ValueType::U128(v) => Ok(val!(ValueType::U128(!v))),
+                            ValueType::USize(v) => Ok(val!(ValueType::USize(!v))),
+                            _ => Err("Bitwise NOT (~) can only be applied to integer values".to_string()),
+                        }
+                    }
+
+                    _ => Err(format!("Unsupported unary operator: {:?}", operator)),
+                }
             }
 
             Expr::If { condition, then_branch, else_branch } => {
@@ -1893,19 +1926,32 @@ impl<'st> Interpreter<'st> {
                     borrowed.inner()
                 };
 
-                if let ValueType::Enum { data: Some(values), .. } = inner_value {
-                    if elements.len() == values.len() {
-                        for (element, field_val) in elements.iter().zip(values.iter()) {
-                            if !self.pattern_matches(element, field_val)? {
-                                return Ok(false);
+                match inner_value {
+                    ValueType::Tuple(values) => {
+                        if elements.len() == values.len() {
+                            for (element, field_val) in elements.iter().zip(values.iter()) {
+                                if !self.pattern_matches(element, field_val)? {
+                                    return Ok(false);
+                                }
                             }
+                            Ok(true)
+                        } else {
+                            Ok(false)
                         }
-                        Ok(true)
-                    } else {
-                        Ok(false)
                     }
-                } else {
-                    Ok(false)
+                    ValueType::Enum { data: Some(values), .. } => {
+                        if elements.len() == values.len() {
+                            for (element, field_val) in elements.iter().zip(values.iter()) {
+                                if !self.pattern_matches(element, field_val)? {
+                                    return Ok(false);
+                                }
+                            }
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    _ => Ok(false),
                 }
             }
 

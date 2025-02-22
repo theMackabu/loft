@@ -3,6 +3,7 @@ use super::*;
 impl ValueType {
     pub fn is_empty(&self) -> bool {
         match self {
+            ValueType::Unit => true,
             ValueType::Boolean(val) => !*val,
             ValueType::Str(val) => val.is_empty(),
             ValueType::Pointer(ptr) => ptr.is_null(),
@@ -11,10 +12,16 @@ impl ValueType {
             ValueType::Tuple(values) => values.is_empty(),
             ValueType::Struct { fields, .. } => fields.is_empty(),
             ValueType::Enum { data, .. } => data.as_ref().map_or(true, |d| d.is_empty()),
-            ValueType::Reference { original_ptr, .. } => original_ptr.is_null(),
             ValueType::Range { start, end } => start.borrow().inner().is_empty() && end.borrow().inner().is_empty(),
 
-            ValueType::Unit => true,
+            ValueType::Reference { original_ptr, _undropped, .. } => {
+                if (*original_ptr).is_null() {
+                    true
+                } else {
+                    unsafe { &*(*original_ptr) }.borrow().inner().is_empty()
+                }
+            }
+
             _ => false,
         }
     }
