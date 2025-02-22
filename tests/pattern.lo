@@ -24,14 +24,7 @@ fn main() {
       None => 999,
    };
    
-   println!("should print 42\n - result: {result}\n");
-   println!("should print 'error message'\n - error_msg: {error_msg}\n");
-   println!("should print 123\n - opt_value: {opt_value}\n");
-   println!("should print 999\n - default: {default}\n");
-      
-   let value = 0;
-   
-   println!("should print 'zero'\n - value: {}", match value {
+   let value = match 0 {
       0i32 => "zero",
       0u8 => "unsigned zero",
       1.0f32 => "one float",
@@ -39,5 +32,11 @@ fn main() {
       -1.0f64 => "negative one float",
       n if n < 0 => "negative",
       _ => "positive"
-   });
+   };
+   
+   println!("should print 42\n - result: {result}\n");
+   println!("should print 'error message'\n - error_msg: {error_msg}\n");
+   println!("should print 123\n - opt_value: {opt_value}\n");
+   println!("should print 999\n - default: {default}\n");
+   println!("should print 'zero'\n - value: {value}");
 }

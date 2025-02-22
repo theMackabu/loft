@@ -9,34 +9,90 @@ pub enum Option<T> {
 }
 
 impl Result<T, E> {
+    pub fn ok(self) -> Option<T> {
+        match self {
+            Ok(x) => Some(x),
+            Err(_) => None,
+        }
+    }
+    
+    pub fn err(self) -> Option<E> {
+        match self {
+            Ok(_) => None,
+            Err(x) => Some(x),
+        }
+    }
+    
     pub fn is_ok(&self) -> bool {
-        match *self {
+        match self {
             Ok(_) => true,
             _ => false
         }
     }
     
-    // add err in core::panic
+    pub fn is_err(&self) -> bool {
+        !self.is_ok()
+    }
+    
     pub fn unwrap(self) -> T {
         match self {
             Ok(t) => t,
             Err(e) => panic!("called `Result::unwrap()` on an `Err` value: {e}"),
         }
     }
+    
+    pub fn unwrap_err(self) -> E {
+        match self {
+            Ok(t) => panic!("called `Result::unwrap_err()` on an `Ok` value: {t}"),
+            Err(e) => e,
+        }
+    }
+    
+    pub fn unwrap_or(self, default: T) -> T {
+        match self {
+            Some(x) => x,
+            None => default,
+        }
+    }
+    
+    pub fn unwrap_or_default(self) -> T {
+        match self {
+            Some(x) => x,
+            None => T::default(),
+        }
+    }
 }
 
 impl Option<T> {
     pub fn is_some(&self) -> bool {
-        match *self {
+        match self {
             Some(_) => true,
             _ => false
         }
+    }
+    
+    pub fn is_none(&self) -> bool {
+        !self.is_some()
     }
     
     pub fn unwrap(self) -> T {
         match self {
             Some(v) => v,
             None => panic!("called `Option::unwrap()` on a `none` value")
+        }
+    }
+    
+    pub fn unwrap_or(self, default: T) -> T {
+        match self {
+            Some(x) => x,
+            None => default,
+        }
+    }
+    
+    pub fn unwrap_or_default(self) -> T {
+        match self {
+            Some(x) => x,
+            None => T::default(),
         }
     }
 }
