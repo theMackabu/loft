@@ -1217,9 +1217,8 @@ impl Parser {
                 false
             };
 
-            let prec = self.get_precedence(&Token::Range);
             let right = if self.token_starts_expression(&self.current.token) {
-                Some(Box::new(self.parse_expression(prec)?))
+                Some(Box::new(self.parse_expression(PRECEDENCE_RANGE)?))
             } else {
                 None
             };
@@ -1600,7 +1599,10 @@ impl Parser {
             | Token::Match
             | Token::Loop
             | Token::While
-            | Token::For => true,
+            | Token::For
+            | Token::Range
+            | Token::RangeInclusive
+            | Token::BitAnd => true,
             _ => false,
         }
     }
@@ -1907,10 +1909,13 @@ impl Parser {
     fn parse_for_expression(&mut self, label: Option<String>) -> Result<Expr, ParseError> {
         self.advance(); // consume 'for'
         let pattern = self.parse_pattern()?;
+
         self.expect(Token::In)?;
         let iterable = self.parse_expression(0)?;
+
         self.expect(Token::LeftBrace)?;
         let body = self.parse_block_expression()?;
+
         Ok(Expr::For {
             label,
             pattern,
