@@ -1,0 +1,32 @@
+enum FizzbuzzResult {
+   Fizz,
+   Buzz,
+   FizzBuzz,
+   Num(i32),
+}
+
+impl FizzbuzzResult {
+   fn get(&self) -> str {
+      match self {
+         FizzbuzzResult::Fizz => "Fizz",
+         FizzbuzzResult::Buzz => "Buzz",
+         FizzbuzzResult::FizzBuzz => "FizzBuzz",
+         FizzbuzzResult::Num(val) => val.as_str(),
+      }
+   }
+}
+
+fn fizzbuzz(num: i32) -> FizzbuzzResult {
+   match (num % 3, num % 5) {
+      (x, y) if x == 0 && y == 0 => FizzbuzzResult::FizzBuzz,
+      (x, _) if x == 0 => FizzbuzzResult::Fizz,
+      (_, x) if x == 0 => FizzbuzzResult::Buzz,
+      _ => FizzbuzzResult::Num(num),
+   }
+}
+
+fn main() {
+   for x in 1..=30 {
+      println!("{}", fizzbuzz(x).get())
+   }
+}
