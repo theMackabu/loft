@@ -108,6 +108,7 @@ impl ValueType {
                 el: el.iter().map(|v| v.borrow().deep_clone()).collect(),
             },
 
+            ValueType::Unbounded => ValueType::Unbounded,
             ValueType::Unit => ValueType::Unit,
         }
     }

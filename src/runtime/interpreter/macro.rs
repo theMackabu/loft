@@ -456,7 +456,7 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
     fn is_delimiter(token: &Token) -> bool {
         matches!(
             token,
-            Token::At | Token::Arrow | Token::Dot | Token::Comma | Token::LeftAngle | Token::RightAngle | Token::Question | Token::Pound | Token::Colon | Token::Semicolon | Token::Equals | Token::Fat
+            Token::At | Token::Arrow | Token::Comma | Token::LeftAngle | Token::RightAngle | Token::Question | Token::Pound | Token::Colon | Token::Semicolon | Token::Fat
         )
     }
 

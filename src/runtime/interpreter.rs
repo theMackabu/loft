@@ -464,8 +464,15 @@ impl<'st> Interpreter<'st> {
             Expr::For { label, pattern, iterable, body } => self.handle_for(label, pattern, iterable, body),
 
             Expr::Range { start, end, inclusive } => {
-                let start_val = self.evaluate_expression(start)?;
-                let end_val = self.evaluate_expression(end)?;
+                let start_val = match start {
+                    Some(s) => self.evaluate_expression(s)?,
+                    None => val!(ValueType::Unbounded),
+                };
+
+                let end_val = match end {
+                    Some(e) => self.evaluate_expression(e)?,
+                    None => val!(ValueType::Unbounded),
+                };
 
                 Ok(val!(ValueType::Range {
                     start: start_val,
@@ -1008,26 +1015,33 @@ impl<'st> Interpreter<'st> {
                 let array_value = self.evaluate_expression(array)?;
 
                 if let Expr::Range { ref start, ref end, ref inclusive } = **index {
-                    let start_value = self.evaluate_expression(start)?;
-                    let start_idx = get_index_as_usize(&start_value)?;
+                    let start_idx = if let Some(start_expr) = start {
+                        let start_val = self.evaluate_expression(start_expr)?;
+                        get_index_as_usize(&start_val)?
+                    } else {
+                        0
+                    };
 
                     inner_val!(array_value);
 
                     match array_value {
                         ValueType::Array { el, len, ty } => {
-                            let end_value = self.evaluate_expression(end)?;
-                            let mut end_idx = get_index_as_usize(&end_value)?;
-
-                            if *inclusive {
-                                end_idx += 1;
-                            }
+                            let end_idx = if let Some(end_expr) = end {
+                                let end_val = self.evaluate_expression(end_expr)?;
+                                let mut idx = get_index_as_usize(&end_val)?;
+                                if *inclusive {
+                                    idx += 1;
+                                }
+                                idx
+                            } else {
+                                len
+                            };
 
                             if start_idx > end_idx || end_idx > len {
                                 return Err(format!("Invalid range: {}..{} (array length: {})", start_idx, end_idx, len));
                             }
 
                             let slice_elements: Vec<Value> = el[start_idx..end_idx].to_vec();
-
                             Ok(val!(ValueType::Slice {
                                 ty: Box::new(*ty.clone()),
                                 el: slice_elements,
@@ -1035,19 +1049,22 @@ impl<'st> Interpreter<'st> {
                         }
 
                         ValueType::Slice { el, ty } => {
-                            let end_value = self.evaluate_expression(end)?;
-                            let mut end_idx = get_index_as_usize(&end_value)?;
-
-                            if *inclusive {
-                                end_idx += 1;
-                            }
+                            let end_idx = if let Some(end_expr) = end {
+                                let end_val = self.evaluate_expression(end_expr)?;
+                                let mut idx = get_index_as_usize(&end_val)?;
+                                if *inclusive {
+                                    idx += 1;
+                                }
+                                idx
+                            } else {
+                                el.len()
+                            };
 
                             if start_idx > end_idx || end_idx > el.len() {
                                 return Err(format!("Invalid range: {}..{} (slice length: {})", start_idx, end_idx, el.len()));
                             }
 
                             let slice_elements: Vec<Value> = el[start_idx..end_idx].to_vec();
-
                             Ok(val!(ValueType::Slice {
                                 ty: Box::new(*ty.clone()),
                                 el: slice_elements,

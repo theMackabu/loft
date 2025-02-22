@@ -186,16 +186,18 @@ impl<'st> Interpreter<'st> {
                     }
                 }
             }
+
             ValueType::Range { start, end, inclusive } => {
                 let start_val = start.borrow().inner();
                 let end_val = end.borrow().inner();
 
-                match (start_val, end_val) {
-                    (ValueType::I32(s), ValueType::I32(e)) => {
+                macro_rules! handle_range {
+                    ($s:expr, $e:expr, $variant:ident) => {{
+                        let s = $s;
+                        let e = $e;
                         for i in s..if inclusive { e + 1 } else { e } {
                             self.env.enter_scope();
-                            self.match_pattern(pattern, &val!(ValueType::I32(i)), true)?;
-
+                            self.match_pattern(pattern, &val!(ValueType::$variant(i)), true)?;
                             match self.evaluate_expression(body)? {
                                 break_value if matches!(break_value.borrow().inner(), ValueType::Return(_)) => {
                                     self.env.exit_scope();
@@ -208,7 +210,6 @@ impl<'st> Interpreter<'st> {
                                     } else {
                                         unreachable!()
                                     };
-
                                     match (label, &break_label) {
                                         (Some(loop_label), Some(break_label)) if loop_label == break_label => {
                                             return Ok(value.unwrap_or_else(|| val!(ValueType::Unit)));
@@ -227,7 +228,6 @@ impl<'st> Interpreter<'st> {
                                     } else {
                                         unreachable!()
                                     };
-
                                     match (label, &continue_label) {
                                         (Some(loop_label), Some(continue_label)) if loop_label == continue_label => continue,
                                         (None, None) => continue,
@@ -241,10 +241,26 @@ impl<'st> Interpreter<'st> {
                                 }
                             }
                         }
-                    }
+                    }};
+                }
+
+                match (start_val, end_val) {
+                    (ValueType::I8(s), ValueType::I8(e)) => handle_range!(s, e, I8),
+                    (ValueType::I16(s), ValueType::I16(e)) => handle_range!(s, e, I16),
+                    (ValueType::I32(s), ValueType::I32(e)) => handle_range!(s, e, I32),
+                    (ValueType::I64(s), ValueType::I64(e)) => handle_range!(s, e, I64),
+                    (ValueType::I128(s), ValueType::I128(e)) => handle_range!(s, e, I128),
+                    (ValueType::ISize(s), ValueType::ISize(e)) => handle_range!(s, e, ISize),
+                    (ValueType::U8(s), ValueType::U8(e)) => handle_range!(s, e, U8),
+                    (ValueType::U16(s), ValueType::U16(e)) => handle_range!(s, e, U16),
+                    (ValueType::U32(s), ValueType::U32(e)) => handle_range!(s, e, U32),
+                    (ValueType::U64(s), ValueType::U64(e)) => handle_range!(s, e, U64),
+                    (ValueType::U128(s), ValueType::U128(e)) => handle_range!(s, e, U128),
+                    (ValueType::USize(s), ValueType::USize(e)) => handle_range!(s, e, USize),
                     _ => return Err("Invalid range type".to_string()),
                 }
             }
+
             _ => return Err("Expression is not iterable".to_string()),
         }
 

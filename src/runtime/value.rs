@@ -113,6 +113,7 @@ pub enum ValueType {
         el: Vec<Value>,
     },
 
+    Unbounded,
     Unit,
 }
 
@@ -241,6 +242,7 @@ impl ValueEnum {
             ValueType::Array { .. } => String::from("array"),
             ValueType::Slice { .. } => String::from("slice"),
 
+            ValueType::Unbounded => String::from("unbounded"),
             ValueType::Unit => String::from("unit"),
         }
     }

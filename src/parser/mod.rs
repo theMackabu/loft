@@ -1208,6 +1208,25 @@ impl Parser {
             }
         }
 
+        if matches!(self.current.token, Token::Range | Token::RangeInclusive) {
+            let inclusive = if let Token::RangeInclusive = self.current.token {
+                self.advance();
+                true
+            } else {
+                self.advance();
+                false
+            };
+
+            let prec = self.get_precedence(&Token::Range);
+            let right = if self.token_starts_expression(&self.current.token) {
+                Some(Box::new(self.parse_expression(prec)?))
+            } else {
+                None
+            };
+
+            return Ok(Expr::Range { start: None, end: right, inclusive });
+        }
+
         match &self.current.token {
             Token::Match => self.parse_match_expression(),
 
@@ -1562,6 +1581,30 @@ impl Parser {
         }
     }
 
+    fn token_starts_expression(&self, token: &Token) -> bool {
+        match token {
+            Token::Identifier(_)
+            | Token::Integer(_, _)
+            | Token::Float(_, _)
+            | Token::String(_)
+            | Token::True
+            | Token::False
+            | Token::LeftParen
+            | Token::LeftBracket
+            | Token::LeftBrace
+            | Token::Minus
+            | Token::Not
+            | Token::BitNot
+            | Token::Async
+            | Token::If
+            | Token::Match
+            | Token::Loop
+            | Token::While
+            | Token::For => true,
+            _ => false,
+        }
+    }
+
     fn parse_infix(&mut self, left: Expr) -> Result<Expr, ParseError> {
         match &self.current.token {
             Token::LeftParen => {
@@ -1581,27 +1624,35 @@ impl Parser {
             }
 
             Token::Range => {
-                let operator = self.current.token.clone();
-                let precedence = self.get_precedence(&operator);
-
+                let precedence = self.get_precedence(&Token::Range);
                 self.advance(); // consume ..
-                let right = self.parse_expression(precedence)?;
+
+                let right = if self.token_starts_expression(&self.current.token) {
+                    Some(Box::new(self.parse_expression(precedence)?))
+                } else {
+                    None
+                };
+
                 Ok(Expr::Range {
-                    start: Box::new(left),
-                    end: Box::new(right),
+                    start: Some(Box::new(left)),
+                    end: right,
                     inclusive: false,
                 })
             }
 
             Token::RangeInclusive => {
-                let operator = self.current.token.clone();
-                let precedence = self.get_precedence(&operator);
-
+                let precedence = self.get_precedence(&Token::RangeInclusive);
                 self.advance(); // consume ..=
-                let right = self.parse_expression(precedence)?;
+
+                let right = if self.token_starts_expression(&self.current.token) {
+                    Some(Box::new(self.parse_expression(precedence)?))
+                } else {
+                    None
+                };
+
                 Ok(Expr::Range {
-                    start: Box::new(left),
-                    end: Box::new(right),
+                    start: Some(Box::new(left)),
+                    end: right,
                     inclusive: true,
                 })
             }

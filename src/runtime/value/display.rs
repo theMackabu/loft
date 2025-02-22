@@ -35,6 +35,8 @@ impl fmt::Display for ValueEnum {
 
             ValueType::Unit => write!(f, "()"),
 
+            ValueType::Unbounded => write!(f, ".."),
+
             ValueType::Str(v) => write!(f, "{}", v),
 
             ValueType::Boolean(v) => write!(f, "{}", v),

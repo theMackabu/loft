@@ -137,8 +137,8 @@ pub enum Expr {
     },
 
     Range {
-        start: Box<Expr>,
-        end: Box<Expr>,
+        start: Option<Box<Expr>>,
+        end: Option<Box<Expr>>,
         inclusive: bool,
     },
 
