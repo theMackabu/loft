@@ -288,7 +288,7 @@ impl Parser {
                 };
 
                 let field_type = self.parse_type()?;
-                fields.insert(index.to_string(), (field_type, field_visibility)); // Include visibility
+                fields.insert(index.to_string(), (field_type, field_visibility));
                 index += 1;
             }
 
@@ -861,11 +861,18 @@ impl Parser {
                         }
                     }
 
+                    let field_visibility = if self.current.token == Token::Pub {
+                        self.advance();
+                        true
+                    } else {
+                        false
+                    };
+
                     let field_name = self.expect_identifier()?;
                     self.expect(Token::Colon)?;
                     let field_type = self.parse_type()?;
 
-                    fields.insert(field_name, field_type);
+                    fields.insert(field_name, (field_type, field_visibility));
                 }
 
                 self.expect(Token::RightBrace)?;

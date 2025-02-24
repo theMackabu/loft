@@ -70,7 +70,7 @@ impl<'st> Interpreter<'st> {
         }))
     }
 
-    pub fn handle_enum_struct_call(&mut self, arguments: &Vec<Expr>, enum_name: String, variant_name: String, fields: HashMap<String, Type>) -> Result<Value, String> {
+    pub fn handle_enum_struct_call(&mut self, arguments: &Vec<Expr>, enum_name: String, variant_name: String, fields: HashMap<String, (Type, bool)>) -> Result<Value, String> {
         if arguments.len() != 1 {
             return Err(format!(
                 "Expected 1 argument (field initializer) for struct-like enum variant {}, got {}",

@@ -81,7 +81,7 @@ pub enum ValueType {
     EnumStructConstructor {
         enum_name: String,
         variant_name: String,
-        fields: HashMap<String, Type>,
+        fields: HashMap<String, (Type, bool)>,
     },
 
     FieldRef {

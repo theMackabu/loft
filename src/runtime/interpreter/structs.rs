@@ -93,11 +93,20 @@ impl<'st> Interpreter<'st> {
     }
 
     pub fn evaluate_struct_init(&mut self, path: &Path, fields: HashMap<String, (Expr, bool)>) -> Result<Value, String> {
-        let name = path.segments.last().ok_or_else(|| "Struct initialization has an empty path".to_owned())?.ident.clone();
+        if path.segments.is_empty() {
+            return Err("Struct initialization has an empty path".to_owned());
+        }
+
+        let name = if path.segments.len() == 2 {
+            format!("{}::{}", path.segments[0].ident, path.segments[1].ident)
+        } else {
+            path.segments.last().unwrap().ident.clone()
+        };
 
         let def_fields = match self.env.find_variable(&name) {
             Some((_, value)) => match value.borrow().inner() {
                 ValueType::StructDef { fields: def_fields, .. } => def_fields,
+                ValueType::EnumStructConstructor { fields: def_fields, .. } => def_fields,
                 _ => return Err(format!("Value '{}' is not a struct definition", name)),
             },
             None => return Err(format!("Struct definition '{}' not found", name)),
