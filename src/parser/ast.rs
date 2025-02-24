@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::lexer::{Token, TokenInfo};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum NumericType {
@@ -374,4 +374,98 @@ pub enum Stmt {
         body: Vec<Stmt>,
         attributes: Vec<Attribute>,
     },
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Unit => write!(f, "()"),
+
+            Type::Path(path) => write!(f, "{}", path),
+
+            Type::Simple(s) => write!(f, "{}", s),
+
+            Type::Tuple(types) => {
+                write!(f, "(")?;
+                for (i, ty) in types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", ty)?;
+                }
+                if types.len() == 1 {
+                    write!(f, ",")?;
+                }
+                write!(f, ")")
+            }
+
+            Type::TypeParam(name) => write!(f, "{}", name),
+
+            Type::Slice { element_type } => write!(f, "[{}]", element_type),
+
+            Type::Array { element_type, size } => {
+                write!(f, "[{}; {}]", element_type, size)
+            }
+
+            Type::Generic { path, type_params } => {
+                write!(f, "{}", path)?;
+                if !type_params.is_empty() {
+                    write!(f, "<")?;
+                    for (i, param) in type_params.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", param)?;
+                    }
+                    write!(f, ">")?;
+                }
+                Ok(())
+            }
+
+            Type::Function { params, return_type } => {
+                write!(f, "fn(")?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, ") -> {}", return_type)
+            }
+
+            Type::Reference { mutable, inner } => {
+                if *mutable {
+                    write!(f, "&mut {}", inner)
+                } else {
+                    write!(f, "&{}", inner)
+                }
+            }
+
+            Type::Pointer { inner } => write!(f, "*{}", inner),
+        }
+    }
+}
+
+impl fmt::Display for PathSegment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.ident)?;
+        if !self.generics.is_empty() {
+            write!(f, "<")?;
+            for (i, ty) in self.generics.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", ty)?;
+            }
+            write!(f, ">")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let path_str = self.segments.iter().map(|segment| segment.to_string()).collect::<Vec<_>>().join("::");
+        write!(f, "{}", path_str)
+    }
 }

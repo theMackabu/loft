@@ -11,9 +11,9 @@ fn main() {
    let circle = Shape::Circle(point.0);
    
    let rect = Shape::Rectangle(4.1, point.1); 
-   // let triangle = Shape::Triangle { base: 3.0, height: 4.0 };
+   let triangle = Shape::Triangle { base: 3.0, height: 4.0 };
    
    println!("circle is {}", circle.0);
    println!("rect is {} and {}", rect.0, rect.1);
-   // println!("triangle has base = {}, height = {}", triangle.base, triangle.height);
+   println!("triangle has base = {}, height = {}", triangle.base, triangle.height);
 }

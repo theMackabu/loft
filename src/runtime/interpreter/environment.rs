@@ -2,6 +2,7 @@ use super::*;
 use crate::runtime::scope::Scope;
 
 /// Manages the runtime environment with scoped variable storage.
+#[derive(Debug)]
 pub struct Environment {
     pub scopes: Vec<HashMap<String, Value>>,
     pub scope_resolver: Scope,
@@ -181,6 +182,16 @@ impl Environment {
         let name = format!("__ref_{}", self.next_ref_id);
         self.next_ref_id += 1;
         name
+    }
+
+    /// Declares an enum in the global environment.
+    pub fn declare_enum(&mut self, name: &str, enum_def: Value) -> Result<(), String> {
+        self.scope_resolver.declare_enum(name)?;
+        if self.scopes.is_empty() {
+            self.enter_scope();
+        }
+        self.scopes.first_mut().ok_or_else(|| "No global scope found".to_string())?.insert(name.to_string(), enum_def);
+        Ok(())
     }
 
     /// Registers a global variant or type in the environment.

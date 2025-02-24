@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeclKind {
+    Enum,
     Variable,
     Function,
     Module,
@@ -70,10 +71,43 @@ impl Scope {
         }
     }
 
+    pub fn declare_reference(&mut self, name: &str, mutable: bool) {
+        if let Some(current) = self.scopes.last_mut() {
+            current.insert(
+                name.to_owned(),
+                SymbolInfo {
+                    name: name.to_owned(),
+                    kind: DeclKind::Reference { mutable },
+                    mutable,
+                },
+            );
+        }
+    }
+
+    pub fn declare_enum(&mut self, name: &str) -> Result<(), String> {
+        if let Some(current) = self.scopes.last_mut() {
+            if current.contains_key(name) {
+                return Err(format!("Enum `{name}` is already declared in this scope"));
+            }
+
+            current.insert(
+                name.to_owned(),
+                SymbolInfo {
+                    name: name.to_owned(),
+                    kind: DeclKind::Enum,
+                    mutable: false,
+                },
+            );
+            Ok(())
+        } else {
+            Err("No active scope found".to_owned())
+        }
+    }
+
     pub fn declare_variable_in_scope(&mut self, name: &str, mutable: bool, scope_index: usize) -> Result<(), String> {
         if let Some(scope) = self.scopes.get_mut(scope_index) {
             if scope.contains_key(name) {
-                return Err(format!("Variable '{}' already declared in this scope", name));
+                return Err(format!("Variable '{name}' already declared in this scope"));
             }
 
             scope.insert(
@@ -87,19 +121,6 @@ impl Scope {
             Ok(())
         } else {
             Err(format!("Scope {} not found", scope_index))
-        }
-    }
-
-    pub fn declare_reference(&mut self, name: &str, mutable: bool) {
-        if let Some(current) = self.scopes.last_mut() {
-            current.insert(
-                name.to_owned(),
-                SymbolInfo {
-                    name: name.to_owned(),
-                    kind: DeclKind::Reference { mutable },
-                    mutable,
-                },
-            );
         }
     }
 

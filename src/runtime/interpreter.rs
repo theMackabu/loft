@@ -1465,6 +1465,7 @@ impl<'st> Interpreter<'st> {
                         let type_name = &path.segments[0].ident;
                         let method_name = &path.segments[1].ident;
 
+                        // method calling
                         if let Some((scope_idx, value)) = self.env.find_variable(type_name) {
                             let methods = {
                                 let borrowed = value.borrow();
@@ -1500,13 +1501,21 @@ impl<'st> Interpreter<'st> {
                             }
                         }
 
-                        let values: Vec<Value> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect::<Result<_, _>>()?;
+                        let path = format!("{type_name}::{method_name}");
+                        if let Some((_, value)) = self.env.find_variable(path.as_str()) {
+                            let callable_type = value.borrow().inner();
 
-                        Ok(val!(ValueType::Enum {
-                            enum_type: type_name.clone(),
-                            variant: method_name.clone(),
-                            data: if values.is_empty() { None } else { Some(values) },
-                        }))
+                            // improve how this is called?
+                            return match callable_type {
+                                ValueType::EnumConstructor { enum_name, variant_name, fields } => self.handle_enum_constructor_call(arguments, enum_name, variant_name, fields),
+
+                                ValueType::EnumStructConstructor { enum_name, variant_name, fields } => self.handle_enum_struct_call(arguments, enum_name, variant_name, fields),
+
+                                _ => return Err(format!("Undefined function or method: {}::{}", type_name, method_name)),
+                            };
+                        }
+
+                        return Err(format!("Undefined function or method: {}::{}", type_name, method_name));
                     }
 
                     Expr::Identifier(name) => {
@@ -1523,7 +1532,7 @@ impl<'st> Interpreter<'st> {
                             let callable = self.evaluate_expression(function)?;
                             let callable_type = callable.borrow().inner();
 
-                            match callable_type {
+                            return match callable_type {
                                 ValueType::StructDef { name, fields, .. } => {
                                     if !fields.keys().all(|k| k.parse::<usize>().is_ok()) {
                                         return Err(format!("Regular struct '{name}' cannot be initialized with function-call syntax, use '{{...}}' syntax instead",));
@@ -1543,60 +1552,15 @@ impl<'st> Interpreter<'st> {
                                         field_values.insert(index.to_string(), arg_value);
                                     }
 
-                                    return Ok(val!(ValueType::Struct { name, fields: field_values }));
+                                    Ok(val!(ValueType::Struct { name, fields: field_values }))
                                 }
 
-                                ValueType::EnumConstructor { enum_name, variant_name, fields } => {
-                                    if arguments.len() != fields.len() {
-                                        return Err(format!("Expected {} arguments for enum variant {}, got {}", fields.len(), variant_name, arguments.len()));
-                                    }
+                                ValueType::EnumConstructor { enum_name, variant_name, fields } => self.handle_enum_constructor_call(arguments, enum_name, variant_name, fields),
 
-                                    let mut arg_values = Vec::new();
-                                    for arg in arguments {
-                                        arg_values.push(self.evaluate_expression(arg)?);
-                                    }
-
-                                    return Ok(val!(ValueType::Enum {
-                                        enum_type: enum_name,
-                                        variant: variant_name,
-                                        data: Some(arg_values),
-                                    }));
-                                }
-
-                                ValueType::EnumStructConstructor { enum_name, variant_name, fields } => {
-                                    if arguments.len() != 1 {
-                                        return Err(format!(
-                                            "Expected 1 argument (field initializer) for struct-like enum variant {}, got {}",
-                                            variant_name,
-                                            arguments.len()
-                                        ));
-                                    }
-
-                                    if let Expr::StructInit { fields: init_fields, .. } = &arguments[0] {
-                                        for field_name in fields.keys() {
-                                            if !init_fields.contains_key(field_name) {
-                                                return Err(format!("Missing field '{}' in struct-like enum initialization", field_name));
-                                            }
-                                        }
-
-                                        let mut field_values = Vec::with_capacity(fields.len());
-                                        for field_name in fields.keys() {
-                                            let expr = &init_fields.get(field_name).expect("Expected field to exist").0;
-                                            field_values.push(self.evaluate_expression(expr)?);
-                                        }
-
-                                        return Ok(val!(ValueType::Enum {
-                                            enum_type: enum_name.clone(),
-                                            variant: variant_name.clone(),
-                                            data: Some(field_values),
-                                        }));
-                                    } else {
-                                        return Err(format!("Expected struct initializer for struct-like enum variant {}", variant_name));
-                                    }
-                                }
+                                ValueType::EnumStructConstructor { enum_name, variant_name, fields } => self.handle_enum_struct_call(arguments, enum_name, variant_name, fields),
 
                                 _ => return Err(format!("Function '{}' not found", name)),
-                            }
+                            };
                         };
 
                         if arg_values.len() != params.len() {

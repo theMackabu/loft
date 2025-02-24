@@ -2,15 +2,13 @@ use super::*;
 
 impl<'st> Interpreter<'st> {
     pub fn handle_enum_def(&mut self, name: &str, variants: Vec<EnumVariant>) -> Result<(), String> {
-        self.env.scope_resolver.declare_variable(name, true);
-
-        let enum_def = val!(ValueType::EnumDef {
+        let enum_def = val!(mut ValueType::EnumDef {
             name: name.to_string(),
             variants: variants.clone(),
             methods: HashMap::new(),
         });
 
-        self.env.set_variable(name, enum_def)?;
+        self.env.declare_enum(name, enum_def)?;
 
         for variant in variants {
             match variant {
@@ -55,69 +53,52 @@ impl<'st> Interpreter<'st> {
         Ok(())
     }
 
-    pub fn handle_enum_method_call(&mut self, enum_value: Value, enum_type: &String, method: &str, args: &[Expr]) -> Result<Value, String> {
-        let enum_def = match self.env.get_variable(enum_type) {
-            Some(value) => match value.borrow().inner() {
-                ValueType::EnumDef { methods, .. } => methods,
-                _ => return Err(format!("Type '{}' is not an enum definition", enum_type)),
-            },
-            None => return Err(format!("Enum definition '{}' not found", enum_type)),
-        };
+    pub fn handle_enum_constructor_call(&mut self, arguments: &Vec<Expr>, enum_name: String, variant_name: String, fields: Vec<Type>) -> Result<Value, String> {
+        if arguments.len() != fields.len() {
+            return Err(format!("Expected {} arguments for enum variant {}, got {}", fields.len(), variant_name, arguments.len()));
+        }
 
-        let function = enum_def.get(method).ok_or_else(|| format!("Method '{}' not found on enum '{}'", method, enum_type))?.clone();
+        let mut arg_values = Vec::new();
+        for arg in arguments {
+            arg_values.push(self.evaluate_expression(arg)?);
+        }
 
-        self.env.enter_scope();
-        let mut params_to_process = Vec::new();
+        Ok(val!(ValueType::Enum {
+            enum_type: enum_name,
+            variant: variant_name,
+            data: Some(arg_values),
+        }))
+    }
 
-        if !function.is_static {
-            if let Some((pattern, param_type)) = function.params.first() {
-                match pattern {
-                    Pattern::Identifier { name: param_name, mutable } if param_name == "self" => {
-                        params_to_process.push(("self".to_owned(), enum_value.clone(), *mutable, param_type.clone()));
-                    }
-                    Pattern::Reference { mutable, pattern } => {
-                        if let Pattern::Identifier { name: param_name, .. } = pattern.as_ref() {
-                            if param_name != "self" {
-                                return Err("First parameter must be a form of 'self'".to_string());
-                            }
-                            params_to_process.push(("self".to_owned(), enum_value.clone(), *mutable, param_type.clone()));
-                        }
-                    }
-                    _ => return Err("First parameter must be a form of 'self'".to_string()),
+    pub fn handle_enum_struct_call(&mut self, arguments: &Vec<Expr>, enum_name: String, variant_name: String, fields: HashMap<String, Type>) -> Result<Value, String> {
+        if arguments.len() != 1 {
+            return Err(format!(
+                "Expected 1 argument (field initializer) for struct-like enum variant {}, got {}",
+                variant_name,
+                arguments.len()
+            ));
+        }
+
+        if let Expr::StructInit { fields: init_fields, .. } = &arguments[0] {
+            for field_name in fields.keys() {
+                if !init_fields.contains_key(field_name) {
+                    return Err(format!("Missing field '{}' in struct-like enum initialization", field_name));
                 }
             }
-        }
 
-        let arg_offset = if function.is_static { 0 } else { 1 };
-        for (i, arg) in args.iter().enumerate() {
-            if let Some((Pattern::Identifier { name: param_name, mutable }, param_type)) = function.params.get(i + arg_offset) {
-                let arg_value = self.evaluate_expression(arg)?;
-                params_to_process.push((param_name.clone(), arg_value, *mutable, param_type.clone()));
-            }
-        }
-
-        for (param_name, value, mutable, param_type) in params_to_process {
-            if param_name == "self" && Rc::ptr_eq(&enum_value, &value) {
-                self.env.scope_resolver.declare_variable(&param_name, mutable);
-                self.env.set_variable_raw(&param_name, enum_value.clone())?;
-                continue;
+            let mut field_values = Vec::with_capacity(fields.len());
+            for field_name in fields.keys() {
+                let expr = &init_fields.get(field_name).expect("Expected field to exist").0;
+                field_values.push(self.evaluate_expression(expr)?);
             }
 
-            match param_type {
-                Type::Reference { mutable: ref_mutable, .. } => {
-                    self.env.scope_resolver.declare_reference(&param_name, ref_mutable);
-                    if ref_mutable && !value.borrow().is_mutable() {
-                        return Err("Cannot pass immutable value as mutable reference".to_string());
-                    }
-                }
-                _ => self.env.scope_resolver.declare_variable(&param_name, mutable),
-            }
-            self.env.set_variable(&param_name, value)?;
+            return Ok(val!(ValueType::Enum {
+                enum_type: enum_name.clone(),
+                variant: variant_name.clone(),
+                data: Some(field_values),
+            }));
+        } else {
+            return Err(format!("Expected struct initializer for struct-like enum variant {}", variant_name));
         }
-
-        let result = self.execute(&function.body)?;
-        self.env.exit_scope();
-
-        Ok(result)
     }
 }
