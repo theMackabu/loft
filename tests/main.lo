@@ -34,31 +34,13 @@ fn get_message(input: &str) -> &str {
    GREETING
 }
 
-pub enum Shape {
-   Circle(f64),
-   Rectangle(f64, f64),
-   Triangle { base: f64, height: f64 },
-}
-
-fn test_enums() {
-   let circle = Shape::Circle(5.0);
-   let rect = Shape::Rectangle(4.0, 6.0); 
-   // let triangle = Shape::Triangle { base: 3.0, height: 4.0 };
-
-   io::println(circle);
-   io::println(rect);
-   // io::println(triangle);
-}
-
 fn test_assignment(val: &mut i32) -> &mut i32 {
    *val += 3;
    return val;
 }
 
 // allow async fn main -> Result
-fn main() -> Result<(), &str> {
-   test_enums();
-      
+fn main() -> Result<(), &str> {      
    let big_num: &i64 = 50;
    let mut value = 5;
    

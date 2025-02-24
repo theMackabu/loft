@@ -243,9 +243,7 @@ impl Parser {
 
     fn parse_struct_declaration(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'struct'
-
         let name = self.expect_identifier()?;
-
         self.register_struct(name.clone());
 
         let type_params = if self.current.token == Token::LeftAngle {
@@ -257,34 +255,64 @@ impl Parser {
             Vec::new()
         };
 
-        self.expect(Token::LeftBrace)?;
-
         let mut fields = HashMap::new();
 
-        while self.current.token != Token::RightBrace {
-            if !fields.is_empty() {
-                self.expect(Token::Comma)?;
+        if self.current.token == Token::LeftParen {
+            self.advance(); // consume '('
+            let mut index = 0;
 
-                if self.current.token == Token::RightBrace {
-                    break;
+            while self.current.token != Token::RightParen {
+                if index > 0 {
+                    if self.current.token == Token::Comma {
+                        self.advance(); // consume ','
+                        if self.current.token == Token::RightParen {
+                            break;
+                        }
+                    } else {
+                        self.expect(Token::Comma)?;
+                    }
                 }
+
+                let field_visibility = if self.current.token == Token::Pub {
+                    self.advance();
+                    true
+                } else {
+                    false
+                };
+
+                let field_type = self.parse_type()?;
+                fields.insert(index.to_string(), (field_type, field_visibility)); // Include visibility
+                index += 1;
             }
 
-            let field_visibility = if self.current.token == Token::Pub {
-                self.advance();
-                true
-            } else {
-                false
-            };
+            self.expect(Token::RightParen)?;
+            self.expect(Token::Semicolon)?;
+        } else {
+            self.expect(Token::LeftBrace)?;
 
-            let field_name = self.expect_identifier()?;
-            self.expect(Token::Colon)?;
-            let field_type = self.parse_type()?;
+            while self.current.token != Token::RightBrace {
+                if !fields.is_empty() {
+                    self.expect(Token::Comma)?;
+                    if self.current.token == Token::RightBrace {
+                        break;
+                    }
+                }
 
-            fields.insert(field_name, (field_type, field_visibility));
+                let field_visibility = if self.current.token == Token::Pub {
+                    self.advance();
+                    true
+                } else {
+                    false
+                };
+
+                let field_name = self.expect_identifier()?;
+                self.expect(Token::Colon)?;
+                let field_type = self.parse_type()?;
+                fields.insert(field_name, (field_type, field_visibility));
+            }
+
+            self.expect(Token::RightBrace)?;
         }
-
-        self.expect(Token::RightBrace)?;
 
         Ok(Stmt::Struct {
             name,
@@ -815,7 +843,7 @@ impl Parser {
 
             Token::LeftBrace => {
                 self.advance();
-                let mut fields = Vec::new();
+                let mut fields = HashMap::new();
 
                 while self.current.token != Token::RightBrace {
                     if !fields.is_empty() {
@@ -830,7 +858,7 @@ impl Parser {
                     self.expect(Token::Colon)?;
                     let field_type = self.parse_type()?;
 
-                    fields.push((field_name, field_type));
+                    fields.insert(field_name, field_type);
                 }
 
                 self.expect(Token::RightBrace)?;

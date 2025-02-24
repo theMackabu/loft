@@ -18,7 +18,6 @@ path = "src/loft.rs"
 [profile.release]
 lto = true
 codegen-units = 1
-panic = "abort"
 
 [dependencies]
 # macros-rs = "1.4.1"

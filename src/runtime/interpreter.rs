@@ -79,6 +79,7 @@ impl<'st> Interpreter<'st> {
                     data: data.clone(),
                 })),
             },
+
             _ => Ok(result),
         }
     }
@@ -1523,6 +1524,34 @@ impl<'st> Interpreter<'st> {
                             let callable_type = callable.borrow().inner();
 
                             match callable_type {
+                                ValueType::StructConstructor { struct_name, fields } => {
+                                    if !fields.keys().all(|k| k.parse::<usize>().is_ok()) {
+                                        return Err(format!(
+                                            "Regular struct '{}' cannot be initialized with function-call syntax, use '{{...}}' syntax instead",
+                                            struct_name
+                                        ));
+                                    }
+
+                                    if arguments.len() != fields.len() {
+                                        return Err(format!("Expected {} arguments for tuple struct '{}', got {}", fields.len(), struct_name, arguments.len()));
+                                    }
+
+                                    let mut field_values = HashMap::new();
+                                    let mut sorted_fields: Vec<_> = fields.iter().collect();
+
+                                    sorted_fields.sort_by_key(|(k, _)| k.parse::<usize>().unwrap());
+
+                                    for ((index, _), arg) in sorted_fields.iter().zip(arguments.iter()) {
+                                        let arg_value = self.evaluate_expression(arg)?;
+                                        field_values.insert(index.to_string(), arg_value);
+                                    }
+
+                                    return Ok(val!(ValueType::Struct {
+                                        name: struct_name.clone(),
+                                        fields: field_values,
+                                    }));
+                                }
+
                                 ValueType::EnumConstructor { enum_name, variant_name, fields } => {
                                     if arguments.len() != fields.len() {
                                         return Err(format!("Expected {} arguments for enum variant {}, got {}", fields.len(), variant_name, arguments.len()));
@@ -1539,6 +1568,7 @@ impl<'st> Interpreter<'st> {
                                         data: Some(arg_values),
                                     }));
                                 }
+
                                 ValueType::EnumStructConstructor { enum_name, variant_name, fields } => {
                                     if arguments.len() != 1 {
                                         return Err(format!(
@@ -1549,29 +1579,28 @@ impl<'st> Interpreter<'st> {
                                     }
 
                                     if let Expr::StructInit { fields: init_fields, .. } = &arguments[0] {
-                                        let mut field_values = Vec::new();
-
-                                        for (field_name, _) in &fields {
+                                        for field_name in fields.keys() {
                                             if !init_fields.contains_key(field_name) {
                                                 return Err(format!("Missing field '{}' in struct-like enum initialization", field_name));
                                             }
                                         }
 
-                                        for (field_name, _) in &fields {
-                                            if let Some((expr, _)) = init_fields.get(field_name) {
-                                                field_values.push(self.evaluate_expression(expr)?);
-                                            }
+                                        let mut field_values = Vec::with_capacity(fields.len());
+                                        for field_name in fields.keys() {
+                                            let expr = &init_fields.get(field_name).expect("Expected field to exist").0;
+                                            field_values.push(self.evaluate_expression(expr)?);
                                         }
 
                                         return Ok(val!(ValueType::Enum {
-                                            enum_type: enum_name,
-                                            variant: variant_name,
+                                            enum_type: enum_name.clone(),
+                                            variant: variant_name.clone(),
                                             data: Some(field_values),
                                         }));
                                     } else {
                                         return Err(format!("Expected struct initializer for struct-like enum variant {}", variant_name));
                                     }
                                 }
+
                                 _ => return Err(format!("Function '{}' not found", name)),
                             }
                         };
@@ -1788,8 +1817,19 @@ impl<'st> Interpreter<'st> {
                     borrowed.inner()
                 };
 
+                // make this code DRY
                 if let Ok(index) = member.parse::<usize>() {
                     match obj_inner {
+                        ValueType::Struct { ref fields, .. } => {
+                            if fields.keys().all(|k| k.parse::<usize>().is_ok()) {
+                                if let Some(value) = fields.get(&index.to_string()) {
+                                    return Ok(value.clone());
+                                } else {
+                                    return Err(format!("Tuple struct index out of bounds: {} (length: {})", index, fields.len()));
+                                }
+                            }
+                        }
+
                         ValueType::Tuple(elements) => {
                             if index < elements.len() {
                                 return Ok(elements[index].clone());
@@ -1797,6 +1837,15 @@ impl<'st> Interpreter<'st> {
                                 return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
                             }
                         }
+
+                        ValueType::Enum { data: Some(values), .. } => {
+                            if index < values.len() {
+                                return Ok(values[index].clone());
+                            } else {
+                                return Err(format!("Index {} out of bounds for enum variant with {} fields", index, values.len()));
+                            }
+                        }
+
                         ValueType::Reference { original_ptr, .. } => {
                             if original_ptr.is_null() {
                                 return Err("Reference contains null pointer".to_string());
@@ -1805,7 +1854,26 @@ impl<'st> Interpreter<'st> {
                             unsafe {
                                 let cell_ref = &*original_ptr;
                                 let inner_inner = cell_ref.borrow().inner();
+
                                 match inner_inner {
+                                    ValueType::Struct { ref fields, .. } => {
+                                        if fields.keys().all(|k| k.parse::<usize>().is_ok()) {
+                                            if let Some(value) = fields.get(&index.to_string()) {
+                                                return Ok(value.clone());
+                                            } else {
+                                                return Err(format!("Tuple struct index out of bounds: {} (length: {})", index, fields.len()));
+                                            }
+                                        }
+                                    }
+
+                                    ValueType::Enum { data: Some(values), .. } => {
+                                        if index < values.len() {
+                                            return Ok(values[index].clone());
+                                        } else {
+                                            return Err(format!("Index {} out of bounds for enum variant with {} fields", index, values.len()));
+                                        }
+                                    }
+
                                     ValueType::Tuple(elements) => {
                                         if index < elements.len() {
                                             return Ok(elements[index].clone());
@@ -1813,11 +1881,13 @@ impl<'st> Interpreter<'st> {
                                             return Err(format!("Tuple index out of bounds: {} (length: {})", index, elements.len()));
                                         }
                                     }
-                                    _ => return Err("Cannot access numeric index of non-tuple reference".to_string()),
+
+                                    _ => return Err("Cannot access numeric index of non-inner reference".to_string()),
                                 }
                             }
                         }
-                        _ => return Err("Cannot access numeric index of non-tuple value".to_string()),
+
+                        _ => return Err("Cannot access numeric index of non-inner value".to_string()),
                     }
                 }
 

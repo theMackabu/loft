@@ -1,2 +1,2 @@
 [tasks.run]
-script = "sh -c \"RUSTFLAGS='-C target-cpu=native' cargo run --release\""
+script = "sh -c \"RUSTFLAGS='-C target-cpu=native' cargo run --release %{arg.1}\""

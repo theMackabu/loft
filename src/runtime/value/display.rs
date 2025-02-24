@@ -53,6 +53,8 @@ impl fmt::Display for ValueEnum {
 
             ValueType::EnumDef { name, .. } => write!(f, "<enum {name}>"),
 
+            ValueType::StructConstructor { struct_name, .. } => write!(f, "<constructor for {}>", struct_name),
+
             ValueType::Range { start, end, inclusive } => write!(f, "{}..{2}{}", start.borrow(), end.borrow(), if inclusive { "=" } else { "" }),
 
             ValueType::StaticMethod { struct_name, method, .. } => write!(f, "{}::{}", struct_name, method),
@@ -95,15 +97,29 @@ impl fmt::Display for ValueEnum {
             }
 
             ValueType::Struct { name, fields } => {
-                write!(f, "{name} {{ ")?;
-                for (i, (field_name, value)) in fields.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
+                if fields.keys().all(|k| k.parse::<usize>().is_ok()) {
+                    let mut sorted_fields: Vec<_> = fields.iter().collect();
+                    sorted_fields.sort_by_key(|(k, _)| k.parse::<usize>().unwrap());
+
+                    write!(f, "{name}(")?;
+                    for (i, (_, value)) in sorted_fields.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", value.borrow())?;
                     }
-                    // add quotes
-                    write!(f, "{}: {}", field_name, value.borrow())?;
+                    write!(f, ")")
+                } else {
+                    write!(f, "{name} {{ ")?;
+                    for (i, (field_name, value)) in fields.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        // add quotes
+                        write!(f, "{}: {}", field_name, value.borrow())?;
+                    }
+                    write!(f, " }}")
                 }
-                write!(f, " }}")
             }
 
             ValueType::Enum { variant, data, .. } => {

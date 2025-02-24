@@ -16,9 +16,9 @@ impl<'st> Interpreter<'st> {
             match variant {
                 EnumVariant::Simple(variant_name) => {
                     let constructor = val!(ValueType::EnumConstructor {
+                        fields: Vec::new(),
                         enum_name: name.to_string(),
                         variant_name: variant_name.clone(),
-                        fields: Vec::new(),
                     });
 
                     let full_path = format!("{}::{}", name, variant_name);
@@ -26,11 +26,11 @@ impl<'st> Interpreter<'st> {
                     self.env.set_variable(&full_path, constructor)?;
                 }
 
-                EnumVariant::Tuple(variant_name, field_types) => {
+                EnumVariant::Tuple(variant_name, fields) => {
                     let constructor = val!(ValueType::EnumConstructor {
+                        fields,
                         enum_name: name.to_string(),
                         variant_name: variant_name.clone(),
-                        fields: field_types,
                     });
 
                     let full_path = format!("{}::{}", name, variant_name);
@@ -39,12 +39,10 @@ impl<'st> Interpreter<'st> {
                 }
 
                 EnumVariant::Struct(variant_name, fields) => {
-                    let field_types = fields.into_iter().map(|(name, ty)| (name, ty)).collect();
-
                     let constructor = val!(ValueType::EnumStructConstructor {
+                        fields,
                         enum_name: name.to_string(),
                         variant_name: variant_name.clone(),
-                        fields: field_types,
                     });
 
                     let full_path = format!("{}::{}", name, variant_name);

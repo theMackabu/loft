@@ -23,11 +23,19 @@ impl<'st> Interpreter<'st> {
 
         let struct_def = val!(ValueType::StructDef {
             name: name.to_string(),
-            fields,
+            fields: fields.clone(),
             methods: HashMap::new(),
         });
 
-        self.env.set_variable(name, struct_def)
+        let constructor = val!(ValueType::StructConstructor {
+            struct_name: name.to_string(),
+            fields: fields.clone(),
+        });
+
+        self.env.set_variable(name, struct_def)?;
+        self.env.set_variable(name, constructor)?;
+
+        Ok(())
     }
 
     pub fn handle_impl_block(&mut self, target: &Path, items: &[Stmt]) -> Result<(), String> {
@@ -103,6 +111,10 @@ impl<'st> Interpreter<'st> {
             },
             None => return Err(format!("Struct definition '{}' not found", name)),
         };
+
+        if def_fields.keys().all(|k| k.parse::<usize>().is_ok()) {
+            return Err(format!("Tuple struct '{}' cannot be initialized with named fields, use '{}'(...) syntax instead", name, name));
+        }
 
         let mut field_values: HashMap<String, Value> = HashMap::new();
 

@@ -98,7 +98,7 @@ pub enum Type {
 pub enum EnumVariant {
     Simple(String),
     Tuple(String, Vec<Type>),
-    Struct(String, Vec<(String, Type)>),
+    Struct(String, HashMap<String, Type>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
