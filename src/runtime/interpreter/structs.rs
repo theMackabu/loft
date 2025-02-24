@@ -18,34 +18,23 @@ impl<'st> Interpreter<'st> {
         }
     }
 
-    pub fn handle_struct_def(&mut self, name: &str, fields: HashMap<String, (Type, bool)>) -> Result<(), String> {
-        self.env.scope_resolver.declare_variable(name, true);
+    pub fn handle_struct_def(&mut self, path: &Path, fields: HashMap<String, (Type, bool)>) -> Result<(), String> {
+        let name = path.segments.last().ok_or_else(|| "Empty path provided".to_string())?.ident.clone();
+        self.env.scope_resolver.declare_variable(&name, true);
 
         let struct_def = val!(ValueType::StructDef {
-            name: name.to_string(),
+            name: name.clone(),
             fields: fields.clone(),
             methods: HashMap::new(),
         });
 
-        let constructor = val!(ValueType::StructConstructor {
-            struct_name: name.to_string(),
-            fields: fields.clone(),
-        });
-
-        self.env.set_variable(name, struct_def)?;
-        self.env.set_variable(name, constructor)?;
-
-        Ok(())
+        self.env.set_variable(&name, struct_def)
     }
 
     pub fn handle_impl_block(&mut self, target: &Path, items: &[Stmt]) -> Result<(), String> {
-        let type_name = if target.segments.len() == 1 {
-            &target.segments[0].ident
-        } else {
-            return Err(format!("Invalid impl target path: {:?}", target));
-        };
+        let type_name = target.segments.last().ok_or_else(|| format!("Invalid impl target path: {:?}", target))?.ident.clone();
 
-        if let Some(value) = self.env.get_variable(type_name) {
+        if let Some(value) = self.env.get_variable(&type_name) {
             let mut cell = value.borrow_mut();
 
             match cell.inner_mut() {
@@ -103,8 +92,10 @@ impl<'st> Interpreter<'st> {
         Ok(())
     }
 
-    pub fn evaluate_struct_init(&mut self, name: &str, fields: HashMap<String, (Expr, bool)>) -> Result<Value, String> {
-        let def_fields = match self.env.find_variable(name) {
+    pub fn evaluate_struct_init(&mut self, path: &Path, fields: HashMap<String, (Expr, bool)>) -> Result<Value, String> {
+        let name = path.segments.last().ok_or_else(|| "Struct initialization has an empty path".to_owned())?.ident.clone();
+
+        let def_fields = match self.env.find_variable(&name) {
             Some((_, value)) => match value.borrow().inner() {
                 ValueType::StructDef { fields: def_fields, .. } => def_fields,
                 _ => return Err(format!("Value '{}' is not a struct definition", name)),

@@ -53,7 +53,6 @@ impl ValueType {
 
             ValueType::Str(s) => Ok(!s.is_empty()),
             ValueType::Unit => Ok(false),
-            ValueType::StructConstructor { .. } => Ok(true),
 
             _ => Err(format!("Cannot convert value to boolean")),
         }

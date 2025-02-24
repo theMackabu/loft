@@ -66,18 +66,18 @@ pub enum WhileCondition {
     Let(Pattern, Box<Expr>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PathSegment {
     pub ident: String,
     pub generics: Vec<Type>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Path {
     pub segments: Vec<PathSegment>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Type {
     Unit,
     Path(Path),
@@ -243,7 +243,7 @@ pub enum Expr {
     },
 
     StructInit {
-        struct_name: String,
+        path: Box<Path>,
         fields: HashMap<String, (Expr, bool)>,
     },
 
@@ -291,7 +291,7 @@ pub enum Stmt {
     },
 
     Struct {
-        name: String,
+        path: Path,
         visibility: bool,
         type_params: Vec<String>,
         fields: HashMap<String, (Type, bool)>,

@@ -60,11 +60,6 @@ pub enum ValueType {
         methods: HashMap<String, Function>,
     },
 
-    StructConstructor {
-        struct_name: String,
-        fields: HashMap<String, (Type, bool)>,
-    },
-
     Enum {
         enum_type: String,
         variant: String,
@@ -236,7 +231,6 @@ impl ValueEnum {
             ValueType::Struct { name, .. } => name,
             ValueType::Enum { enum_type, .. } => enum_type,
 
-            ValueType::StructConstructor { struct_name, .. } => format!("constructor of {}", struct_name),
             ValueType::EnumConstructor { enum_name, variant_name, .. } => format!("{}::{}", enum_name, variant_name),
             ValueType::EnumStructConstructor { enum_name, variant_name, .. } => format!("{}::{}", enum_name, variant_name),
 

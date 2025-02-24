@@ -69,7 +69,7 @@ pub struct Parser {
     current: TokenInfo,
 
     recursion_depth: i32,
-    struct_types: HashSet<String>,
+    struct_types: HashSet<Path>,
 
     current_impl_target: Option<String>,
     current_trait_target: Option<String>,
@@ -93,9 +93,9 @@ impl Parser {
         }
     }
 
-    fn register_struct(&mut self, name: String) { self.struct_types.insert(name); }
+    fn register_struct(&mut self, name: Path) { self.struct_types.insert(name); }
 
-    fn is_struct_type(&self, name: &str) -> bool { self.struct_types.contains(name) }
+    fn is_struct_type(&self, path: &Path) -> bool { self.struct_types.contains(path) }
 
     fn advance(&mut self) { self.current = std::mem::replace(&mut self.peek, self.lexer.next_token()); }
 
@@ -241,10 +241,17 @@ impl Parser {
         return result;
     }
 
+    // get generics
     fn parse_struct_declaration(&mut self, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {
         self.advance(); // consume 'struct'
-        let name = self.expect_identifier()?;
-        self.register_struct(name.clone());
+
+        let segment = PathSegment {
+            ident: self.expect_identifier()?, // consume name
+            generics: Vec::new(),
+        };
+
+        let path = Path { segments: vec![segment] };
+        self.register_struct(path.clone());
 
         let type_params = if self.current.token == Token::LeftAngle {
             self.advance();
@@ -315,7 +322,7 @@ impl Parser {
         }
 
         Ok(Stmt::Struct {
-            name,
+            path,
             visibility,
             type_params,
             fields,
@@ -1495,32 +1502,10 @@ impl Parser {
         })
     }
 
+    // get the generics
     fn parse_identifier_expression(&mut self, name: String) -> Result<Expr, ParseError> {
         if self.current.token == Token::Not {
             return self.parse_macro_invocation(name);
-        }
-
-        if self.current.token == Token::LeftBrace {
-            let struct_name = if name == "Self" {
-                match &self.current_impl_target {
-                    Some(target) => target.clone(),
-                    None => {
-                        return Err(ParseError::Custom {
-                            message: "Cannot use Self outside of an impl block".to_string(),
-                            location: self.current.location.clone(),
-                        });
-                    }
-                }
-            } else {
-                name.clone()
-            };
-
-            if self.is_struct_type(&struct_name) {
-                self.advance(); // consume {
-                let fields = self.parse_struct_init_fields()?;
-                self.expect(Token::RightBrace)?;
-                return Ok(Expr::StructInit { struct_name, fields });
-            }
         }
 
         if self.current.token == Token::DoubleColon {
@@ -1530,10 +1515,7 @@ impl Parser {
                 self.advance(); // consume {
                 let fields = self.parse_struct_init_fields()?;
                 self.expect(Token::RightBrace)?;
-                return Ok(Expr::StructInit {
-                    struct_name: path.segments.last().unwrap().ident.clone(),
-                    fields,
-                });
+                return Ok(Expr::StructInit { fields, path: Box::new(path) });
             }
 
             if self.current.token == Token::LeftParen {
@@ -1547,11 +1529,44 @@ impl Parser {
                 }
                 self.expect(Token::RightParen)?;
                 return Ok(Expr::Call {
-                    function: Box::new(Expr::Path(path)),
                     arguments,
+                    function: Box::new(Expr::Path(path)),
                 });
             }
             return Ok(Expr::Path(path));
+        }
+
+        if self.current.token == Token::LeftBrace {
+            let struct_name = if name == "Self" {
+                match &self.current_impl_target {
+                    Some(target) => {
+                        let segment = PathSegment {
+                            ident: target.clone(),
+                            generics: Vec::new(),
+                        };
+                        Path { segments: vec![segment] }
+                    }
+                    None => {
+                        return Err(ParseError::Custom {
+                            message: "Cannot use Self outside of an impl block".to_string(),
+                            location: self.current.location.clone(),
+                        });
+                    }
+                }
+            } else {
+                let segment = PathSegment {
+                    ident: name.clone(),
+                    generics: Vec::new(),
+                };
+                Path { segments: vec![segment] }
+            };
+
+            if self.is_struct_type(&struct_name) {
+                self.advance(); // consume {
+                let fields = self.parse_struct_init_fields()?;
+                self.expect(Token::RightBrace)?;
+                return Ok(Expr::StructInit { fields, path: Box::new(struct_name) });
+            }
         }
 
         match self.current.token {

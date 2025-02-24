@@ -131,8 +131,8 @@ impl<'st> Interpreter<'st> {
                     self.handle_impl_block(target, items)?;
                 }
 
-                Stmt::Struct { name, fields, .. } => {
-                    self.handle_struct_def(name, fields.to_owned())?;
+                Stmt::Struct { path, fields, .. } => {
+                    self.handle_struct_def(path, fields.to_owned())?;
                 }
 
                 Stmt::Enum { name, variants, .. } => {
@@ -186,8 +186,8 @@ impl<'st> Interpreter<'st> {
 
             Stmt::ExpressionStmt(expr) => self.evaluate_expression(expr),
 
-            Stmt::Struct { name, fields, .. } => {
-                self.handle_struct_def(name, fields.to_owned())?;
+            Stmt::Struct { path, fields, .. } => {
+                self.handle_struct_def(path, fields.to_owned())?;
                 Ok(ValueEnum::unit())
             }
 
@@ -442,8 +442,8 @@ impl<'st> Interpreter<'st> {
                 self.evaluate_expression(&expanded)
             }
 
-            Expr::StructInit { struct_name, fields } => {
-                return self.evaluate_struct_init(struct_name, fields.to_owned());
+            Expr::StructInit { path, fields } => {
+                return self.evaluate_struct_init(path, fields.to_owned());
             }
 
             Expr::MethodCall { object, method, arguments } => {
@@ -1524,16 +1524,13 @@ impl<'st> Interpreter<'st> {
                             let callable_type = callable.borrow().inner();
 
                             match callable_type {
-                                ValueType::StructConstructor { struct_name, fields } => {
+                                ValueType::StructDef { name, fields, .. } => {
                                     if !fields.keys().all(|k| k.parse::<usize>().is_ok()) {
-                                        return Err(format!(
-                                            "Regular struct '{}' cannot be initialized with function-call syntax, use '{{...}}' syntax instead",
-                                            struct_name
-                                        ));
+                                        return Err(format!("Regular struct '{name}' cannot be initialized with function-call syntax, use '{{...}}' syntax instead",));
                                     }
 
                                     if arguments.len() != fields.len() {
-                                        return Err(format!("Expected {} arguments for tuple struct '{}', got {}", fields.len(), struct_name, arguments.len()));
+                                        return Err(format!("Expected {} arguments for tuple struct '{name}', got {}", fields.len(), arguments.len()));
                                     }
 
                                     let mut field_values = HashMap::new();
@@ -1546,10 +1543,7 @@ impl<'st> Interpreter<'st> {
                                         field_values.insert(index.to_string(), arg_value);
                                     }
 
-                                    return Ok(val!(ValueType::Struct {
-                                        name: struct_name.clone(),
-                                        fields: field_values,
-                                    }));
+                                    return Ok(val!(ValueType::Struct { name, fields: field_values }));
                                 }
 
                                 ValueType::EnumConstructor { enum_name, variant_name, fields } => {

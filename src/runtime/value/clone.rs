@@ -85,11 +85,6 @@ impl ValueType {
                 }
             }
 
-            ValueType::StructConstructor { struct_name, fields } => ValueType::StructConstructor {
-                struct_name: struct_name.clone(),
-                fields: fields.clone(),
-            },
-
             ValueType::StaticMethod { struct_name, method, function } => ValueType::StaticMethod {
                 struct_name: struct_name.clone(),
                 method: method.clone(),
