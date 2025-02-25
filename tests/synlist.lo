@@ -15,7 +15,6 @@ mod math {
    }
 }
 
-
 pub struct Point {
    x: i32,
    y: i32
@@ -86,13 +85,7 @@ fn test() {
    if a | a {}
 }
 
-fn main() -> Result<i32, ()>  {
-   let y = if 12 * 15 > 150 {
-      "Bigger"
-   } else {
-      "Smaller"
-   };
-   
+fn main() -> Result<i32, ()>  {   
    // !fix add prelude system! 'Function not found'
    {
       let y = Err("error");
@@ -160,7 +153,6 @@ pub async fn public_async_function() {}
 
 let result = some_future.await;
 
-
 let msg = format!("Hello {name}!");
 
 let vec = vec![1, 2, 3];
@@ -211,17 +203,6 @@ let test = async |x| {
    let y = x + 1;
    y * 2
 };
-
-let r = &thing;
-let rm = &mut some;
-
-let p = *ptr;
-let rp = **thing;
-let rp = &*thing;
-
-let x: (i32, String) = (42, "hello".to_string());
-let unit: () = ();
-let single_tuple: (i32,) = (1,);
 
 fn test() {
    async {}

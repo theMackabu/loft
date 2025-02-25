@@ -1,0 +1,9 @@
+fn main() {
+   let value = if 12 * 15 > 150 {
+      "bigger"
+   } else {
+      "smaller"
+   };
+   
+   test_eq!(value, "bigger");
+}

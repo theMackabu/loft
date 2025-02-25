@@ -1,0 +1,7 @@
+fn main() {
+   let unit = ();
+   let tuple: (i32, &str) = (42, "hello");
+   let single_tuple: (i32,) = (1,);
+   
+   println!("{unit}, {tuple}, {single_tuple}")
+}

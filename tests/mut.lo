@@ -12,7 +12,16 @@ fn test_inner() {
       val = "inner";
    }
    
-   println!("\nset value should be {val}");
+   println!("\nset value should be {val}")
+}
+
+fn test_tuple() {
+   let (mut a, mut b) = (1, 1);
+   
+   a = 2;
+   b = 3;
+   
+   println!("a = {a}, b = {b}")
 }
 
 fn main() {
@@ -26,5 +35,5 @@ fn main() {
    println!("value(3) is: {value}");
       
    test_inner();
+   test_tuple();
 }
-

@@ -873,7 +873,7 @@ impl<'st> Interpreter<'st> {
                     };
                 }
 
-                Err(format!("Cannot perform operation between {:?} and {:?}", left_val, right_val))
+                Err(format!("Cannot perform operation between {} and {}", left_val.borrow(), right_val.borrow()))
             }
 
             Expr::Unary { operator, operand } => {
@@ -1420,7 +1420,7 @@ impl<'st> Interpreter<'st> {
                 match &**function {
                     // !MODULE SYSTEM!
                     // TEMPORARY
-                    Expr::Path(path) if path.segments.len() == 2 => {
+                    Expr::Path(path) if path.segments.len() <= 2 => {
                         // handle import calls (like use std::io, io::write)
                         // handle path-based calls (like std::io::writeln)
                         // TEMPORARY

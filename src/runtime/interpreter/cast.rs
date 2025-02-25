@@ -2,8 +2,93 @@ use super::*;
 use std::mem;
 
 impl<'st> Interpreter<'st> {
+    // over time implement more casts
     pub fn perform_cast(&mut self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {
+            Type::Function { .. } => Err("Cannot cast to function type".to_string()),
+
+            Type::Pointer { .. } => Err("Casting to pointer types is not implemented".to_string()),
+
+            Type::Unit => match value.borrow().inner() {
+                ValueType::Unit => Ok(value.clone()),
+                other => Err(format!("Cannot cast {:?} to unit type", other)),
+            },
+
+            Type::TypeParam(param) => Err(format!("Casting to generic type parameter '{}' is not supported", param)),
+
+            Type::Generic { path, type_params } => Err(format!("Casting to generic types is not supported: {:?} with parameters {:?}", path, type_params)),
+
+            Type::Tuple(expected_types) => match value.borrow().inner() {
+                ValueType::Tuple(ref elements) => {
+                    if elements.len() != expected_types.len() {
+                        return Err(format!("Cannot cast tuple of length {} to tuple of length {}", elements.len(), expected_types.len()));
+                    }
+
+                    let mut casted_elements = Vec::with_capacity(elements.len());
+                    for (elem, target_elem_type) in elements.iter().zip(expected_types.iter()) {
+                        let casted_elem = self.perform_cast(elem.clone(), target_elem_type)?;
+                        casted_elements.push(casted_elem);
+                    }
+
+                    Ok(val!(ValueType::Tuple(casted_elements)))
+                }
+
+                _ => Err(format!("Cannot cast {} to tuple type", value.borrow())),
+            },
+
+            Type::Array { element_type, size } => match value.borrow().inner() {
+                ValueType::Array { el, len, .. } => {
+                    if len != *size {
+                        return Err(format!("Cannot cast array of size {} to array of size {}", size, len));
+                    }
+
+                    let mut casted_elements = Vec::with_capacity(*size);
+                    for elem in el.iter() {
+                        let casted_elem = self.perform_cast(elem.clone(), element_type)?;
+                        casted_elements.push(casted_elem);
+                    }
+
+                    let inner_type = self.type_to_value_type(element_type)?;
+                    Ok(val!(ValueType::Array {
+                        ty: Box::new(inner_type),
+                        el: casted_elements,
+                        len: *size
+                    }))
+                }
+                _ => Err(format!("Cannot cast {:?} to array type", value.borrow().inner())),
+            },
+
+            Type::Slice { element_type } => match value.borrow().inner() {
+                ValueType::Array { el, .. } => {
+                    let mut casted_elements = Vec::with_capacity(el.len());
+                    for elem in el.iter() {
+                        let casted_elem = self.perform_cast(elem.clone(), element_type)?;
+                        casted_elements.push(casted_elem);
+                    }
+
+                    let inner_type = self.type_to_value_type(element_type)?;
+                    Ok(val!(ValueType::Slice {
+                        ty: Box::new(inner_type),
+                        el: casted_elements
+                    }))
+                }
+
+                ValueType::Slice { el, .. } => {
+                    let mut casted_elements = Vec::with_capacity(el.len());
+                    for elem in el.iter() {
+                        let casted_elem = self.perform_cast(elem.clone(), element_type)?;
+                        casted_elements.push(casted_elem);
+                    }
+
+                    let inner_type = self.type_to_value_type(element_type)?;
+                    Ok(val!(ValueType::Slice {
+                        ty: Box::new(inner_type),
+                        el: casted_elements
+                    }))
+                }
+                _ => Err(format!("Cannot cast {:?} to slice type", value.borrow().inner())),
+            },
+
             Type::Reference { mutable, inner } => {
                 let value_inner = {
                     let borrowed = value.borrow();
@@ -73,59 +158,6 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
-            Type::Array { element_type, size } => match value.borrow().inner() {
-                ValueType::Array { el, len, .. } => {
-                    if len != *size {
-                        return Err(format!("Cannot cast array of size {} to array of size {}", size, len));
-                    }
-
-                    let mut casted_elements = Vec::with_capacity(*size);
-                    for elem in el.iter() {
-                        let casted_elem = self.perform_cast(elem.clone(), element_type)?;
-                        casted_elements.push(casted_elem);
-                    }
-
-                    let inner_type = self.type_to_value_type(element_type)?;
-                    Ok(val!(ValueType::Array {
-                        ty: Box::new(inner_type),
-                        el: casted_elements,
-                        len: *size
-                    }))
-                }
-                _ => Err(format!("Cannot cast {:?} to array type", value.borrow().inner())),
-            },
-
-            Type::Slice { element_type } => match value.borrow().inner() {
-                ValueType::Array { el, .. } => {
-                    let mut casted_elements = Vec::with_capacity(el.len());
-                    for elem in el.iter() {
-                        let casted_elem = self.perform_cast(elem.clone(), element_type)?;
-                        casted_elements.push(casted_elem);
-                    }
-
-                    let inner_type = self.type_to_value_type(element_type)?;
-                    Ok(val!(ValueType::Slice {
-                        ty: Box::new(inner_type),
-                        el: casted_elements
-                    }))
-                }
-
-                ValueType::Slice { el, .. } => {
-                    let mut casted_elements = Vec::with_capacity(el.len());
-                    for elem in el.iter() {
-                        let casted_elem = self.perform_cast(elem.clone(), element_type)?;
-                        casted_elements.push(casted_elem);
-                    }
-
-                    let inner_type = self.type_to_value_type(element_type)?;
-                    Ok(val!(ValueType::Slice {
-                        ty: Box::new(inner_type),
-                        el: casted_elements
-                    }))
-                }
-                _ => Err(format!("Cannot cast {:?} to slice type", value.borrow().inner())),
-            },
-
             Type::Path(path) if path.segments.len() == 1 => {
                 let new_value = {
                     let inner_val = {
@@ -192,7 +224,7 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
-            _ => Err("Invalid cast target type".to_string()),
+            ty => Err(format!("Invalid cast target type `{ty}`")),
         }
     }
 
