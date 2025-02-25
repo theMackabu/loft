@@ -4,7 +4,9 @@
 
 Loft is a new programming language designed to provide a Rust-like development experience with a focus on simplicity and expressiveness. This project is currently in alpha stage.
 
-> [!WARNING] > **IMPORTANT:** Loft is currently in very early development (v0.0.1-alpha) and should be considered experimental. Many features are incomplete, unstable, or subject to significant changes. The language is not yet suitable for production use.
+> [!WARNING]
+>
+> **IMPORTANT:** Loft is currently in very early development (v0.0.1-alpha) and should be considered experimental. Many features are incomplete, unstable, or subject to significant changes. The language is not yet suitable for production use.
 >
 > - The syntax and semantics may change without notice
 > - The standard library is minimal and constantly evolving
