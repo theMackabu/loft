@@ -1,0 +1,10 @@
+fn main() {
+   let value = "outer";
+   
+   {
+      let value = "inner";
+      test_eq!(value, "inner");
+   }
+   
+   test_eq!(value, "outer");
+}

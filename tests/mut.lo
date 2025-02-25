@@ -12,7 +12,7 @@ fn test_inner() {
       val = "inner";
    }
    
-  test_eq!(val, "inner");
+   test_eq!(val, "inner");
 }
 
 fn test_tuple() {

@@ -303,7 +303,7 @@ impl<'st> Interpreter<'st> {
                             };
                         }
 
-                        self.env.set_variable(name, value)?;
+                        self.env.set_variable_raw(name, value)?;
                     }
 
                     Pattern::Tuple(patterns) => {
@@ -333,7 +333,7 @@ impl<'st> Interpreter<'st> {
                                                 };
                                             }
 
-                                            self.env.set_variable(name, element_value)?;
+                                            self.env.set_variable_raw(name, element_value)?;
                                         }
                                         _ => return Err("Nested destructuring patterns are not supported yet".to_string()),
                                     }
