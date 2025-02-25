@@ -461,6 +461,7 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
     }
 
     let tokens = if !tokens.is_empty() && tokens[0].token == Token::Not { &tokens[1..] } else { tokens };
+    let mut in_method_chain = false;
 
     for (i, token_info) in tokens.iter().enumerate() {
         match &token_info.token {
@@ -471,6 +472,13 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
             Token::RightParen | Token::RightBrace | Token::RightBracket => {
                 nesting -= 1;
                 current_arg.push(token_info.clone());
+                if nesting == 0 {
+                    in_method_chain = true;
+                }
+            }
+            Token::Dot => {
+                in_method_chain = true;
+                current_arg.push(token_info.clone());
             }
             token if nesting == 0 && is_delimiter(token) => {
                 if matches!(token, Token::Comma) {
@@ -478,20 +486,44 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
                         args.push(current_arg);
                         current_arg = Vec::new();
                     }
+                    in_method_chain = false;
                 } else {
                     current_arg.push(token_info.clone());
                     if !current_arg.is_empty() {
                         args.push(current_arg);
                         current_arg = Vec::new();
                     }
+                    in_method_chain = false;
                 }
             }
             _ if nesting == 0 => {
-                if i > 0 && !current_arg.is_empty() {
+                if i > 0 && !current_arg.is_empty() && !in_method_chain {
                     let prev_token_end = if let Some(prev) = tokens.get(i - 1) {
                         match &prev.token {
                             Token::Identifier(s) => prev.location.column + s.len(),
                             Token::String(s) => prev.location.column + s.len() + 2,
+                            Token::Integer(val, suffix) => {
+                                let val_str = val.to_string();
+                                let suffix_len = suffix.as_ref().map_or(0, |s| match s {
+                                    NumericType::I8 | NumericType::U8 => 2,
+                                    NumericType::F32 => 3,
+                                    _ => 4,
+                                });
+                                prev.location.column + val_str.len() + suffix_len
+                            }
+                            Token::Float(val, suffix) => {
+                                let mut val_str = val.to_string();
+                                if !val_str.contains('.') && !val_str.contains('e') {
+                                    val_str.push_str(".0");
+                                }
+                                let suffix_len = suffix.as_ref().map_or(0, |s| match s {
+                                    NumericType::I8 | NumericType::U8 => 2,
+                                    NumericType::F32 => 3,
+                                    _ => 4,
+                                });
+                                prev.location.column + val_str.len() + suffix_len
+                            }
+                            Token::Dot => prev.location.column + 1,
                             token if is_delimiter(token) => prev.location.column + 1,
                             _ => prev.location.column + 1,
                         }
@@ -506,7 +538,14 @@ fn extract_macro_arguments(tokens: &[TokenInfo]) -> Result<Vec<Vec<TokenInfo>>, 
                         }
                     }
                 }
+
                 current_arg.push(token_info.clone());
+                if !matches!(
+                    &token_info.token,
+                    Token::Identifier(_) | Token::Integer(_, _) | Token::Float(_, _) | Token::RightParen | Token::RightBrace | Token::RightBracket
+                ) {
+                    in_method_chain = false;
+                }
             }
             _ => {
                 current_arg.push(token_info.clone());

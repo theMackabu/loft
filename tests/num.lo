@@ -1,13 +1,13 @@
 fn main() {   
-   // test_eq!(42.type_name(), "i32");                  // integer without type suffix
-   test_eq!(3.1.type_name(), "f64");              // float without type suffix
-   // 
-   // println!(" - 42i32 is {}", 42i32.type_name());            // 32-bit signed integer
-   // println!(" - 42u64 is {}", 42u64.type_name());            // 64-bit unsigned integer
-   // 
-   // println!(" - 14f32 is {}", 3.14f32.type_name());          // 32-bit float
-   // println!(" - 14f64 is {}", 3.14f64.type_name());          // 64-bit float
-   // 
-   // println!(" - 1e-10 is {}", 1e-10.type_name());            // scientific notation
-   // println!(" - 1.23e+4f32 is {}", 1.23e+4f32.type_name());  // scientific notation with type suffix
+   test_eq!(42.type_name(), "i32");          // integer without type suffix
+   test_eq!(3.1.type_name(), "f64");         // float without type suffix
+   
+   test_eq!(42i32.type_name(), "i32");       // 32-bit signed integer
+   test_eq!(42u64.type_name(), "u64");       // 64-bit unsigned integer
+   
+   test_eq!(3.14f32.type_name(), "f32");     // 32-bit float
+   test_eq!(3.14f64.type_name(), "f64");     // 64-bit float
+   
+   test_eq!(1e-10.type_name(), "f64");       // scientific notation
+   test_eq!(1.23e+4f32.type_name(), "f32");  // scientific notation with type suffix
 }

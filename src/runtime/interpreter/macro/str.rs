@@ -1,5 +1,4 @@
 use super::*;
-use pat::Tap;
 
 pub fn tokens_to_string(tokens: &[TokenInfo]) -> String {
     let mut result = String::new();
@@ -128,29 +127,30 @@ pub fn token_to_string(token: &Token) -> String {
         }
 
         Token::Integer(val, has_suffix) => {
-            let mut s = val.to_string();
+            let mut int = val.to_string();
 
             if let Some(suffix) = has_suffix {
-                match suffix {
-                    NumericType::I8 => s.push_str("i8"),
-                    NumericType::I16 => s.push_str("i16"),
-                    NumericType::I32 => s.push_str("i32"),
-                    NumericType::I64 => s.push_str("i64"),
-                    NumericType::I128 => s.push_str("i128"),
-                    NumericType::ISize => s.push_str("isize"),
+                int.push_str(match suffix {
+                    NumericType::I8 => "i8",
+                    NumericType::I16 => "i16",
+                    NumericType::I32 => "i32",
+                    NumericType::I64 => "i64",
+                    NumericType::I128 => "i128",
+                    NumericType::ISize => "isize",
 
-                    NumericType::U8 => s.push_str("u8"),
-                    NumericType::U16 => s.push_str("u16"),
-                    NumericType::U32 => s.push_str("u32"),
-                    NumericType::U64 => s.push_str("u64"),
-                    NumericType::U128 => s.push_str("u128"),
-                    NumericType::USize => s.push_str("usize"),
+                    NumericType::U8 => "u8",
+                    NumericType::U16 => "u16",
+                    NumericType::U32 => "u32",
+                    NumericType::U64 => "u64",
+                    NumericType::U128 => "u128",
+                    NumericType::USize => "usize",
 
-                    NumericType::F32 => s.push_str("f32"),
-                    NumericType::F64 => s.push_str("f64"),
-                }
+                    NumericType::F32 => "f32",
+                    NumericType::F64 => "f64",
+                })
             }
-            s
+
+            return int;
         }
 
         Token::Float(val, has_suffix) => {
@@ -160,9 +160,7 @@ pub fn token_to_string(token: &Token) -> String {
                 num.push_str(".0");
             }
 
-            let mut flt = String::with_capacity(num.len() + 4);
-
-            flt.push('(');
+            let mut flt = String::with_capacity(num.len());
             flt.push_str(&num);
 
             if let Some(suffix) = has_suffix {
@@ -184,7 +182,7 @@ pub fn token_to_string(token: &Token) -> String {
                 });
             }
 
-            flt.tap(|s| s.push(')'))
+            return flt;
         }
 
         Token::EOF => "".to_string(),
