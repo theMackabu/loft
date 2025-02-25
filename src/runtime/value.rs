@@ -49,6 +49,15 @@ pub enum ValueType {
         inclusive: bool,
     },
 
+    Iterator {
+        current: Value,
+        end: Value,
+        inclusive: bool,
+        exhausted: bool,
+        collection: Value,
+        kind: String,
+    },
+
     Struct {
         name: String,
         fields: HashMap<String, Value>,
@@ -241,6 +250,7 @@ impl ValueEnum {
             ValueType::Range { .. } => String::from("range"),
             ValueType::Array { .. } => String::from("array"),
             ValueType::Slice { .. } => String::from("slice"),
+            ValueType::Iterator { .. } => String::from("iterator"),
 
             ValueType::Unbounded => String::from("unbounded"),
             ValueType::Unit => String::from("unit"),

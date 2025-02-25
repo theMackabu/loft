@@ -108,6 +108,22 @@ impl ValueType {
                 el: el.iter().map(|v| v.borrow().deep_clone()).collect(),
             },
 
+            ValueType::Iterator {
+                current,
+                end,
+                inclusive,
+                exhausted,
+                collection,
+                kind,
+            } => ValueType::Iterator {
+                current: current.borrow().deep_clone(),
+                end: end.borrow().deep_clone(),
+                collection: collection.borrow().deep_clone(),
+                inclusive: inclusive.clone(),
+                exhausted: exhausted.clone(),
+                kind: kind.clone(),
+            },
+
             ValueType::Unbounded => ValueType::Unbounded,
             ValueType::Unit => ValueType::Unit,
         }

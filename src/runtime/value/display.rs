@@ -55,6 +55,8 @@ impl fmt::Display for ValueEnum {
 
             ValueType::Range { start, end, inclusive } => write!(f, "{}..{2}{}", start.borrow(), end.borrow(), if inclusive { "=" } else { "" }),
 
+            ValueType::Iterator { current, end, inclusive, kind, .. } => write!(f, "<{kind} {}..{2}{}>", current.borrow(), end.borrow(), if inclusive { "=" } else { "" }),
+
             ValueType::StaticMethod { struct_name, method, .. } => write!(f, "{}::{}", struct_name, method),
 
             ValueType::EnumConstructor { enum_name, variant_name, .. } => write!(f, "<constructor {}::{}>", enum_name, variant_name),

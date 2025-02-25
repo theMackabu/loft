@@ -1,4 +1,5 @@
 mod array;
+mod iter;
 mod str;
 
 use super::*;
@@ -130,6 +131,10 @@ impl<'st> Interpreter<'st> {
             ValueType::Struct { name, .. } => self.handle_type_method_call(object, &name, method, args),
 
             ValueType::Enum { enum_type, .. } => self.handle_type_method_call(object, &enum_type, method, args),
+
+            ValueType::Range { start, end, inclusive } => self.handle_range_method_call(method, object, args, start, end, inclusive),
+
+            mut iter @ ValueType::Iterator { .. } => self.handle_iter_method_call(method, args, &mut iter),
 
             _ => {
                 let borrowed = object.borrow();

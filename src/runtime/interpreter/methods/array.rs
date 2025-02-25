@@ -48,6 +48,23 @@ impl<'st> Interpreter<'st> {
                 Ok(if is_mutable { val!(mut slice) } else { val!(slice) })
             }
 
+            "iter" => {
+                if !args.is_empty() {
+                    return Err("into_iter method does not take any arguments".to_string());
+                }
+
+                let iter = val!(ValueType::Iterator {
+                    current: val!(ValueType::I64(0)),
+                    end: val!(ValueType::I64(length as i64)),
+                    inclusive: false,
+                    exhausted: length == 0,
+                    collection: arr_value.clone(),
+                    kind: "array".to_string(),
+                });
+
+                return Ok(iter);
+            }
+
             _ => Err(format!("Unknown method '{}' on array type", method)),
         }
     }
@@ -202,7 +219,24 @@ impl<'st> Interpreter<'st> {
                 }))
             }
 
-            // add more methods: concat, filter, map, iter, etc.
+            "iter" => {
+                if !args.is_empty() {
+                    return Err("iter method does not take any arguments".to_string());
+                }
+
+                let iter = val!(ValueType::Iterator {
+                    current: val!(ValueType::I64(0)),
+                    end: val!(ValueType::I64(elements.len() as i64)),
+                    inclusive: false,
+                    exhausted: elements.is_empty(),
+                    collection: slice_value.clone(),
+                    kind: "slice".to_string(),
+                });
+
+                return Ok(iter);
+            }
+
+            // add more methods: concat, filter, map, etc.
             _ => Err(format!("Unknown method '{}' on slice type", method)),
         }
     }

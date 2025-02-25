@@ -1,7 +1,6 @@
 fn main() {
    (1..31)
-      // add iterator support
-      .into_iter()
+      .iter()
       // add closures
       .for_each(|i| match (i % 3 == 0, i % 5 == 0) {
          (true, true) => println!("FizzBuzz"),
