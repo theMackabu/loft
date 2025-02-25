@@ -1,7 +1,9 @@
 [tasks]
+install.script = "cargo install --path ."
 test.script = "cargo run tests/%{arg.1}.lo"
 run.script = "sh -c \"RUSTFLAGS='-C target-cpu=native' cargo run --release %{arg.1}\""
+test-shebang.script = "sh -c './tests/shebang.lo'"
 
 [tasks.test-all]
 path = "tests"
-script = "bash -c 'for file in *.lo; do maid test -q ${file%.lo}; done'"
+script = "sh -c 'for file in *.lo; do maid test -q ${file%.lo}; done'"

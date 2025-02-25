@@ -12,7 +12,15 @@ const PRELUDE: &'static str = include_str!("std/prelude.lo");
 
 fn run() -> Result {
     let filename = std::env::args().nth(1).ok_or(Error::MissingArgument)?;
-    let input = fs::read_to_string(&filename)?;
+    let mut input = fs::read_to_string(&filename)?;
+
+    if input.starts_with("#!") {
+        if let Some(newline_pos) = input.find('\n') {
+            input = input[newline_pos + 1..].to_string();
+        } else {
+            input = String::new();
+        }
+    }
 
     // !TEMPORARY PRELUDE IMPL
     let input = format!("{}\n{}", PRELUDE, input);

@@ -1,0 +1,5 @@
+#!/usr/bin/env loft
+
+fn main() {
+   println!("#! success")
+}
