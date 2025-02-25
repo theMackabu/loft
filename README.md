@@ -1,6 +1,6 @@
 # Loft
 
-![GitHub Release](https://img.shields.io/github/v/release/themackabu/loft)
+![GitHub Release](https://img.shields.io/github/v/release/themackabu/loft?include_prereleases&logo=rust&label=latest%20alpha&link=https%3A%2F%2Fgithub.com%2Fthemackabu%2Floft%2Freleases)
 
 Loft is a new programming language designed to provide a Rust-like development experience with a focus on simplicity and expressiveness. This project is currently in alpha stage.
 
