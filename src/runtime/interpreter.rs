@@ -10,14 +10,19 @@ mod pattern;
 mod pointer;
 mod structs;
 
-use super::value::*;
-use crate::parser::{ast::*, lexer::*};
-use crate::{impl_binary_ops, impl_promote_to_type, inner_val, val};
-use crate::{models::Either, util::unwrap_value};
+use crate::{
+    compare::{compare_values, value_equals},
+    impl_binary_ops, impl_promote_to_type, inner_val,
+    models::Either,
+    parser::{ast::*, lexer::*},
+    util::unwrap_value,
+    val,
+};
 
+use super::value::*;
 use environment::Environment;
 use std::collections::HashMap;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, cmp::Ordering, rc::Rc};
 
 type Macro = (MacroDelimiter, Vec<TokenInfo>, Vec<r#macro::MacroBranch>);
 
@@ -871,6 +876,40 @@ impl<'st> Interpreter<'st> {
                         [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize],
                         [I8, U8, I16, U16, I32, U32, I64, U64, I128, U128, ISize, USize, F32, F64, Str, Pointer]
                     };
+                }
+
+                match operator {
+                    Token::Equals => match value_equals(&left_val, &right_val) {
+                        Ok(equals) => return Ok(val!(ValueType::Boolean(equals))),
+                        Err(err) => return Err(err),
+                    },
+
+                    Token::NotEquals => match value_equals(&left_val, &right_val) {
+                        Ok(equals) => return Ok(val!(ValueType::Boolean(!equals))),
+                        Err(err) => return Err(err),
+                    },
+
+                    Token::LeftAngle => match compare_values(&left_val, &right_val) {
+                        Ok(ordering) => return Ok(val!(ValueType::Boolean(ordering == Ordering::Less))),
+                        Err(err) => return Err(err),
+                    },
+
+                    Token::RightAngle => match compare_values(&left_val, &right_val) {
+                        Ok(ordering) => return Ok(val!(ValueType::Boolean(ordering == Ordering::Greater))),
+                        Err(err) => return Err(err),
+                    },
+
+                    Token::LessEquals => match compare_values(&left_val, &right_val) {
+                        Ok(ordering) => return Ok(val!(ValueType::Boolean(ordering != Ordering::Greater))),
+                        Err(err) => return Err(err),
+                    },
+
+                    Token::GreaterEquals => match compare_values(&left_val, &right_val) {
+                        Ok(ordering) => return Ok(val!(ValueType::Boolean(ordering != Ordering::Less))),
+                        Err(err) => return Err(err),
+                    },
+
+                    _ => {}
                 }
 
                 Err(format!("Cannot perform operation between {} and {}", left_val.borrow(), right_val.borrow()))

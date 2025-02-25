@@ -15,5 +15,5 @@ fn main() {
    
    test_eq!(circle.0, 5.4);
    test_eq!((rect.0, rect.1), (4.1, 6.9));
-   test_eq!((triangle.base, triangle.height), (3.0, 4.0));
+   test_eq!((triangle.base, triangle.height), (3f64, 4f64));
 }
