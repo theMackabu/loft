@@ -76,34 +76,47 @@ impl Environment {
 
     /// Sets the value of a declared variable in the current scope.
     pub fn set_variable(&mut self, name: &str, value: Value) -> Result<(), String> {
-        if let Some(symbol_info) = self.scope_resolver.resolve(name) {
-            if symbol_info.mutable {
-                self.make_deeply_mutable(value.clone())
+        let can_assign = {
+            if let Some(symbol_info) = self.scope_resolver.resolve(name) {
+                let is_mutable = symbol_info.mutable;
+                let is_initialized = symbol_info.initialized;
+
+                is_mutable || !is_initialized
             } else {
-                self.make_deeply_immutable(value.clone())
-            };
+                return Err(format!("Variable '{}' not found", name));
+            }
+        };
 
-            let current_function_start = *self.function_boundaries.last().unwrap_or(&0);
-            for scope in self.scopes[current_function_start..].iter_mut().rev() {
-                if scope.contains_key(name) {
-                    if let Some(existing) = scope.get_mut(name) {
-                        let new_value = value.borrow().clone();
-                        let mut existing_ref = existing.borrow_mut();
+        if !can_assign {
+            return Err(format!("Cannot assign to immutable variable '{}'", name));
+        }
 
-                        *existing_ref = new_value;
-                        return Ok(());
-                    }
+        self.scope_resolver.mark_as_initialized(name)?;
+
+        if if let Some(symbol_info) = self.scope_resolver.resolve(name) { symbol_info.mutable } else { false } {
+            self.make_deeply_mutable(value.clone());
+        } else {
+            self.make_deeply_immutable(value.clone());
+        }
+
+        let current_function_start = *self.function_boundaries.last().unwrap_or(&0);
+        for scope in self.scopes[current_function_start..].iter_mut().rev() {
+            if scope.contains_key(name) {
+                if let Some(existing) = scope.get_mut(name) {
+                    let new_value = value.borrow().clone();
+                    let mut existing_ref = existing.borrow_mut();
+
+                    *existing_ref = new_value;
+                    return Ok(());
                 }
             }
+        }
 
-            if let Some(scope) = self.scopes.last_mut() {
-                scope.insert(name.to_string(), value);
-                Ok(())
-            } else {
-                Err("No active scope".to_string())
-            }
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_string(), value);
+            Ok(())
         } else {
-            Err(format!("Variable '{}' not found", name))
+            Err("No active scope".to_string())
         }
     }
 
@@ -126,11 +139,16 @@ impl Environment {
         if let Some(scope) = self.scopes.get_mut(scope_index) {
             if self.scope_resolver.resolve(name).is_none() {
                 self.scope_resolver.declare_variable_in_scope(name, mutable, scope_index)?;
+                self.scope_resolver.mark_as_initialized(name)?;
             } else {
                 let symbol_info = self.scope_resolver.resolve(name).ok_or_else(|| format!("Variable '{}' not found", name))?;
-                if !symbol_info.mutable {
+                let can_assign = symbol_info.mutable || !symbol_info.initialized;
+
+                if !can_assign {
                     return Err(format!("Cannot assign to immutable variable '{}'", name));
                 }
+
+                self.scope_resolver.mark_as_initialized(name)?;
             }
 
             if let Some(existing) = scope.get(name) {

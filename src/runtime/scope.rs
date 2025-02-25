@@ -16,6 +16,7 @@ pub struct SymbolInfo {
     pub name: String,
     pub kind: DeclKind,
     pub mutable: bool,
+    pub initialized: bool,
 }
 
 #[derive(Debug)]
@@ -66,6 +67,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Variable,
                     mutable,
+                    initialized: false,
                 },
             );
         }
@@ -79,6 +81,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Reference { mutable },
                     mutable,
+                    initialized: false,
                 },
             );
         }
@@ -96,6 +99,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Enum,
                     mutable: false,
+                    initialized: true,
                 },
             );
             Ok(())
@@ -116,6 +120,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Variable,
                     mutable,
+                    initialized: false,
                 },
             );
             Ok(())
@@ -137,6 +142,7 @@ impl Scope {
                     mutable: false,
                     name: name.to_owned(),
                     kind: DeclKind::Function,
+                    initialized: true,
                 },
             );
             Ok(())
@@ -156,6 +162,7 @@ impl Scope {
                     mutable: false,
                     name: name.to_owned(),
                     kind: DeclKind::Module,
+                    initialized: true,
                 },
             );
             Ok(())
@@ -175,6 +182,26 @@ impl Scope {
 
         if current_boundary > 0 { self.scopes[0].get(name) } else { None }
     }
+
+    pub fn mark_as_initialized(&mut self, name: &str) -> Result<(), String> {
+        let current_boundary = *self.function_boundaries.last().unwrap_or(&0);
+
+        for scope in self.scopes[current_boundary..].iter_mut().rev() {
+            if let Some(info) = scope.get_mut(name) {
+                info.initialized = true;
+                return Ok(());
+            }
+        }
+
+        if current_boundary > 0 {
+            if let Some(info) = self.scopes[0].get_mut(name) {
+                info.initialized = true;
+                return Ok(());
+            }
+        }
+
+        Err(format!("Variable '{}' not found", name))
+    }
 }
 
 fn resolve_stmt(stmt: &Stmt, env: &mut Scope) -> Result<(), String> {
@@ -187,6 +214,10 @@ fn resolve_stmt(stmt: &Stmt, env: &mut Scope) -> Result<(), String> {
             }
             if let Some((name, mutable)) = extract_identifier_info(pattern) {
                 env.declare_variable(&name, mutable);
+
+                if initializer.is_some() {
+                    env.mark_as_initialized(&name)?;
+                }
             }
             Ok(())
         }
@@ -218,6 +249,7 @@ fn resolve_stmt(stmt: &Stmt, env: &mut Scope) -> Result<(), String> {
             env.exit_scope();
             Ok(())
         }
+
         ExpressionStmt(expr) | ExpressionValue(expr) => resolve_expr(expr, env),
 
         // more statement types
@@ -240,6 +272,7 @@ fn resolve_expr(expr: &Expr, env: &mut Scope) -> Result<(), String> {
             env.exit_scope();
             Ok(())
         }
+
         Expr::Call { function, arguments } => {
             resolve_expr(function, env)?;
             for arg in arguments {
@@ -247,6 +280,7 @@ fn resolve_expr(expr: &Expr, env: &mut Scope) -> Result<(), String> {
             }
             Ok(())
         }
+
         Expr::If {
             condition, then_branch, else_branch, ..
         } => {
@@ -257,6 +291,7 @@ fn resolve_expr(expr: &Expr, env: &mut Scope) -> Result<(), String> {
             }
             Ok(())
         }
+
         //  additional expression variants
         _ => Ok(()),
     }

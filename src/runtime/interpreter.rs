@@ -277,11 +277,16 @@ impl<'st> Interpreter<'st> {
                 match pattern {
                     Pattern::Identifier { name, mutable } => {
                         let declared_mutability = *mutable;
+                        let is_initialized = initializer.is_some();
                         let value_inner = { value.borrow().inner() };
 
                         if let ValueType::Reference { source_name, .. } = value_inner {
                             if source_name.is_none() {
                                 self.env.scope_resolver.declare_variable(name, declared_mutability);
+
+                                if is_initialized {
+                                    self.env.scope_resolver.mark_as_initialized(name)?;
+                                }
 
                                 let mut value_ref = value.borrow_mut();
                                 *value_ref = if declared_mutability {
@@ -291,9 +296,14 @@ impl<'st> Interpreter<'st> {
                                 };
                             } else {
                                 self.env.scope_resolver.declare_variable(name, value.borrow().is_mutable());
+                                self.env.scope_resolver.mark_as_initialized(name)?;
                             }
                         } else {
                             self.env.scope_resolver.declare_variable(name, declared_mutability);
+
+                            if is_initialized {
+                                self.env.scope_resolver.mark_as_initialized(name)?;
+                            }
 
                             let mut value_ref = value.borrow_mut();
                             *value_ref = if declared_mutability {
@@ -323,6 +333,7 @@ impl<'st> Interpreter<'st> {
                                             let declared_mutability = if is_ref { element_value.borrow().is_mutable() } else { *mutable };
 
                                             self.env.scope_resolver.declare_variable(name, declared_mutability);
+                                            self.env.scope_resolver.mark_as_initialized(name)?;
 
                                             if !is_ref {
                                                 let mut element_ref = element_value.borrow_mut();
@@ -1147,7 +1158,9 @@ impl<'st> Interpreter<'st> {
 
                 Expr::Identifier(name) => {
                     if let Some(symbol_info) = self.env.scope_resolver.resolve(name) {
-                        if !symbol_info.mutable {
+                        let can_assign = symbol_info.mutable || !symbol_info.initialized;
+
+                        if !can_assign {
                             return Err(format!("Cannot assign to immutable variable '{}'", name));
                         }
 

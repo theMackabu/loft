@@ -15,6 +15,13 @@ fn test_inner() {
    test_eq!(val, "inner");
 }
 
+fn test_empty() {
+   let unit_val;
+   unit_val = "filled";
+   
+   test_eq!(unit_val, "filled");
+}
+
 fn test_tuple() {
    let (mut a, mut b) = (1, 1);
    
@@ -36,5 +43,6 @@ fn main() {
    test_eq!(value, 18);
       
    test_inner();
+   test_empty();
    test_tuple();
 }

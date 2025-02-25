@@ -1,6 +1,7 @@
 [tasks]
 install.script = "cargo install --path ."
 test.script = "cargo run tests/%{arg.1}.lo"
+debug.script = "cargo run .debug/debug.lo"
 run.script = "sh -c \"RUSTFLAGS='-C target-cpu=native' cargo run --release %{arg.1}\""
 test-shebang.script = "sh -c './tests/shebang.lo'"
 
