@@ -1,7 +1,7 @@
 fn test_assignment(val: &mut i32) -> &mut i32 {
    *val += 3;
    
-   println!("value(2) is: {val}");   
+   test_eq!(val, 8);
    return val;
 }
 
@@ -12,7 +12,7 @@ fn test_inner() {
       val = "inner";
    }
    
-   println!("\nset value should be {val}")
+  test_eq!(val, "inner");
 }
 
 fn test_tuple() {
@@ -21,18 +21,19 @@ fn test_tuple() {
    a = 2;
    b = 3;
    
-   println!("a = {a}, b = {b}")
+   test_eq!(a, 2);
+   test_eq!(b, 3);
 }
 
 fn main() {
    let mut value = 5;
 
-   println!("value(1) is: {value}");
+   test_eq!(value, 5);
 
    let val2 = test_assignment(&mut value);
    *val2 += 10;
       
-   println!("value(3) is: {value}");
+   test_eq!(value, 18);
       
    test_inner();
    test_tuple();

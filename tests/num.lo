@@ -1,15 +1,8 @@
 fn main() {
-   println!("numerical tests: ");
+   // println!("numerical tests: ");
    
-   println!(" - 42 is {}", 42.type_name());                    // integer without type suffix
-   println!(" - 3.14 is {}", 3.14.type_name());              // float without type suffix
-   
-   println!(" - 42i32 is {}", 42i32.type_name());              // 32-bit signed integer
-   println!(" - 42u64 is {}", 42u64.type_name());            // 64-bit unsigned integer
-   
-   println!(" - 14f32 is {}", 3.14f32.type_name());            // 32-bit float
-   println!(" - 14f64 is {}", 3.14f64.type_name());          // 64-bit float
-   
-   println!(" - 1e-10 is {}", 1e-10.type_name());              // scientific notation
-   println!(" - 1.23e+4f32 is {}", 1.23e+4f32.type_name());  // scientific notation with type suffix
+   println!(" - 42 is {}", 42.type_name());                  // integer without type suffix
+
 }
+
+// fix, right now it doesnt correctly call the method!

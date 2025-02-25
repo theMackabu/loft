@@ -1,5 +1,5 @@
+mod builtin;
 mod parse;
-mod proc;
 mod str;
 
 use super::*;
@@ -47,8 +47,12 @@ impl<'st> Interpreter<'st> {
     }
 
     fn expand_macro_inner(&mut self, name: &str, delimiter: &MacroDelimiter, tokens: &[TokenInfo]) -> Result<Expr, String> {
-        match proc::handle_procedural_macro(name, tokens) {
-            Ok(expanded_tokens) => return self.parse_expanded_tokens(&expanded_tokens),
+        match builtin::handle_procedural_macro(name, tokens) {
+            Ok(expanded_tokens) => {
+                let tokens = self.parse_expanded_tokens(&expanded_tokens);
+                println!("{tokens:?}");
+                return tokens;
+            }
             Err(e) if e.is_none() => {}
             Err(e) => return Err(e.unwrap()),
         }
