@@ -142,6 +142,16 @@ pub fn value_equals(lhs: &Value, rhs: &Value) -> Result<bool, String> {
         | (ValueEnum::Immutable(ValueType::Slice { el: a, .. }), ValueEnum::Mutable(ValueType::Slice { el: b, .. }))
         | (ValueEnum::Mutable(ValueType::Slice { el: a, .. }), ValueEnum::Mutable(ValueType::Slice { el: b, .. })) => tuple_equals(a, b),
 
+        (ValueEnum::Immutable(ValueType::Slice { el: a, .. }), ValueEnum::Immutable(ValueType::Array { el: b, .. }))
+        | (ValueEnum::Mutable(ValueType::Slice { el: a, .. }), ValueEnum::Immutable(ValueType::Array { el: b, .. }))
+        | (ValueEnum::Immutable(ValueType::Slice { el: a, .. }), ValueEnum::Mutable(ValueType::Array { el: b, .. }))
+        | (ValueEnum::Mutable(ValueType::Slice { el: a, .. }), ValueEnum::Mutable(ValueType::Array { el: b, .. })) => tuple_equals(a, b),
+
+        (ValueEnum::Immutable(ValueType::Array { el: a, .. }), ValueEnum::Immutable(ValueType::Slice { el: b, .. }))
+        | (ValueEnum::Mutable(ValueType::Array { el: a, .. }), ValueEnum::Immutable(ValueType::Slice { el: b, .. }))
+        | (ValueEnum::Immutable(ValueType::Array { el: a, .. }), ValueEnum::Mutable(ValueType::Slice { el: b, .. }))
+        | (ValueEnum::Mutable(ValueType::Array { el: a, .. }), ValueEnum::Mutable(ValueType::Slice { el: b, .. })) => tuple_equals(a, b),
+
         // references
         (ValueEnum::Immutable(ValueType::Reference { _undropped: a, .. }), _) => value_equals(a, rhs),
 
@@ -342,6 +352,16 @@ pub fn compare_values(lhs: &Value, rhs: &Value) -> Result<Ordering, String> {
         | (ValueEnum::Mutable(ValueType::Slice { el: a, .. }), ValueEnum::Immutable(ValueType::Slice { el: b, .. }))
         | (ValueEnum::Immutable(ValueType::Slice { el: a, .. }), ValueEnum::Mutable(ValueType::Slice { el: b, .. }))
         | (ValueEnum::Mutable(ValueType::Slice { el: a, .. }), ValueEnum::Mutable(ValueType::Slice { el: b, .. })) => tuple_cmp(a, b),
+
+        (ValueEnum::Immutable(ValueType::Slice { el: a, .. }), ValueEnum::Immutable(ValueType::Array { el: b, .. }))
+        | (ValueEnum::Mutable(ValueType::Slice { el: a, .. }), ValueEnum::Immutable(ValueType::Array { el: b, .. }))
+        | (ValueEnum::Immutable(ValueType::Slice { el: a, .. }), ValueEnum::Mutable(ValueType::Array { el: b, .. }))
+        | (ValueEnum::Mutable(ValueType::Slice { el: a, .. }), ValueEnum::Mutable(ValueType::Array { el: b, .. })) => tuple_cmp(a, b),
+
+        (ValueEnum::Immutable(ValueType::Array { el: a, .. }), ValueEnum::Immutable(ValueType::Slice { el: b, .. }))
+        | (ValueEnum::Mutable(ValueType::Array { el: a, .. }), ValueEnum::Immutable(ValueType::Slice { el: b, .. }))
+        | (ValueEnum::Immutable(ValueType::Array { el: a, .. }), ValueEnum::Mutable(ValueType::Slice { el: b, .. }))
+        | (ValueEnum::Mutable(ValueType::Array { el: a, .. }), ValueEnum::Mutable(ValueType::Slice { el: b, .. })) => tuple_cmp(a, b),
 
         // references
         (ValueEnum::Immutable(ValueType::Reference { _undropped: a, .. }), _) => compare_values(a, rhs),

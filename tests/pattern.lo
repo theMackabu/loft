@@ -34,9 +34,9 @@ fn main() {
       _ => "positive"
    };
    
-   println!("should print 42\n - result: {result}\n");
-   println!("should print 'error message'\n - error_msg: {error_msg}\n");
-   println!("should print 123\n - opt_value: {opt_value}\n");
-   println!("should print 999\n - default: {default}\n");
-   println!("should print 'zero'\n - value: {value}");
+   test_eq!(result, 42);
+   test_eq!(error_msg, "error message",);
+   test_eq!(opt_value, 123);
+   test_eq!(default, 999);
+   test_eq!(value, "zero");
 }

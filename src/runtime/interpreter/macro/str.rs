@@ -111,7 +111,6 @@ pub fn token_to_string(token: &Token) -> String {
                     '\n' => escaped.push_str("\\n"),     // line feed
                     '\r' => escaped.push_str("\\r"),     // carriage return
                     '\"' => escaped.push_str("\\\""),    // double quote
-                    '\'' => escaped.push_str("\\'"),     // single quote
                     '\\' => escaped.push_str("\\\\"),    // backslash
                     '\x1b' => escaped.push_str("\\x1b"), // ESC
                     '\x7f' => escaped.push_str("\\x7f"), // DEL

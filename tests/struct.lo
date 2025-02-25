@@ -16,7 +16,6 @@ impl Info {
    
    fn set_name(&mut self, name: &str) {
       self.name = name;
-      println!("set_name (self for info): {self}\n");
    }
 }
 
@@ -26,16 +25,15 @@ impl Triangle {
    }
    
    fn display(&self) {      
-      println!("called self.display():\n");
-      println!(" - self.base: {}\n", self.base);
-      println!(" - self.height: {}\n", self.height);
-      println!(" - self.info.id: {}\n", self.info.id);
+      println!("called self.display():");
+      println!(" - self.base: {}", self.base);
+      println!(" - self.height: {}", self.height);
+      println!(" - self.info.id: {}", self.info.id);
       println!(" - self.info.get_name() {}\n", self.info.get_name());
    }
    
    fn set_base(&mut self, base: i32) {
       self.base = base;
-      println!("set_base (self for triangle): {self}\n");
    }
    
    fn change_stuff(&mut self) {
@@ -59,4 +57,7 @@ fn main() {
    trig1.display();
    trig2.change_stuff();
    trig2.display();
+   
+   test_eq!(trig1, Triangle::new(10.7, 5.3, "first", 1));
+   test_eq!(trig2, Triangle::new(20, 1.4, "fourth", 2));
 }

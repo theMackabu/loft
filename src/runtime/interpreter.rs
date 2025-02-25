@@ -1505,7 +1505,7 @@ impl<'st> Interpreter<'st> {
                         let method_name = &path.segments[1].ident;
 
                         // method calling
-                        if let Some((scope_idx, value)) = self.env.find_variable(type_name) {
+                        if let Some((_, value)) = self.env.find_variable(type_name) {
                             let methods = {
                                 let borrowed = value.borrow();
                                 match borrowed.inner() {
@@ -1524,11 +1524,12 @@ impl<'st> Interpreter<'st> {
                                 }
 
                                 self.env.enter_scope();
+                                let current_scope_index = self.env.get_current_scope();
 
                                 for (i, arg_val) in evaluated_args.iter().enumerate() {
                                     if let Some((param_pattern, _)) = function.params.get(i) {
                                         if let Pattern::Identifier { name, mutable } = param_pattern {
-                                            self.env.set_scoped_variable(name, arg_val.clone(), scope_idx, *mutable)?;
+                                            self.env.set_scoped_variable(name, arg_val.clone(), current_scope_index, *mutable)?;
                                         }
                                     }
                                 }
