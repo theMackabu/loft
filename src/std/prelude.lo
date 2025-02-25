@@ -98,10 +98,10 @@ impl Option<T> {
 }
 
 pub macro_rules! test_eq {
-   ($left:expr, $right:expr) => {      
+   ($left:expr, $right:expr) => {
       match $left != $right {
          true => println!("\x1b[91m[test failed]\x1b[0m provided: `{}` does not equal expected: `{}`", $left, $right),
-         false => println!("\x1b[92m[test ok]\x1b[0m provided: `{}` equals expected: `{}`", $left, $right),
+         false => println!("\x1b[92m[test ok]\x1b[0m provided: `{}` equals expected: `{}`", $left, $right)
       }
    };
 }

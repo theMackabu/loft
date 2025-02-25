@@ -20,4 +20,5 @@ lto = true
 codegen-units = 1
 
 [dependencies]
+pat = "1.0.1"
 # macros-rs = "1.4.1"

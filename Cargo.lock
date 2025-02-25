@@ -5,3 +5,12 @@ version = 4
 [[package]]
 name = "loft"
 version = "0.0.1-alpha.17"
+dependencies = [
+ "pat",
+]
+
+[[package]]
+name = "pat"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b253cdae1f0d013c50bb4e00f79c1a751df2a28860cb0750f6d414de34c7215d"

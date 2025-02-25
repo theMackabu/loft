@@ -760,3 +760,7 @@ impl Token {
 
     pub fn as_identifier(&self) -> Option<&str> { if let Token::Identifier(s) = self { Some(s.as_str()) } else { None } }
 }
+
+impl TokenInfo {
+    pub fn new(token: Token, location: Location) -> Self { Self { token, location } }
+}

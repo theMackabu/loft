@@ -138,13 +138,7 @@ pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<T
                     location: location.clone(),
                 });
 
-                if tokens.len() > 1 {
-                    format_invocation.push(TokenInfo {
-                        token: Token::Comma,
-                        location: location.clone(),
-                    });
-                    format_invocation.extend_from_slice(&tokens[1..]);
-                }
+                format_invocation.extend_from_slice(&tokens[1..]);
             } else {
                 return Err(Some("println! requires a string literal as its first argument".to_string()));
             }

@@ -48,11 +48,7 @@ impl<'st> Interpreter<'st> {
 
     fn expand_macro_inner(&mut self, name: &str, delimiter: &MacroDelimiter, tokens: &[TokenInfo]) -> Result<Expr, String> {
         match builtin::handle_procedural_macro(name, tokens) {
-            Ok(expanded_tokens) => {
-                let tokens = self.parse_expanded_tokens(&expanded_tokens);
-                println!("{tokens:?}");
-                return tokens;
-            }
+            Ok(expanded_tokens) => return self.parse_expanded_tokens(&expanded_tokens),
             Err(e) if e.is_none() => {}
             Err(e) => return Err(e.unwrap()),
         }
@@ -63,6 +59,7 @@ impl<'st> Interpreter<'st> {
             }
 
             let args = extract_macro_arguments(tokens)?;
+            println!("{args:#?}");
 
             for branch in branches.iter() {
                 if match_branch_literals(&branch.literal_tokens, &args) && validate_branch_params(&branch.params, &args).is_ok() {
@@ -611,30 +608,57 @@ fn extract_branch_pattern(tokens: &[TokenInfo]) -> Result<(Vec<Token>, Vec<Macro
 }
 
 fn extract_branch_body(tokens: &[TokenInfo], start_pos: usize) -> Result<(Vec<TokenInfo>, usize), String> {
+    let starts_with_brace = !tokens.is_empty() && tokens[0].token == Token::LeftBrace;
+
     let mut body_tokens = Vec::new();
     let mut nesting = 0;
     let mut end_pos = 0;
 
-    for (i, token_info) in tokens.iter().enumerate() {
-        match token_info.token {
-            Token::LeftParen | Token::LeftBrace | Token::LeftBracket => {
-                nesting += 1;
-                body_tokens.push(token_info.clone());
-            }
-            Token::RightParen | Token::RightBrace | Token::RightBracket => {
-                nesting -= 1;
-                body_tokens.push(token_info.clone());
+    if starts_with_brace {
+        let mut idx = 1;
+        nesting = 1;
 
-                if nesting == 0 {
-                    end_pos = i + 1;
+        while idx < tokens.len() && nesting > 0 {
+            let token_info = &tokens[idx];
+            match token_info.token {
+                Token::LeftBrace => {
+                    nesting += 1;
+                    body_tokens.push(token_info.clone());
+                }
+                Token::RightBrace => {
+                    nesting -= 1;
+                    if nesting > 0 {
+                        body_tokens.push(token_info.clone());
+                    }
+                    if nesting == 0 {
+                        end_pos = idx + 1;
+                    }
+                }
+                _ => body_tokens.push(token_info.clone()),
+            }
+            idx += 1;
+        }
+    } else {
+        for (idx, token_info) in tokens.iter().enumerate() {
+            match token_info.token {
+                Token::LeftParen | Token::LeftBrace | Token::LeftBracket => {
+                    nesting += 1;
+                    body_tokens.push(token_info.clone());
+                }
+                Token::RightParen | Token::RightBrace | Token::RightBracket => {
+                    nesting -= 1;
+                    body_tokens.push(token_info.clone());
+                    if nesting == 0 {
+                        end_pos = idx + 1;
+                        break;
+                    }
+                }
+                Token::Semicolon if nesting == 0 => {
+                    end_pos = idx;
                     break;
                 }
+                _ => body_tokens.push(token_info.clone()),
             }
-            Token::Semicolon if nesting == 0 => {
-                end_pos = i;
-                break;
-            }
-            _ => body_tokens.push(token_info.clone()),
         }
     }
 
