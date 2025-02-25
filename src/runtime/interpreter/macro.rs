@@ -59,7 +59,6 @@ impl<'st> Interpreter<'st> {
             }
 
             let args = extract_macro_arguments(tokens)?;
-            println!("{args:#?}");
 
             for branch in branches.iter() {
                 if match_branch_literals(&branch.literal_tokens, &args) && validate_branch_params(&branch.params, &args).is_ok() {
