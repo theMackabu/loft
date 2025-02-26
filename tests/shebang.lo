@@ -1,5 +1,5 @@
 #!/usr/bin/env loft
 
 fn main() {
-   println!("#! success")
+   test_pass!();
 }

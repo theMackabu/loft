@@ -23,8 +23,14 @@ use crate::{
 
 use super::value::*;
 use environment::Environment;
-use std::collections::HashMap;
-use std::{cell::RefCell, cmp::Ordering, rc::Rc};
+
+use std::{
+    cell::RefCell,
+    cmp::Ordering,
+    collections::HashMap,
+    io::{self, Write},
+    rc::Rc,
+};
 
 type Macro = (MacroDelimiter, Vec<TokenInfo>, Vec<r#macro::MacroBranch>);
 
@@ -1394,6 +1400,7 @@ impl<'st> Interpreter<'st> {
                         // handle import calls (like use std::io, io::write)
                         // handle path-based calls (like std::io::writeln)
                         // TEMPORARY
+
                         if path.segments[0].ident == "core" && path.segments[1].ident == "concat" {
                             let mut concatenated = String::new();
                             for arg in arguments {
@@ -1403,32 +1410,50 @@ impl<'st> Interpreter<'st> {
                             return Ok(val!(ValueType::Str(concatenated)));
                         }
 
-                        if path.segments[0].ident == "core" && path.segments[1].ident == "panic" {
-                            if let Some(arg) = arguments.first() {
+                        if let [first, second, ..] = path.segments.as_slice() {
+                            if first.ident == "core" && second.ident == "escape" {
+                                if arguments.len() != 1 {
+                                    return Err("core::escape requires exactly one argument".to_string());
+                                }
+
+                                let arg = &arguments[0];
                                 let value = self.evaluate_expression(arg)?;
+
+                                let s = value.borrow().to_string();
+                                let escaped = s.chars().flat_map(char::escape_default).collect();
+
+                                let rc = val!(mut ValueType::Str(escaped));
+                                return Ok(val!(ValueType::Reference {
+                                    source_name: None,
+                                    source_scope: None,
+                                    original_ptr: std::rc::Rc::as_ptr(&rc),
+                                    _undropped: rc,
+                                }));
+                            }
+
+                            if first.ident == "core" && second.ident == "panic" {
+                                if arguments.len() != 1 {
+                                    return Err("core::panic requires exactly one argument".to_string());
+                                }
+
+                                let arg = &arguments[0];
+                                let value = self.evaluate_expression(arg)?;
+
                                 return Err(value.borrow().to_string());
-                            } else {
-                                return Err("core::panic requires an argument".to_string());
                             }
-                        }
 
-                        if path.segments[0].ident == "io" && path.segments[1].ident == "println" {
-                            if let Some(arg) = arguments.first() {
-                                let value = self.evaluate_expression(arg)?;
-                                println!("{}", value.borrow());
-                                return Ok(ValueEnum::unit());
-                            } else {
-                                return Err("io::println requires an argument".to_string());
-                            }
-                        }
+                            if first.ident == "core" && second.ident == "write" {
+                                if arguments.len() != 1 {
+                                    return Err("core::write requires exactly one argument".to_string());
+                                }
 
-                        if path.segments[0].ident == "io" && path.segments[1].ident == "print" {
-                            if let Some(arg) = arguments.first() {
+                                let arg = &arguments[0];
                                 let value = self.evaluate_expression(arg)?;
-                                print!("{}", value.borrow());
+                                let inner = value.borrow();
+
+                                io::stdout().write_all(&inner.as_bytes()).map_err(|e| e.to_string())?;
+
                                 return Ok(ValueEnum::unit());
-                            } else {
-                                return Err("io::print requires an argument".to_string());
                             }
                         }
 

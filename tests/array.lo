@@ -1,7 +1,22 @@
-fn analyze(slice: [i32]) {
-   println!("First element of the slice: {}", slice[0]);
-   println!("The slice has {} elements", slice.len());
-   println!();
+fn analyze(slice: [i32], test: usize) {
+   match test {
+      1 => {
+         test_eq!(slice[0], 9);
+         test_eq!(slice.len(), 3);
+      },
+      
+      2 => {
+         test_eq!(slice[0], 1);
+         test_eq!(slice.len(), 5);
+      },
+      
+      3 => {
+         test_eq!(slice[0], ":3");
+         test_eq!(slice.len(), 20);
+      },
+      
+      _ => test_fail!(),
+   }
 }
 
 fn main() {   
@@ -11,13 +26,13 @@ fn main() {
 
    s[0] += 8;
    
-   analyze(s);
-   analyze(xs);
-   analyze(ys[1 .. 4]);
+   analyze(s, 1);
+   analyze(xs, 2);
+   analyze(ys[1..=20], 3);
    
    let val = 1;
    match xs.get(val) {
-      Some(val) => println!("The found value is {val}"),
-      None => println!("Cannot find {val} in xs"),
+      Some(val) => test_eq!(val, 2),
+      None => test_fail!(),
    }
 }

@@ -6,5 +6,7 @@ run.script = "sh -c \"RUSTFLAGS='-C target-cpu=native' cargo run --release %{arg
 test-shebang.script = "sh -c './tests/shebang.lo'"
 
 [tasks.test-all]
-path = "tests"
-script = "sh -c 'for file in *.lo; do maid test -q ${file%.lo}; done'"
+script = [
+   "cargo build --release",
+   "sh -c 'for file in tests/*.lo; do target/release/loft ${file}; done'"   
+]

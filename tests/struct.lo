@@ -25,11 +25,11 @@ impl Triangle {
    }
    
    fn display(&self) {      
-      println!("called self.display():");
-      println!(" - self.base: {}", self.base);
-      println!(" - self.height: {}", self.height);
-      println!(" - self.info.id: {}", self.info.id);
-      println!(" - self.info.get_name() {}\n", self.info.get_name());
+      test_pass!("called self.display():");
+      test_pass!(" - self.base: {}", self.base);
+      test_pass!(" - self.height: {}", self.height);
+      test_pass!(" - self.info.id: {}", self.info.id);
+      test_pass!(" - self.info.get_name() {}", self.info.get_name());
    }
    
    fn set_base(&mut self, base: i32) {

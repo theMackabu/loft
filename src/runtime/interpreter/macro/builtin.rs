@@ -176,10 +176,10 @@ pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<T
                 location: first_location.clone(),
             });
 
-            // io::print( format!( ... ) )
+            // core::write( format!( ... ) )
             let mut result_tokens = Vec::new();
             result_tokens.push(TokenInfo {
-                token: Token::Identifier("io".to_string()),
+                token: Token::Identifier("core".to_string()),
                 location: first_location.clone(),
             });
             result_tokens.push(TokenInfo {
@@ -187,7 +187,7 @@ pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<T
                 location: first_location.clone(),
             });
             result_tokens.push(TokenInfo {
-                token: Token::Identifier("print".to_string()),
+                token: Token::Identifier("write".to_string()),
                 location: first_location.clone(),
             });
             result_tokens.push(TokenInfo {

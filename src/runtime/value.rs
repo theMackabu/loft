@@ -3,7 +3,7 @@ mod clone;
 mod display;
 
 use crate::parser::ast::{EnumVariant, Function, Type};
-use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 pub type Cell = RefCell<ValueEnum>;
 pub type Value = Rc<Cell>;
@@ -192,6 +192,13 @@ impl ValueEnum {
         match self {
             ValueEnum::Mutable(inner) => inner,
             ValueEnum::Immutable(_) => panic!("Called inner_mut on immutable value"),
+        }
+    }
+
+    pub fn as_bytes(&self) -> Cow<[u8]> {
+        match self {
+            ValueEnum::Immutable(ValueType::Str(s)) | ValueEnum::Mutable(ValueType::Str(s)) => Cow::Borrowed(s.as_bytes()),
+            _ => Cow::Owned(self.to_string().into_bytes()),
         }
     }
 

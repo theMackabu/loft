@@ -37,15 +37,15 @@ fn test_opt() {
    }
    
    if let Some(str) = letter {
-      unreachable!()
+      test_fail!()
    } else {
       test_eq!(letter, None)
    }
    
    if let Some(str) = emoticon {
-      unreachable!()
+      test_fail!()
    } else if i_like_letters {
-      unreachable!()
+      test_fail!()
    } else {
       test_eq!(emoticon, None)
    }

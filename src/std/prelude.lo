@@ -106,6 +106,24 @@ pub macro_rules! unreachable {
    };
 }
 
+pub macro_rules! test_pass {
+   () => {
+      println!("\x1b[92m[test ok]\x1b[0m code ran correctly")
+   };
+   ($($item:expr),*) => {
+      println!("\x1b[92m[test ok]\x1b[0m {}", $($item),*)
+   };
+}
+
+pub macro_rules! test_fail {
+   () => {
+      println!("\x1b[91m[test failed]\x1b[0m unexpected error");
+   };
+   ($($item:expr),*) => {
+      println!("\x1b[91m[test failed]\x1b[0m error: {}", $($item),*)
+   };
+}
+
 pub macro_rules! test_eq {
    ($left:expr, $right:expr) => {
       match $left == $right {

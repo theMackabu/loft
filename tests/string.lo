@@ -8,7 +8,7 @@ fn main() {
       multi-line string
    ";
     
-   println!("{text1}\n");  
-   println!("{text2}\n");  
-   println!("{text3}");  
+   test_pass!(core::escape(text1));  
+   test_pass!(core::escape(text2));
+   test_pass!(core::escape(text3));  
 }
