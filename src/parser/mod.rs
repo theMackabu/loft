@@ -1158,14 +1158,101 @@ impl Parser {
     fn parse_pattern_binding(&mut self) -> Result<Pattern, ParseError> {
         if self.current.token == Token::Mut {
             self.advance();
-            let pat = self.parse_pattern()?;
-            match pat {
-                Pattern::Identifier { name, .. } => Ok(Pattern::Identifier { name, mutable: true }),
-                _ => Ok(pat),
+            let name = self.expect_identifier()?;
+
+            if self.current.token == Token::LeftBrace {
+                let path = Path {
+                    segments: vec![PathSegment { ident: name, generics: Vec::new() }],
+                };
+
+                self.advance(); // consume {
+                let mut fields = Vec::new();
+                let mut rest = false;
+
+                while self.current.token != Token::RightBrace {
+                    if self.current.token == Token::Dot {
+                        self.advance();
+                        self.expect(Token::Dot)?;
+                        rest = true;
+                        break;
+                    }
+
+                    if !fields.is_empty() {
+                        self.expect(Token::Comma)?;
+                        if self.current.token == Token::RightBrace {
+                            break;
+                        }
+                    }
+
+                    let field_name = self.expect_identifier()?;
+                    let pattern = if self.current.token == Token::Colon {
+                        self.advance();
+                        self.parse_pattern()?
+                    } else {
+                        Pattern::Identifier {
+                            name: field_name.clone(),
+                            mutable: false,
+                        }
+                    };
+
+                    fields.push((field_name, pattern));
+                }
+
+                self.expect(Token::RightBrace)?;
+                return Ok(Pattern::Struct { path, fields, rest });
             }
-        } else {
-            self.parse_pattern()
+
+            return Ok(Pattern::Identifier { name, mutable: true });
+        } else if let Token::Identifier(name) = &self.current.token {
+            let name = name.clone();
+            self.advance();
+
+            if self.current.token == Token::LeftBrace {
+                let path = Path {
+                    segments: vec![PathSegment { ident: name, generics: Vec::new() }],
+                };
+
+                self.advance(); // consume {
+                let mut fields = Vec::new();
+                let mut rest = false;
+
+                while self.current.token != Token::RightBrace {
+                    if self.current.token == Token::Dot {
+                        self.advance();
+                        self.expect(Token::Dot)?;
+                        rest = true;
+                        break;
+                    }
+
+                    if !fields.is_empty() {
+                        self.expect(Token::Comma)?;
+                        if self.current.token == Token::RightBrace {
+                            break;
+                        }
+                    }
+
+                    let field_name = self.expect_identifier()?;
+                    let pattern = if self.current.token == Token::Colon {
+                        self.advance();
+                        self.parse_pattern()?
+                    } else {
+                        Pattern::Identifier {
+                            name: field_name.clone(),
+                            mutable: false,
+                        }
+                    };
+
+                    fields.push((field_name, pattern));
+                }
+
+                self.expect(Token::RightBrace)?;
+                return Ok(Pattern::Struct { path, fields, rest });
+            }
+
+            return Ok(Pattern::Identifier { name, mutable: false });
         }
+
+        self.parse_pattern()
     }
 
     fn parse_const_static_statement(&mut self, kind: DeclarationKind, visibility: bool, attributes: Vec<Attribute>) -> Result<Stmt, ParseError> {

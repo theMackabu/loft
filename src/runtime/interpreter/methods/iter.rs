@@ -24,135 +24,134 @@ impl<'st> Interpreter<'st> {
     }
 
     pub fn handle_iter_method_call(&mut self, method: &str, args: &[Expr], iter: &mut ValueType) -> Result<Value, String> {
-        if let &mut ValueType::Iterator {
-            ref mut current,
-            ref end,
-            ref inclusive,
-            ref mut exhausted,
-            ref collection,
-            ref kind,
-        } = iter
-        {
-            match method {
-                "next" => {
-                    if !args.is_empty() {
-                        return Err("next method does not take any arguments".to_string());
-                    }
+        unbind! {
+            &mut ValueType::Iterator {
+                ref mut current,
+                ref mut exhausted,
+                ref inclusive,
+                ref collection,
+                ref end,
+                ref kind,
+            } = iter
+        }
 
-                    if *exhausted {
-                        return Ok(val!(ValueType::Unit));
-                    }
+        match method {
+            "next" => {
+                if !args.is_empty() {
+                    return Err("next method does not take any arguments".to_string());
+                }
 
-                    match kind.as_str() {
-                        "range" => {
-                            let current_val = current.clone();
+                if *exhausted {
+                    return Ok(val!(ValueType::Unit));
+                }
 
-                            let curr_num = extract_number(&current_val)?;
-                            let end_num = extract_number(&end)?;
+                match kind.as_str() {
+                    "range" => {
+                        let current_val = current.clone();
 
-                            let next_val = match current_val.borrow().inner() {
-                                ValueType::I64(n) => val!(ValueType::I64(n + 1)),
-                                ValueType::I32(n) => val!(ValueType::I32(n + 1)),
-                                ValueType::I16(n) => val!(ValueType::I16(n + 1)),
-                                ValueType::I8(n) => val!(ValueType::I8(n + 1)),
-                                ValueType::U64(n) => val!(ValueType::U64(n + 1)),
-                                ValueType::U32(n) => val!(ValueType::U32(n + 1)),
-                                ValueType::U16(n) => val!(ValueType::U16(n + 1)),
-                                ValueType::U8(n) => val!(ValueType::U8(n + 1)),
+                        let curr_num = extract_number(&current_val)?;
+                        let end_num = extract_number(&end)?;
 
-                                _ => return Err("Iterator contains non-numeric type".to_string()),
-                            };
+                        let next_val = match current_val.borrow().inner() {
+                            ValueType::I64(n) => val!(ValueType::I64(n + 1)),
+                            ValueType::I32(n) => val!(ValueType::I32(n + 1)),
+                            ValueType::I16(n) => val!(ValueType::I16(n + 1)),
+                            ValueType::I8(n) => val!(ValueType::I8(n + 1)),
+                            ValueType::U64(n) => val!(ValueType::U64(n + 1)),
+                            ValueType::U32(n) => val!(ValueType::U32(n + 1)),
+                            ValueType::U16(n) => val!(ValueType::U16(n + 1)),
+                            ValueType::U8(n) => val!(ValueType::U8(n + 1)),
 
-                            *current = next_val;
-                            if *inclusive {
-                                if curr_num > end_num {
-                                    *exhausted = true;
-                                }
-                            } else {
-                                if curr_num >= end_num {
-                                    *exhausted = true;
-                                }
-                            }
+                            _ => return Err("Iterator contains non-numeric type".to_string()),
+                        };
 
-                            return Ok(current_val);
-                        }
-
-                        "array" | "slice" => {
-                            let index = match current.borrow().inner() {
-                                ValueType::I64(idx) => idx as usize,
-                                _ => return Err("Iterator index is not an integer".to_string()),
-                            };
-
-                            let element = match collection.borrow().inner() {
-                                ValueType::Array { ref el, .. } | ValueType::Slice { ref el, .. } => {
-                                    if index < el.len() {
-                                        el[index].clone()
-                                    } else {
-                                        return Err("Iterator index out of bounds".to_string());
-                                    }
-                                }
-                                _ => return Err("Iterator collection type mismatch".to_string()),
-                            };
-
-                            *current = val!(ValueType::I64((index + 1) as i64));
-
-                            let end_idx = match end.borrow().inner() {
-                                ValueType::I64(idx) => idx,
-                                _ => return Err("Iterator end is not an integer".to_string()),
-                            };
-
-                            if (index + 1) as i64 >= end_idx {
+                        *current = next_val;
+                        if *inclusive {
+                            if curr_num > end_num {
                                 *exhausted = true;
                             }
-
-                            return Ok(element);
+                        } else {
+                            if curr_num >= end_num {
+                                *exhausted = true;
+                            }
                         }
 
-                        _ => return Err(format!("Unknown iterator kind: {}", kind)),
+                        return Ok(current_val);
                     }
+
+                    "array" | "slice" => {
+                        let index = match current.borrow().inner() {
+                            ValueType::I64(idx) => idx as usize,
+                            _ => return Err("Iterator index is not an integer".to_string()),
+                        };
+
+                        let element = match collection.borrow().inner() {
+                            ValueType::Array { ref el, .. } | ValueType::Slice { ref el, .. } => {
+                                if index < el.len() {
+                                    el[index].clone()
+                                } else {
+                                    return Err("Iterator index out of bounds".to_string());
+                                }
+                            }
+                            _ => return Err("Iterator collection type mismatch".to_string()),
+                        };
+
+                        *current = val!(ValueType::I64((index + 1) as i64));
+
+                        let end_idx = match end.borrow().inner() {
+                            ValueType::I64(idx) => idx,
+                            _ => return Err("Iterator end is not an integer".to_string()),
+                        };
+
+                        if (index + 1) as i64 >= end_idx {
+                            *exhausted = true;
+                        }
+
+                        return Ok(element);
+                    }
+
+                    _ => return Err(format!("Unknown iterator kind: {}", kind)),
                 }
-
-                "has_next" => {
-                    if !args.is_empty() {
-                        return Err("has_next method does not take any arguments".to_string());
-                    }
-
-                    if *exhausted {
-                        return Ok(val!(ValueType::Boolean(false)));
-                    }
-
-                    match kind.as_str() {
-                        "range" => {
-                            let curr_num = extract_number(&current)?;
-                            let end_num = extract_number(&end)?;
-
-                            let has_next = if *inclusive { curr_num <= end_num } else { curr_num < end_num };
-
-                            return Ok(val!(ValueType::Boolean(has_next)));
-                        }
-
-                        "array" | "slice" => {
-                            let index = match current.borrow().inner() {
-                                ValueType::I64(idx) => idx as usize,
-                                _ => return Err("Iterator index is not an integer".to_string()),
-                            };
-
-                            let end_idx = match end.borrow().inner() {
-                                ValueType::I64(idx) => idx as usize,
-                                _ => return Err("Iterator end is not an integer".to_string()),
-                            };
-
-                            return Ok(val!(ValueType::Boolean(index < end_idx)));
-                        }
-
-                        _ => return Err(format!("Unknown iterator kind: {}", kind)),
-                    }
-                }
-
-                _ => Err(format!("Method '{}' not found on Iterator type", method)),
             }
-        } else {
-            unreachable!()
+
+            "has_next" => {
+                if !args.is_empty() {
+                    return Err("has_next method does not take any arguments".to_string());
+                }
+
+                if *exhausted {
+                    return Ok(val!(ValueType::Boolean(false)));
+                }
+
+                match kind.as_str() {
+                    "range" => {
+                        let curr_num = extract_number(&current)?;
+                        let end_num = extract_number(&end)?;
+
+                        let has_next = if *inclusive { curr_num <= end_num } else { curr_num < end_num };
+
+                        return Ok(val!(ValueType::Boolean(has_next)));
+                    }
+
+                    "array" | "slice" => {
+                        let index = match current.borrow().inner() {
+                            ValueType::I64(idx) => idx as usize,
+                            _ => return Err("Iterator index is not an integer".to_string()),
+                        };
+
+                        let end_idx = match end.borrow().inner() {
+                            ValueType::I64(idx) => idx as usize,
+                            _ => return Err("Iterator end is not an integer".to_string()),
+                        };
+
+                        return Ok(val!(ValueType::Boolean(index < end_idx)));
+                    }
+
+                    _ => return Err(format!("Unknown iterator kind: {}", kind)),
+                }
+            }
+
+            _ => Err(format!("Method '{}' not found on Iterator type", method)),
         }
     }
 }

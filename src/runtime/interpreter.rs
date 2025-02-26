@@ -1,4 +1,5 @@
 mod r#enum;
+mod r#let;
 mod r#macro;
 
 mod assign;
@@ -15,6 +16,7 @@ use crate::{
     impl_binary_ops, impl_promote_to_type, inner_val,
     models::Either,
     parser::{ast::*, lexer::*},
+    unbind,
     util::unwrap_value,
     val,
 };
@@ -257,108 +259,7 @@ impl<'st> Interpreter<'st> {
                 Ok(ValueEnum::unit())
             }
 
-            Stmt::Let {
-                pattern,
-                initializer,
-                type_annotation,
-                ..
-            } => {
-                let value = if let Some(init) = initializer {
-                    let init_value = self.evaluate_expression(init)?;
-                    if let Some(target_type) = type_annotation {
-                        self.perform_cast(init_value, target_type)?
-                    } else {
-                        init_value
-                    }
-                } else {
-                    ValueEnum::unit()
-                };
-
-                match pattern {
-                    Pattern::Identifier { name, mutable } => {
-                        let declared_mutability = *mutable;
-                        let is_initialized = initializer.is_some();
-                        let value_inner = { value.borrow().inner() };
-
-                        if let ValueType::Reference { source_name, .. } = value_inner {
-                            if source_name.is_none() {
-                                self.env.scope_resolver.declare_variable(name, declared_mutability);
-
-                                if is_initialized {
-                                    self.env.scope_resolver.mark_as_initialized(name)?;
-                                }
-
-                                let mut value_ref = value.borrow_mut();
-                                *value_ref = if declared_mutability {
-                                    value_ref.clone().into_mutable()
-                                } else {
-                                    value_ref.clone().into_immutable()
-                                };
-                            } else {
-                                self.env.scope_resolver.declare_variable(name, value.borrow().is_mutable());
-                                self.env.scope_resolver.mark_as_initialized(name)?;
-                            }
-                        } else {
-                            self.env.scope_resolver.declare_variable(name, declared_mutability);
-
-                            if is_initialized {
-                                self.env.scope_resolver.mark_as_initialized(name)?;
-                            }
-
-                            let mut value_ref = value.borrow_mut();
-                            *value_ref = if declared_mutability {
-                                value_ref.clone().into_mutable()
-                            } else {
-                                value_ref.clone().into_immutable()
-                            };
-                        }
-
-                        self.env.set_variable_raw(name, value)?;
-                    }
-
-                    Pattern::Tuple(patterns) => {
-                        let value_inner = value.borrow().inner();
-
-                        match value_inner {
-                            ValueType::Tuple(elements) => {
-                                if patterns.len() != elements.len() {
-                                    return Err(format!("Expected tuple with {} elements but got {} elements", patterns.len(), elements.len()));
-                                }
-
-                                for (i, pattern) in patterns.iter().enumerate() {
-                                    match pattern {
-                                        Pattern::Identifier { name, mutable } => {
-                                            let element_value = elements[i].clone();
-                                            let is_ref = matches!(element_value.borrow().inner(), ValueType::Reference { .. });
-                                            let declared_mutability = if is_ref { element_value.borrow().is_mutable() } else { *mutable };
-
-                                            self.env.scope_resolver.declare_variable(name, declared_mutability);
-                                            self.env.scope_resolver.mark_as_initialized(name)?;
-
-                                            if !is_ref {
-                                                let mut element_ref = element_value.borrow_mut();
-                                                *element_ref = if declared_mutability {
-                                                    element_ref.clone().into_mutable()
-                                                } else {
-                                                    element_ref.clone().into_immutable()
-                                                };
-                                            }
-
-                                            self.env.set_variable_raw(name, element_value)?;
-                                        }
-                                        _ => return Err("Nested destructuring patterns are not supported yet".to_string()),
-                                    }
-                                }
-                            }
-                            _ => return Err("Cannot destructure non-tuple value".to_string()),
-                        }
-                    }
-
-                    _ => return Err("Unsupported pattern in let binding".to_string()),
-                }
-
-                Ok(ValueEnum::unit())
-            }
+            attr @ Stmt::Let { .. } => self.parse_let_statement(attr),
 
             Stmt::Function { name, params, body, return_type, .. } => {
                 if name == "main" {

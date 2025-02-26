@@ -1,4 +1,13 @@
 #[macro_export]
+macro_rules! unbind {
+    { $pattern:pat = $expr:expr } => {
+        let $pattern = $expr else {
+            unreachable!();
+        };
+    };
+}
+
+#[macro_export]
 macro_rules! inner_val {
     ($value:ident) => {
         let $value = {
