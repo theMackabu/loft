@@ -220,33 +220,31 @@ pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<T
             let mut parts = Vec::new();
             let mut placeholders = Vec::new();
             let mut current_part = String::new();
-            let mut i = 0;
+            let mut chars = fmt_str.chars().peekable();
 
-            while i < fmt_str.len() {
-                if fmt_str[i..].starts_with("{}") {
-                    parts.push(current_part);
-                    current_part = String::new();
-                    placeholders.push(Placeholder::Positional(None));
-                    i += 2;
-                } else if fmt_str[i..].starts_with('{') {
-                    if let Some(end) = fmt_str[i..].find('}') {
-                        let content = &fmt_str[i + 1..i + end];
+            while let Some(c) = chars.next() {
+                if c == '{' {
+                    if chars.peek() == Some(&'}') {
+                        chars.next(); // Consume '}'
+                        parts.push(current_part);
+                        current_part = String::new();
+                        placeholders.push(Placeholder::Positional(None));
+                    } else if let Some(end) = fmt_str[chars.clone().count()..].find('}') {
+                        let content: String = chars.by_ref().take(end).collect();
+                        chars.next(); // Consume '}'
                         parts.push(current_part);
                         current_part = String::new();
 
                         if let Ok(index) = content.parse::<usize>() {
                             placeholders.push(Placeholder::Positional(Some(index)));
                         } else {
-                            placeholders.push(Placeholder::Named(content.to_string()));
+                            placeholders.push(Placeholder::Named(content));
                         }
-
-                        i += end + 1;
                     } else {
                         return Err(Some("Unmatched '{' in format string".to_string()));
                     }
                 } else {
-                    current_part.push(fmt_str.chars().nth(i).unwrap());
-                    i += 1;
+                    current_part.push(c);
                 }
             }
 

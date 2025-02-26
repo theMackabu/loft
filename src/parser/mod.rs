@@ -37,27 +37,31 @@ pub enum ParseError {
 }
 
 impl std::fmt::Display for ParseError {
+    // improve and stuff
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ParseError::UnexpectedToken { found, expected } => {
                 if let Some(expected) = expected {
                     write!(
                         f,
-                        "Error at line {}, column {}: Expected {}, but found {}",
+                        "Parse error at line {}, column {}\nExpected {}, but found {}",
                         found.location.line, found.location.column, expected, found.token
                     )
                 } else {
-                    write!(f, "Error at line {}, column {}: Unexpected token {}", found.location.line, found.location.column, found.token)
+                    write!(f, "Parse error at line {}, column {}\nUnexpected token {}", found.location.line, found.location.column, found.token)
                 }
             }
+
             ParseError::ExpectedIdentifier { location } => {
-                write!(f, "Error at line {}, column {}: Expected identifier", location.line, location.column)
+                write!(f, "Parse error at line {}, column {}\nExpected identifier", location.line, location.column)
             }
+
             ParseError::ExpectedExpression { location } => {
-                write!(f, "Error at line {}, column {}: Expected expression", location.line, location.column)
+                write!(f, "Parse error at line {}, column {}\nExpected expression", location.line, location.column)
             }
+
             ParseError::Custom { message, location } => {
-                write!(f, "Error at line {}, column {}: {}", location.line, location.column, message)
+                write!(f, "Parse error at line {}, column {}\n{}", location.line, location.column, message)
             }
         }
     }

@@ -5,7 +5,7 @@ use std::{
     result::Result as StdResult,
 };
 
-use crate::runtime::value::ValueType;
+use crate::runtime::value::ValueEnum;
 
 #[derive(Debug)]
 pub enum Error {
@@ -13,7 +13,7 @@ pub enum Error {
     IoError(std::io::Error),
     ParseError(String),
     RuntimeError(String),
-    UnexpectedReturnValue(ValueType),
+    UnexpectedReturnValue(ValueEnum),
 }
 
 pub type Result = StdResult<(), Error>;
@@ -26,86 +26,23 @@ impl From<IoError> for Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let file = file!();
-        let line = line!();
-        let column = column!();
-
-        let yellow = "\x1b[38;5;11m";
-        let reset = "\x1b[0m";
+        let file = "not_implemented_yet.lo";
+        let line = 0;
+        let column = 0;
 
         let thread_name = std::thread::current().name().unwrap_or("unnamed").to_string();
 
         match self {
-            Error::IoError(err) => write!(f, "{yellow}thread '{thread_name}' panicked at 'io error: {err}', {file}:{line}:{column}{reset}"),
-            Error::ParseError(err) => write!(f, "{yellow}thread '{thread_name}' panicked at 'parse error: {err}', {file}:{line}:{column}{reset}"),
-            Error::MissingArgument => write!(f, "{yellow}thread '{thread_name}' panicked at 'missing file argument', {file}:{line}:{column}{reset}"),
-            Error::RuntimeError(err) => write!(f, "{yellow}thread '{thread_name}' panicked at '{err}', {file}:{line}:{column}{reset}"),
-            Error::UnexpectedReturnValue(err) => write!(f, "{yellow}thread '{thread_name}' panicked at 'unexpected return value: {err:?}', {file}:{line}:{column}{reset}"),
+            // todo: improve
+            Error::ParseError(err) => f.write_str(err),
+
+            Error::MissingArgument => f.write_str("missing file argument..."),
+
+            Error::IoError(err) => write!(f, "io error: {err}"),
+
+            Error::RuntimeError(err) => write!(f, "thread '{thread_name}' panicked at {file}:{line}:{column}\n{err}"),
+
+            Error::UnexpectedReturnValue(err) => write!(f, "thread '{thread_name}' panicked at {file}:{line}:{column}\nunexpected return value: '{err}'"),
         }
     }
 }
-
-/*
-use std::{
-    error::Error as StdError,
-    fmt::{Display, Formatter, Result as FmtResult},
-    io::Error as IoError,
-    result::Result as StdResult,
-};
-
-use crate::runtime::value::ValueType;
-
-#[derive(Debug)]
-pub enum Error {
-    MissingArgument,
-
-    IoError { file: String, line: usize, column: usize, source: std::io::Error },
-
-    ParseError { file: String, line: usize, column: usize, message: String },
-
-    RuntimeError { file: String, line: usize, column: usize, message: String },
-
-    UnexpectedReturnValue { file: String, line: usize, column: usize, value: ValueType },
-}
-
-pub type Result = StdResult<(), Error>;
-
-impl StdError for Error {}
-
-impl From<IoError> for Error {
-    fn from(err: IoError) -> Self {
-        Error::IoError {
-            file: file!().to_string(),
-            line: line!() as usize,
-            column: column!() as usize,
-            source: err,
-        }
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let thread_name = std::thread::current().name().unwrap_or("unnamed").to_string();
-
-        match self {
-            Error::MissingArgument => write!(f, "missing file argument"),
-
-            Error::IoError { file, line, column, source } => {
-                write!(f, "thread '{thread_name}' panicked at 'io error: {source}', {file}:{line}:{column}")
-            }
-
-            Error::ParseError { file, line, column, message } => {
-                write!(f, "thread '{thread_name}' panicked at 'parse error: {message}', {file}:{line}:{column}")
-            }
-
-            Error::RuntimeError { file, line, column, message } => {
-                write!(f, "thread '{thread_name}' panicked at '{message}', {file}:{line}:{column}")
-            }
-
-            Error::UnexpectedReturnValue { file, line, column, value } => {
-                write!(f, "thread '{thread_name}' panicked at 'unexpected return value: {value:?}', {file}:{line}:{column}")
-            }
-        }
-    }
-}
-*/

@@ -28,15 +28,12 @@ fn run() -> Result {
     let mut runtime = Interpreter::new(&ast).map_err(|err| Error::RuntimeError(err.to_string()))?;
     let result = runtime.start_main().map_err(|err| Error::RuntimeError(err.to_string()))?;
 
-    let result_inner = {
-        let borrowed = result.borrow();
-        borrowed.inner()
-    };
-
-    match result_inner {
-        ValueType::I32(code) => exit(code),
+    let borrowed = result.borrow().clone();
+    match borrowed.inner() {
         ValueType::Unit => Ok(()),
-        err => Err(Error::UnexpectedReturnValue(err)),
+        ValueType::I32(code) => exit(code),
+
+        _ => Err(Error::UnexpectedReturnValue(borrowed)),
     }
 }
 
