@@ -20,5 +20,6 @@ fn fizzbuzz(n: i32) -> str {
 }
 
 fn main() {
+   println!("\nrecursive");
    println!("{}", fizzbuzz(30));
 }

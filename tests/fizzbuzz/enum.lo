@@ -26,6 +26,8 @@ fn fizzbuzz(num: i32) -> FizzbuzzResult {
 }
 
 fn main() {
+   println!("\nenum");
+   
    for x in 1..=30 {
       println!("{}", fizzbuzz(x).get())
    }

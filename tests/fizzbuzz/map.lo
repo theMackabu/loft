@@ -1,4 +1,6 @@
 fn main() {
+   println!("\nmap");
+   
    (1..31)
       .iter()
       // add closures
