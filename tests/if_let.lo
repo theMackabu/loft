@@ -10,44 +10,44 @@ fn test_enum() {
    let c = Foo::Qux(100);
    
    if let Foo::Bar = a {
-      println!("a is foobar");
+      test_eq!(a, (Foo::Bar))
    }
     
    if let Foo::Bar = b {
-      println!("b is foobar");
+      test_eq!(b, (Foo::Bar))
    }
     
    if let Foo::Qux(value) = c {
-      println!("c is {}", value);
+      test_eq!(value, 100)
    }
    
    if let Foo::Qux(value @ 100) = c {
-      println!("c is one hundred");
+      test_eq!(c.0, 100)
    }
 }
 
 fn test_opt() {
    let number = Some(7);
-   let letter: Option<i32> = None;
-   let emoticon: Option<i32> = None;
+   let letter: Option<str> = None;
+   let emoticon: Option<str> = None;
    let i_like_letters = false;
    
    if let Some(i) = number {
-      println!("Matched {i}!");
+      test_eq!(i, 7)
    }
    
-   if let Some(i) = letter {
-      println!("Matched {i}!");
+   if let Some(str) = letter {
+      unreachable!()
    } else {
-      println!("Didn't match a number. Let's go with a letter!");
+      test_eq!(letter, None)
    }
    
-   if let Some(i) = emoticon {
-      println!("Matched {i}!");
+   if let Some(str) = emoticon {
+      unreachable!()
    } else if i_like_letters {
-      println!("Didn't match a number. Let's go with a letter!");
+      unreachable!()
    } else {
-      println!("I don't like letters. Let's go with an emoticon :)!");
+      test_eq!(emoticon, None)
    }
 }
 

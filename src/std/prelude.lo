@@ -97,6 +97,15 @@ impl Option<T> {
    }
 }
 
+pub macro_rules! unreachable {
+   () => {
+      panic!("internal error: entered unreachable code")
+   };
+   ($($item:expr),*) => {
+      panic!("internal error: entered unreachable code: {}", $($item),*)
+   };
+}
+
 pub macro_rules! test_eq {
    ($left:expr, $right:expr) => {
       match $left == $right {

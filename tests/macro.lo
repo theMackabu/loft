@@ -9,7 +9,7 @@ macro_rules! add {
 }
 
 macro_rules! tuple {
-   ($($item:expr),*) => (($($item),*));
+   ($($item:expr),*) => ($($item),*);
 }
 
 macro_rules! log {
