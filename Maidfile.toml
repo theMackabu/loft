@@ -11,7 +11,6 @@ script = [
    "sh -c 'for file in tests/*.lo; do target/release/loft ${file}; done'"   
 ]
 
-
 [tasks.test-fizzbuzz]
 script = [
    "cargo build --release",

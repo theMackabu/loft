@@ -1,0 +1,22 @@
+ struct Point {
+   x: int,
+   y: int,
+}
+
+struct Box {
+   point: Point
+}
+
+impl Box {
+   fn get_point(&mut self) -> &mut Point {
+      return &mut self.point;
+   }
+}
+
+fn main() {
+   let box = Box { point: Point { x: 1, y: 2 } };
+   box.get_point().x = 5;
+
+   let point = Point { x: 5, y: 2 };
+   test_eq!(box.point, point)
+}
