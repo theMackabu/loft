@@ -40,7 +40,7 @@ impl<'st> Interpreter<'st> {
                     return Err("type_name method does not take any arguments".to_string());
                 }
 
-                return Ok(val!(ValueType::Str(object.borrow().kind())));
+                return Ok(ValueEnum::new_str(object.borrow().kind()));
             }
 
             "as_ptr" => {
@@ -64,15 +64,7 @@ impl<'st> Interpreter<'st> {
                     return Err("as_str method does not take any arguments".to_string());
                 }
 
-                let rc = val!(ValueType::Str(object.borrow().to_string()));
-
-                return Ok(val!(ValueType::Reference {
-                    source_name: None,
-                    source_scope: None,
-
-                    original_ptr: Rc::as_ptr(&rc),
-                    _undropped: rc,
-                }));
+                return Ok(ValueEnum::new_str(object.borrow().to_string()));
             }
 
             "as_ref" => {

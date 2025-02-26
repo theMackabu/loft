@@ -5,6 +5,8 @@ impl fmt::Display for ValueEnum {
         let value_type = self.inner();
 
         match value_type {
+            ValueType::Str(v) => write!(f, "{}", String::from_utf8_lossy(&v)),
+
             ValueType::I8(v) => write!(f, "{v}"),
 
             ValueType::I16(v) => write!(f, "{v}"),
@@ -36,8 +38,6 @@ impl fmt::Display for ValueEnum {
             ValueType::Unit => write!(f, "()"),
 
             ValueType::Unbounded => write!(f, ".."),
-
-            ValueType::Str(v) => write!(f, "{}", v),
 
             ValueType::Boolean(v) => write!(f, "{}", v),
 

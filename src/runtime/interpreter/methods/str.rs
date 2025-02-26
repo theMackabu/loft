@@ -1,7 +1,7 @@
 use super::*;
 
 impl<'st> Interpreter<'st> {
-    pub(crate) fn handle_str_method_call(&mut self, handle: Method, value: String) -> Result<Value, String> {
+    pub(crate) fn handle_str_method_call(&mut self, handle: Method, value: Vec<u8>) -> Result<Value, String> {
         let Method { object, args, call } = handle;
 
         match call {
@@ -33,14 +33,14 @@ impl<'st> Interpreter<'st> {
                     let mut object_mut = object.borrow_mut();
                     match *object_mut {
                         ValueEnum::Mutable(ValueType::Str(ref mut string)) => {
-                            string.push_str(&push_value);
+                            string.extend(push_value);
                             Ok(object.clone())
                         }
 
                         ValueEnum::Mutable(ValueType::Reference { _undropped: ref value, .. }) => {
                             let mut value_ref = value.borrow_mut();
                             if let ValueEnum::Mutable(ValueType::Str(ref mut string)) = *value_ref {
-                                string.push_str(&push_value);
+                                string.extend(push_value);
                                 Ok(object.clone())
                             } else {
                                 Err("Cannot call push on an immutable string".to_string())
@@ -62,7 +62,7 @@ impl<'st> Interpreter<'st> {
                 let mut object_mut = object.borrow_mut();
                 if let ValueEnum::Mutable(ValueType::Str(ref mut string)) = *object_mut {
                     if let Some(popped_char) = string.pop() {
-                        Ok(val!(ValueType::Str(popped_char.to_string())))
+                        Ok(ValueEnum::new_str([popped_char]))
                     } else {
                         Err("Cannot pop from an empty string".to_string())
                     }

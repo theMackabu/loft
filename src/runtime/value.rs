@@ -34,7 +34,7 @@ pub enum ValueType {
     F32(f32),
     F64(f64),
 
-    Str(String),
+    Str(Vec<u8>),
     Pointer(Ptr),
     Boolean(bool),
     Tuple(Vec<Value>),
@@ -155,7 +155,7 @@ impl ValueExt for Value {
 }
 
 impl ValueEnum {
-    pub fn unit() -> Value { Rc::new(RefCell::new(ValueEnum::Immutable(ValueType::Unit))) }
+    pub fn unit() -> Value { crate::val!(ValueType::Unit) }
 
     pub fn is_mutable(&self) -> bool { matches!(self, ValueEnum::Mutable(_)) }
 
@@ -197,9 +197,21 @@ impl ValueEnum {
 
     pub fn as_bytes(&self) -> Cow<[u8]> {
         match self {
-            ValueEnum::Immutable(ValueType::Str(s)) | ValueEnum::Mutable(ValueType::Str(s)) => Cow::Borrowed(s.as_bytes()),
+            ValueEnum::Immutable(ValueType::Str(s)) | ValueEnum::Mutable(ValueType::Str(s)) => Cow::Borrowed(s),
             _ => Cow::Owned(self.to_string().into_bytes()),
         }
+    }
+
+    pub fn new_str<S: AsRef<[u8]>>(s: S) -> Value {
+        let rc = crate::val!(mut ValueType::Str(s.as_ref().to_vec()));
+
+        crate::val!(ValueType::Reference {
+            source_name: None,
+            source_scope: None,
+
+            original_ptr: Rc::as_ptr(&rc),
+            _undropped: rc,
+        })
     }
 
     pub fn get_source_info(&self) -> Option<(String, usize)> {

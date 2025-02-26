@@ -379,6 +379,8 @@ impl<'st> Interpreter<'st> {
                 self.perform_cast(value, target_type)
             }
 
+            Expr::String(value) => Ok(ValueEnum::new_str(value)),
+
             Expr::Boolean(b) => Ok(val!(ValueType::Boolean(*b))),
 
             Expr::Loop { label, body } => self.handle_loop(label, body),
@@ -435,18 +437,6 @@ impl<'st> Interpreter<'st> {
 
                 _ => unreachable!(), // cannot hit this
             })),
-
-            Expr::String(value) => {
-                let rc = val!(mut ValueType::Str(value.to_owned()));
-
-                Ok(val!(ValueType::Reference {
-                    source_name: None,
-                    source_scope: None,
-
-                    original_ptr: Rc::as_ptr(&rc),
-                    _undropped: rc,
-                }))
-            }
 
             Expr::Tuple(expressions) => {
                 let mut values = Vec::new();
@@ -1407,7 +1397,7 @@ impl<'st> Interpreter<'st> {
                                 let value = self.evaluate_expression(arg)?;
                                 concatenated.push_str(&value.borrow().to_string());
                             }
-                            return Ok(val!(ValueType::Str(concatenated)));
+                            return Ok(ValueEnum::new_str(concatenated));
                         }
 
                         if let [first, second, ..] = path.segments.as_slice() {
@@ -1420,15 +1410,9 @@ impl<'st> Interpreter<'st> {
                                 let value = self.evaluate_expression(arg)?;
 
                                 let s = value.borrow().to_string();
-                                let escaped = s.chars().flat_map(char::escape_default).collect();
+                                let escaped: String = s.chars().flat_map(char::escape_default).collect();
 
-                                let rc = val!(mut ValueType::Str(escaped));
-                                return Ok(val!(ValueType::Reference {
-                                    source_name: None,
-                                    source_scope: None,
-                                    original_ptr: std::rc::Rc::as_ptr(&rc),
-                                    _undropped: rc,
-                                }));
+                                return Ok(ValueEnum::new_str(escaped));
                             }
 
                             if first.ident == "core" && second.ident == "panic" {

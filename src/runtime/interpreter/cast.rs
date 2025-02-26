@@ -447,7 +447,8 @@ impl<'st> Interpreter<'st> {
                 "f64" => Ok(ValueType::F64(0.0)),
 
                 "bool" => Ok(ValueType::Boolean(false)),
-                "str" => Ok(ValueType::Str(String::new())),
+                "str" => Ok(ValueType::Str(Vec::new())),
+
                 _ => Err(format!("Unsupported type: {}", name)),
             },
 
