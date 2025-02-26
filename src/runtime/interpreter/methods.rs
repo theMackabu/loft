@@ -5,6 +5,16 @@ mod str;
 use super::*;
 use std::{cell::RefCell, rc::Rc};
 
+pub(crate) struct Method<'st> {
+    pub(crate) object: Value,
+    pub(crate) call: &'st str,
+    pub(crate) args: Vec<Expr>,
+}
+
+impl<'st> Method<'st> {
+    fn new(object: Value, call: &'st str, args: &[Expr]) -> Self { Self { object, call, args: args.to_vec() } }
+}
+
 impl<'st> Interpreter<'st> {
     pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
         match method {
@@ -121,23 +131,22 @@ impl<'st> Interpreter<'st> {
     }
 
     fn dispatch_method_call(&mut self, (value_type, object): (ValueType, Value), method: &str, args: &[Expr]) -> Result<Value, String> {
+        let handle = Method::new(object, method, args);
+
         match value_type {
-            ValueType::Str(val) => self.handle_str_method_call(object, method, args, val),
+            ValueType::Str(val) => self.handle_str_method_call(handle, val),
 
-            ValueType::Array { ref ty, ref el, len } => self.handle_array_method_call(object, method, args, ty, el, len),
+            ValueType::Array { ref ty, ref el, len } => self.handle_array_method_call(handle, ty, el, len),
+            ValueType::Slice { ref ty, ref el } => self.handle_slice_method_call(handle, ty, el),
 
-            ValueType::Slice { ref ty, ref el } => self.handle_slice_method_call(object, method, args, ty, el),
+            ValueType::Struct { name, .. } => self.handle_type_method_call(handle, &name),
+            ValueType::Enum { enum_type, .. } => self.handle_type_method_call(handle, &enum_type),
 
-            ValueType::Struct { name, .. } => self.handle_type_method_call(object, &name, method, args),
-
-            ValueType::Enum { enum_type, .. } => self.handle_type_method_call(object, &enum_type, method, args),
-
-            ValueType::Range { start, end, inclusive } => self.handle_range_method_call(method, object, args, start, end, inclusive),
-
-            mut iter @ ValueType::Iterator { .. } => self.handle_iter_method_call(method, args, &mut iter),
+            range @ ValueType::Range { .. } => self.handle_range_method_call(handle, range),
+            mut iter @ ValueType::Iterator { .. } => self.handle_iter_method_call(handle, &mut iter),
 
             _ => {
-                let borrowed = object.borrow();
+                let borrowed = handle.object.borrow();
                 let type_name = borrowed.kind();
 
                 let ref_prefix = match (borrowed.is_ref(), borrowed.is_mutable()) {

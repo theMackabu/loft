@@ -1,8 +1,11 @@
 use super::*;
 
 impl<'st> Interpreter<'st> {
-    pub fn handle_range_method_call(&mut self, method: &str, object: Value, args: &[Expr], start: Value, end: Value, inclusive: bool) -> Result<Value, String> {
-        match method {
+    pub(crate) fn handle_range_method_call(&mut self, handle: Method, range: ValueType) -> Result<Value, String> {
+        let Method { object, args, call } = handle;
+        unbind! { ValueType::Range { start, end, inclusive } = range }
+
+        match call {
             "iter" => {
                 if !args.is_empty() {
                     return Err("iter method does not take any arguments".to_string());
@@ -13,17 +16,20 @@ impl<'st> Interpreter<'st> {
                     end: end.clone(),
                     inclusive,
                     exhausted: false,
-                    collection: object.clone(),
+                    collection: object,
                     kind: "range".to_string(),
                 });
 
                 return Ok(iter);
             }
-            _ => Err(format!("Method '{}' not found on Range type", method)),
+
+            _ => Err(format!("Method '{call}' not found on Range type")),
         }
     }
 
-    pub fn handle_iter_method_call(&mut self, method: &str, args: &[Expr], iter: &mut ValueType) -> Result<Value, String> {
+    pub(crate) fn handle_iter_method_call(&mut self, handle: Method, iter: &mut ValueType) -> Result<Value, String> {
+        let Method { args, call, .. } = handle;
+
         unbind! {
             &mut ValueType::Iterator {
                 ref mut current,
@@ -35,7 +41,7 @@ impl<'st> Interpreter<'st> {
             } = iter
         }
 
-        match method {
+        match call {
             "next" => {
                 if !args.is_empty() {
                     return Err("next method does not take any arguments".to_string());
@@ -151,7 +157,7 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
-            _ => Err(format!("Method '{}' not found on Iterator type", method)),
+            _ => Err(format!("Method '{call}' not found on Iterator type")),
         }
     }
 }

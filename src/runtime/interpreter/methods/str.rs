@@ -1,8 +1,10 @@
 use super::*;
 
 impl<'st> Interpreter<'st> {
-    pub fn handle_str_method_call(&mut self, object: Value, method: &str, args: &[Expr], value: String) -> Result<Value, String> {
-        match method {
+    pub(crate) fn handle_str_method_call(&mut self, handle: Method, value: String) -> Result<Value, String> {
+        let Method { object, args, call } = handle;
+
+        match call {
             "len" => {
                 if !args.is_empty() {
                     return Err("len method does not take any arguments".to_string());
@@ -69,7 +71,7 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
-            _ => Err(format!("Unknown method `{}` for string", method)),
+            _ => Err(format!("Unknown method `{call}` for string")),
         }
     }
 }

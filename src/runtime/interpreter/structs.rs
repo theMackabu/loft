@@ -1,4 +1,4 @@
-use super::*;
+use super::{methods::Method, *};
 use std::{cell::RefCell, rc::Rc};
 
 impl<'st> Interpreter<'st> {
@@ -146,7 +146,9 @@ impl<'st> Interpreter<'st> {
         }))
     }
 
-    pub fn handle_type_method_call(&mut self, instance: Value, type_name: &String, method: &str, args: &[Expr]) -> Result<Value, String> {
+    pub(crate) fn handle_type_method_call(&mut self, handle: Method, type_name: &String) -> Result<Value, String> {
+        let Method { object, args, call } = handle;
+
         let type_def = match self.env.get_variable(type_name) {
             Some(value) => match value.borrow().inner() {
                 ValueType::StructDef { methods, .. } => methods,
@@ -156,7 +158,7 @@ impl<'st> Interpreter<'st> {
             None => return Err(format!("Type definition '{}' not found", type_name)),
         };
 
-        let function = type_def.get(method).ok_or_else(|| format!("Method '{}' not found on type '{}'", method, type_name))?.clone();
+        let function = type_def.get(call).ok_or_else(|| format!("Method '{call}' not found on type '{type_name}'"))?.clone();
 
         self.env.enter_scope();
         let mut params_to_process = Vec::new();
@@ -165,14 +167,14 @@ impl<'st> Interpreter<'st> {
             if let Some((pattern, param_type)) = function.params.first() {
                 match pattern {
                     Pattern::Identifier { name: param_name, mutable } if param_name == "self" => {
-                        params_to_process.push(("self".to_owned(), instance.clone(), *mutable, param_type.clone()));
+                        params_to_process.push(("self".to_owned(), object.clone(), *mutable, param_type.clone()));
                     }
                     Pattern::Reference { mutable, pattern } => {
                         if let Pattern::Identifier { name: param_name, .. } = pattern.as_ref() {
                             if param_name != "self" {
                                 return Err("First parameter must be a form of 'self'".to_string());
                             }
-                            params_to_process.push(("self".to_owned(), instance.clone(), *mutable, param_type.clone()));
+                            params_to_process.push(("self".to_owned(), object.clone(), *mutable, param_type.clone()));
                         }
                     }
                     _ => return Err("First parameter must be a form of 'self'".to_string()),
@@ -189,9 +191,9 @@ impl<'st> Interpreter<'st> {
         }
 
         for (param_name, value, mutable, param_type) in params_to_process {
-            if param_name == "self" && Rc::ptr_eq(&instance, &value) {
+            if param_name == "self" && Rc::ptr_eq(&object, &value) {
                 self.env.scope_resolver.declare_variable(&param_name, mutable);
-                self.env.set_variable_raw(&param_name, instance.clone())?;
+                self.env.set_variable_raw(&param_name, object.clone())?;
                 continue;
             }
 

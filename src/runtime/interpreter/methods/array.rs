@@ -1,8 +1,10 @@
 use super::*;
 
 impl<'st> Interpreter<'st> {
-    pub fn handle_array_method_call(&mut self, arr_value: Value, method: &str, args: &[Expr], element_type: &ValueType, elements: &[Value], length: usize) -> Result<Value, String> {
-        match method {
+    pub(crate) fn handle_array_method_call(&mut self, handle: Method, element_type: &ValueType, elements: &[Value], length: usize) -> Result<Value, String> {
+        let Method { object, args, call } = handle;
+
+        match call {
             "len" => Ok(val!(ValueType::USize(length))),
 
             "get" => {
@@ -43,7 +45,7 @@ impl<'st> Interpreter<'st> {
                     el: elements.to_vec(),
                 };
 
-                let is_mutable = arr_value.borrow().is_mutable();
+                let is_mutable = object.borrow().is_mutable();
 
                 Ok(if is_mutable { val!(mut slice) } else { val!(slice) })
             }
@@ -58,24 +60,26 @@ impl<'st> Interpreter<'st> {
                     end: val!(ValueType::I64(length as i64)),
                     inclusive: false,
                     exhausted: length == 0,
-                    collection: arr_value.clone(),
+                    collection: object,
                     kind: "array".to_string(),
                 });
 
                 return Ok(iter);
             }
 
-            _ => Err(format!("Unknown method '{}' on array type", method)),
+            _ => Err(format!("Unknown method '{call}' on array type")),
         }
     }
 
-    pub fn handle_slice_method_call(&mut self, slice_value: Value, method: &str, args: &[Expr], element_type: &ValueType, elements: &[Value]) -> Result<Value, String> {
-        match method {
+    pub(crate) fn handle_slice_method_call(&mut self, handle: Method, element_type: &ValueType, elements: &[Value]) -> Result<Value, String> {
+        let Method { object, args, call } = handle;
+
+        match call {
             "len" => Ok(val!(ValueType::USize(elements.len()))),
 
             "push" => {
                 {
-                    let borrowed = slice_value.borrow();
+                    let borrowed = object.borrow();
                     if let ValueType::Slice { .. } = borrowed.inner() {
                         if !borrowed.is_mutable() {
                             return Err("Cannot call push on immutable slice".to_string());
@@ -89,12 +93,12 @@ impl<'st> Interpreter<'st> {
 
                 let new_element = self.evaluate_expression(&args[0])?;
 
-                if Rc::ptr_eq(&new_element, &slice_value) {
+                if Rc::ptr_eq(&new_element, &object) {
                     return Err("Cannot push a slice into itself".to_string());
                 }
 
                 let slice_element_type = {
-                    let slice_ref = slice_value.borrow();
+                    let slice_ref = object.borrow();
                     if let ValueType::Slice { ty, .. } = slice_ref.inner() {
                         ty.clone()
                     } else {
@@ -110,18 +114,18 @@ impl<'st> Interpreter<'st> {
                 }
 
                 {
-                    let mut slice_ref = slice_value.borrow_mut();
+                    let mut slice_ref = object.borrow_mut();
                     if let ValueType::Slice { el, .. } = slice_ref.inner_mut() {
                         el.push(new_element);
                     }
                 }
 
-                Ok(slice_value)
+                Ok(object)
             }
 
             "pop" => {
                 let (is_empty, is_mutable) = {
-                    let borrowed = slice_value.borrow();
+                    let borrowed = object.borrow();
                     if let ValueType::Slice { ref el, .. } = borrowed.inner() {
                         (el.is_empty(), borrowed.is_mutable())
                     } else {
@@ -142,7 +146,7 @@ impl<'st> Interpreter<'st> {
                 }
 
                 let popped = {
-                    let mut slice_ref = slice_value.borrow_mut();
+                    let mut slice_ref = object.borrow_mut();
                     if let ValueType::Slice { el, .. } = slice_ref.inner_mut() {
                         el.pop().unwrap()
                     } else {
@@ -229,7 +233,7 @@ impl<'st> Interpreter<'st> {
                     end: val!(ValueType::I64(elements.len() as i64)),
                     inclusive: false,
                     exhausted: elements.is_empty(),
-                    collection: slice_value.clone(),
+                    collection: object,
                     kind: "slice".to_string(),
                 });
 
@@ -237,7 +241,7 @@ impl<'st> Interpreter<'st> {
             }
 
             // add more methods: concat, filter, map, etc.
-            _ => Err(format!("Unknown method '{}' on slice type", method)),
+            _ => Err(format!("Unknown method '{call}' on slice type")),
         }
     }
 
