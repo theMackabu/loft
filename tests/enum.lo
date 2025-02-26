@@ -6,13 +6,20 @@ enum Shape {
    Triangle { base: f64, height: f64 },
 }
 
+enum Foo {
+   Bar,
+   Bazz,
+}
+
 fn main() {
+   let get = Foo::Bar;
    let point = Points(5.4, 6.9);
    let circle = Shape::Circle(point.0);
    
    let rect = Shape::Rectangle(4.1, point.1); 
    let triangle = Shape::Triangle { base: 3.0, height: 4.0 };
    
+   test_eq!(get, (Foo::Bar));
    test_eq!(circle.0, 5.4);
    test_eq!((rect.0, rect.1), (4.1, 6.9));
    test_eq!((triangle.base, triangle.height), (3f64, 4f64));

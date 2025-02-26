@@ -976,6 +976,23 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
+            Expr::IfLet {
+                pattern,
+                value,
+                then_branch,
+                else_branch,
+            } => {
+                let match_value = self.evaluate_expression(value)?;
+
+                if self.pattern_matches(pattern, &match_value)? {
+                    self.evaluate_expression(then_branch)
+                } else if let Some(else_expr) = else_branch {
+                    self.evaluate_expression(else_expr)
+                } else {
+                    Ok(ValueEnum::unit())
+                }
+            }
+
             Expr::Match { value, arms } => {
                 let match_value = self.evaluate_expression(value)?;
 
@@ -2066,6 +2083,46 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
+            (Pattern::Struct { path, fields, rest }, value) => {
+                let value_inner = {
+                    let borrowed = value.borrow();
+                    borrowed.inner()
+                };
+
+                match value_inner {
+                    ValueType::Struct { name, fields: value_fields, .. } => {
+                        if path.segments.last().unwrap().ident != *name {
+                            return Ok(false);
+                        }
+
+                        for (field_name, field_pattern) in fields {
+                            if let Some(field_value) = value_fields.get(field_name) {
+                                if !self.pattern_matches(field_pattern, field_value)? {
+                                    return Ok(false);
+                                }
+                            } else if !rest {
+                                return Ok(false);
+                            }
+                        }
+
+                        Ok(true)
+                    }
+                    ValueType::Reference { original_ptr, .. } => {
+                        if original_ptr.is_null() {
+                            return Ok(false);
+                        }
+
+                        unsafe {
+                            let rc = Rc::from_raw(original_ptr);
+                            let result = self.pattern_matches(pattern, &rc.clone());
+                            std::mem::forget(rc);
+                            result
+                        }
+                    }
+                    _ => Ok(false),
+                }
+            }
+
             (Pattern::Reference { mutable, pattern }, value) => {
                 let inner_value = {
                     let borrowed = value.borrow();
@@ -2102,9 +2159,13 @@ impl<'st> Interpreter<'st> {
                 Ok(true)
             }
 
-            (Pattern::Wildcard, _) => Ok(true),
+            (Pattern::BindingPattern { name, mutable, subpattern }, value) => {
+                self.env.scope_resolver.declare_variable(name, *mutable);
+                self.env.set_variable(name, value.clone())?;
+                self.pattern_matches(subpattern, value)
+            }
 
-            _ => Ok(false),
+            (Pattern::Wildcard, _) => Ok(true),
         }
     }
 

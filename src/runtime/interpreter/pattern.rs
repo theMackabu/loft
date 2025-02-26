@@ -61,9 +61,25 @@ impl<'st> Interpreter<'st> {
                 }
             }
 
-            // These patterns don't bind variables
-            Pattern::Path(_) | Pattern::Wildcard | Pattern::Literal(_) | Pattern::Struct { .. } => {}
+            Pattern::BindingPattern { name, mutable, subpattern } => {
+                self.env.scope_resolver.declare_variable(name, *mutable);
+                self.env.set_variable(name, value.clone())?;
+                self.bind_pattern_variables(subpattern, value)?;
+            }
+
+            Pattern::Struct { fields, .. } => {
+                if let ValueType::Struct { fields: value_fields, .. } = value.borrow().inner() {
+                    for (field_name, field_pattern) in fields {
+                        if let Some(field_value) = value_fields.get(field_name) {
+                            self.bind_pattern_variables(field_pattern, field_value)?;
+                        }
+                    }
+                }
+            }
+
+            Pattern::Path(_) | Pattern::Wildcard | Pattern::Literal(_) => {}
         }
+
         Ok(())
     }
 }

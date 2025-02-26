@@ -2217,6 +2217,24 @@ impl Parser {
 
             Token::Mut => {
                 self.advance(); // consume 'mut'
+
+                if let Token::Identifier(name) = &self.current.token {
+                    let name = name.clone();
+                    self.advance();
+
+                    if self.current.token == Token::At {
+                        self.advance(); // consume '@'
+                        let subpattern = self.parse_pattern()?;
+                        return Ok(Pattern::BindingPattern {
+                            name,
+                            mutable: true,
+                            subpattern: Box::new(subpattern),
+                        });
+                    }
+
+                    return Ok(Pattern::Identifier { name, mutable: true });
+                }
+
                 let inner = self.parse_pattern()?;
                 match inner {
                     Pattern::Identifier { name, .. } => Ok(Pattern::Identifier { name, mutable: true }),
@@ -2299,6 +2317,16 @@ impl Parser {
 
                 if name == "_" {
                     return Ok(Pattern::Wildcard);
+                }
+
+                if self.current.token == Token::At {
+                    self.advance(); // consume '@'
+                    let subpattern = self.parse_pattern()?;
+                    return Ok(Pattern::BindingPattern {
+                        name,
+                        mutable: false,
+                        subpattern: Box::new(subpattern),
+                    });
                 }
 
                 if self.current.token == Token::LeftParen {

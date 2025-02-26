@@ -36,6 +36,7 @@ pub enum Pattern {
 
     TupleStruct { path: Path, elements: Vec<Pattern> },
     Struct { path: Path, fields: Vec<(String, Pattern)>, rest: bool },
+    BindingPattern { name: String, mutable: bool, subpattern: Box<Pattern> },
 }
 
 #[derive(Clone, Debug, PartialEq)]
