@@ -224,24 +224,43 @@ pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<T
 
             while let Some(c) = chars.next() {
                 if c == '{' {
-                    if chars.peek() == Some(&'}') {
-                        chars.next(); // Consume '}'
-                        parts.push(current_part);
-                        current_part = String::new();
-                        placeholders.push(Placeholder::Positional(None));
-                    } else if let Some(end) = fmt_str[chars.clone().count()..].find('}') {
-                        let content: String = chars.by_ref().take(end).collect();
-                        chars.next(); // Consume '}'
-                        parts.push(current_part);
-                        current_part = String::new();
-
-                        if let Ok(index) = content.parse::<usize>() {
-                            placeholders.push(Placeholder::Positional(Some(index)));
-                        } else {
-                            placeholders.push(Placeholder::Named(content));
+                    match chars.peek() {
+                        Some(&'}') => {
+                            chars.next(); // Consume '}'
+                            parts.push(std::mem::take(&mut current_part));
+                            placeholders.push(Placeholder::Positional(None));
                         }
-                    } else {
-                        return Err(Some("Unmatched '{' in format string".to_string()));
+                        Some(_) => {
+                            let mut content = String::with_capacity(8);
+                            let mut found_closing = false;
+
+                            while let Some(next_c) = chars.next() {
+                                if next_c == '}' {
+                                    found_closing = true;
+                                    break;
+                                }
+                                content.push(next_c);
+                            }
+
+                            if !found_closing {
+                                return Err(Some("Unmatched '{' in format string".to_string()));
+                            }
+
+                            parts.push(std::mem::take(&mut current_part));
+
+                            if !content.is_empty() && content.chars().all(|c| c.is_ascii_digit()) {
+                                if let Ok(index) = content.parse::<usize>() {
+                                    placeholders.push(Placeholder::Positional(Some(index)));
+                                } else {
+                                    placeholders.push(Placeholder::Named(content));
+                                }
+                            } else {
+                                placeholders.push(Placeholder::Named(content));
+                            }
+                        }
+                        None => {
+                            return Err(Some("Unmatched '{' in format string".to_string()));
+                        }
                     }
                 } else {
                     current_part.push(c);

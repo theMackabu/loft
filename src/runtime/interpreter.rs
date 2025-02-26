@@ -197,21 +197,17 @@ impl<'st> Interpreter<'st> {
         match stmt {
             Stmt::ExpressionValue(expr) => self.evaluate_expression(expr),
 
-            Stmt::ExpressionStmt(expr) => self.evaluate_expression(expr),
+            Stmt::Continue(label) => Ok(val!(ValueType::Continue(label.clone()))),
 
-            Stmt::Struct { path, fields, .. } => {
-                self.handle_struct_def(path, fields.to_owned())?;
-                Ok(ValueEnum::unit())
-            }
+            Stmt::ExpressionStmt(expr) => {
+                let result = self.evaluate_expression(expr)?;
 
-            Stmt::Enum { name, variants, .. } => {
-                self.handle_enum_def(name, variants.to_owned())?;
-                Ok(ValueEnum::unit())
-            }
+                let is_control_flow = {
+                    let borrowed = result.borrow();
+                    matches!(borrowed.inner(), ValueType::Break(_, _) | ValueType::Continue(_) | ValueType::Return(_))
+                };
 
-            Stmt::MacroDefinition { name, tokens, .. } => {
-                self.handle_macro_definition(name, tokens)?;
-                Ok(ValueEnum::unit())
+                if is_control_flow { Ok(result) } else { Ok(ValueEnum::unit()) }
             }
 
             Stmt::Return(expr) => {
@@ -228,7 +224,20 @@ impl<'st> Interpreter<'st> {
                 Ok(val!(ValueType::Break(label.clone(), break_value)))
             }
 
-            Stmt::Continue(label) => Ok(val!(ValueType::Continue(label.clone()))),
+            Stmt::Struct { path, fields, .. } => {
+                self.handle_struct_def(path, fields.to_owned())?;
+                Ok(ValueEnum::unit())
+            }
+
+            Stmt::Enum { name, variants, .. } => {
+                self.handle_enum_def(name, variants.to_owned())?;
+                Ok(ValueEnum::unit())
+            }
+
+            Stmt::MacroDefinition { name, tokens, .. } => {
+                self.handle_macro_definition(name, tokens)?;
+                Ok(ValueEnum::unit())
+            }
 
             Stmt::Module { body, .. } => {
                 self.env.enter_scope();
