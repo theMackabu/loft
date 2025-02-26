@@ -1,6 +1,5 @@
 use loft::{
     error::{Error, Result},
-    // types::checker::TypeChecker,
     parser::{Parser, lexer::Lexer},
     runtime::{interpreter::Interpreter, value::ValueType},
 };
@@ -26,9 +25,6 @@ fn run() -> Result {
     let input = format!("{}\n{}", PRELUDE, input);
 
     let ast = Parser::new(Lexer::new(input)).parse_program().map_err(|err| Error::ParseError(err.to_string()))?;
-
-    // println!("{ast:#?}");
-
     let mut runtime = Interpreter::new(&ast).map_err(|err| Error::RuntimeError(err.to_string()))?;
     let result = runtime.start_main().map_err(|err| Error::RuntimeError(err.to_string()))?;
 

@@ -2,7 +2,6 @@ use super::*;
 use crate::runtime::scope::Scope;
 
 /// Manages the runtime environment with scoped variable storage.
-#[derive(Debug)]
 pub struct Environment {
     pub scopes: Vec<HashMap<String, Value>>,
     pub scope_resolver: Scope,

@@ -130,7 +130,6 @@ pub enum Expr {
     Float(f64, Option<NumericType>),
 
     Unit,
-    None,
 
     Index {
         array: Box<Expr>,
