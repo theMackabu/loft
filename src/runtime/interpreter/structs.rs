@@ -32,7 +32,7 @@ impl<'st> Interpreter<'st> {
     }
 
     pub fn handle_impl_block(&mut self, target: &Path, items: &[Stmt]) -> Result<(), String> {
-        let type_name = target.segments.last().ok_or_else(|| format!("Invalid impl target path: {:?}", target))?.ident.clone();
+        let type_name = target.segments.last().ok_or_else(|| format!("Invalid impl target path: {target}"))?.ident.clone();
 
         if let Some(value) = self.env.get_variable(&type_name) {
             let mut cell = value.borrow_mut();

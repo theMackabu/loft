@@ -1,4 +1,3 @@
-use self::str::token_to_string;
 use super::*;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -124,7 +123,7 @@ impl<'a> MacroParamParser<'a> {
                     "ty" => MacroParamKind::Type,
                     "ident" => MacroParamKind::Ident,
                     "tt" => MacroParamKind::TokenTree,
-                    _ => return Err(format!("Unsupported parameter kind: {}", token_to_string(&t.token))),
+                    _ => return Err(format!("Unsupported parameter kind: {}", t.token)),
                 };
                 self.advance();
                 Ok(kind)

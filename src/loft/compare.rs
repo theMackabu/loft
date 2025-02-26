@@ -242,7 +242,7 @@ pub fn value_equals(lhs: &Value, rhs: &Value) -> Result<bool, String> {
             }
         }
 
-        _ => Err(format!("Equality not supported between {:?} and {:?}", lhs_val, rhs_val)),
+        _ => Err(format!("Equality not supported between {lhs_val} and {rhs_val}")),
     }
 }
 
@@ -372,6 +372,6 @@ pub fn compare_values(lhs: &Value, rhs: &Value) -> Result<Ordering, String> {
 
         (_, ValueEnum::Mutable(ValueType::Reference { _undropped: b, .. })) => compare_values(lhs, b),
 
-        _ => Err(format!("Comparison not supported between {:?} and {:?}", lhs_val, rhs_val)),
+        _ => Err(format!("Comparison not supported between {lhs_val} and {rhs_val}")),
     }
 }

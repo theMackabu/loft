@@ -1,4 +1,4 @@
-use super::{str, *};
+use super::*;
 
 enum Placeholder {
     Named(String),
@@ -8,7 +8,7 @@ enum Placeholder {
 pub fn handle_procedural_macro(name: &str, tokens: &[TokenInfo]) -> Result<Vec<TokenInfo>, Option<String>> {
     match name {
         "stringify" => {
-            let content = str::tokens_to_string(tokens);
+            let content = tokens_to_string(tokens);
             let string_token = TokenInfo {
                 token: Token::String(content),
                 location: tokens.first().map_or_else(|| Location { line: 0, column: 0 }, |t| t.location.clone()),

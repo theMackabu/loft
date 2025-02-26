@@ -43,11 +43,11 @@ impl std::fmt::Display for ParseError {
                 if let Some(expected) = expected {
                     write!(
                         f,
-                        "Error at line {}, column {}: Expected {}, but found {:?}",
+                        "Error at line {}, column {}: Expected {}, but found {}",
                         found.location.line, found.location.column, expected, found.token
                     )
                 } else {
-                    write!(f, "Error at line {}, column {}: Unexpected token {:?}", found.location.line, found.location.column, found.token)
+                    write!(f, "Error at line {}, column {}: Unexpected token {}", found.location.line, found.location.column, found.token)
                 }
             }
             ParseError::ExpectedIdentifier { location } => {
@@ -108,7 +108,7 @@ impl Parser {
         } else {
             Err(ParseError::UnexpectedToken {
                 found: self.current.clone(),
-                expected: Some(format!("{:?}", token)),
+                expected: Some(format!("{}", token)),
             })
         }
     }
@@ -2101,7 +2101,7 @@ impl Parser {
         if self.current.token != open_token {
             return Err(ParseError::UnexpectedToken {
                 found: self.current.clone(),
-                expected: Some(format!("expected opening delimiter {:?}", open_token)),
+                expected: Some(format!("expected opening delimiter {}", open_token)),
             });
         }
         self.advance();

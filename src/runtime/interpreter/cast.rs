@@ -16,7 +16,7 @@ impl<'st> Interpreter<'st> {
 
             Type::TypeParam(param) => Err(format!("Casting to generic type parameter '{}' is not supported", param)),
 
-            Type::Generic { path, type_params } => Err(format!("Casting to generic types is not supported: {:?} with parameters {:?}", path, type_params)),
+            Type::Generic { path, type_params } => Err(format!("Casting to generic types is not supported: {} with parameters {:?}", path, type_params)),
 
             Type::Tuple(expected_types) => match value.borrow().inner() {
                 ValueType::Tuple(ref elements) => {
@@ -55,7 +55,7 @@ impl<'st> Interpreter<'st> {
                         len: *size
                     }))
                 }
-                _ => Err(format!("Cannot cast {:?} to array type", value.borrow().inner())),
+                _ => Err(format!("Cannot cast {} to array type", value.borrow())),
             },
 
             Type::Slice { element_type } => match value.borrow().inner() {
@@ -86,7 +86,7 @@ impl<'st> Interpreter<'st> {
                         el: casted_elements
                     }))
                 }
-                _ => Err(format!("Cannot cast {:?} to slice type", value.borrow().inner())),
+                _ => Err(format!("Cannot cast {} to slice type", value.borrow())),
             },
 
             Type::Reference { mutable, inner } => {
@@ -489,7 +489,7 @@ impl<'st> Interpreter<'st> {
 
             Type::Path(path) if path.segments.len() == 1 => self.type_to_value_type(&Type::Simple(path.segments[0].ident.clone())),
 
-            _ => Err(format!("Unsupported type: {:?}", ty)),
+            _ => Err(format!("Unsupported type: {ty}")),
         }
     }
 }

@@ -183,7 +183,7 @@ impl<'st> Interpreter<'st> {
                 (USize, usize, shr),
             }),
 
-            _ => Err(format!("Unsupported compound assignment operator: {:?}", operator)),
+            _ => Err(format!("Unsupported compound assignment operator: {}", operator)),
         }
     }
 }

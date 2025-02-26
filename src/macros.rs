@@ -82,17 +82,9 @@ macro_rules! impl_binary_ops {
                 | (_, Token::BitXorAssign, _)
                 | (_, Token::ShlAssign, _)
                 | (_, Token::ShrAssign, _)
-                    => Err(format!(
-                        "Operator {:?} is not supported in binary operations",
-                        $operator
-                    )),
+                    => Err(format!("Operator `{}` is not supported in binary operations", $operator)),
 
-                _ => Err(format!(
-                    "Invalid binary operation: {:?} {:?} {:?}",
-                    left_borrowed.inner(),
-                    $operator,
-                    right_borrowed.inner()
-                )),
+                _ => Err(format!("Invalid binary operation: {left_borrowed} {} {right_borrowed}", $operator)),
             }
         }
     }

@@ -1,12 +1,12 @@
-struct Point {
-   x: i32,
-   y: i32,
-}
-
+struct Foo {
+   x: (u32, u32),
+   y: u32,
+ }
+ 
 fn main() {
-   let p = Point { x: 0, y: 7 };
-   let Point { x, y } = p;
-   
-   test_eq!(x, 0);
-   test_eq!(y, 7);
+   let foo = Foo { x: (1, 2), y: 3 };
+   let Foo { x, y: z } = foo;
+      
+   test_eq!(x, (1, 2));
+   test_eq!(z, 3);
 }

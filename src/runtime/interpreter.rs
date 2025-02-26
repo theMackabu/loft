@@ -856,7 +856,7 @@ impl<'st> Interpreter<'st> {
                         }
                     }
 
-                    _ => Err(format!("Unsupported unary operator: {:?}", operator)),
+                    _ => Err(format!("Unsupported unary operator: {}", operator)),
                 }
             }
 

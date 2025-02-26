@@ -1,6 +1,5 @@
 mod builtin;
 mod parse;
-mod str;
 
 use super::*;
 use crate::parser::ast::NumericType;
@@ -18,6 +17,16 @@ pub struct RepetitionBlock {
     variable: String,
     tokens: Vec<TokenInfo>,
     separator: Option<Token>,
+}
+
+pub(crate) fn tokens_to_string(tokens: &[TokenInfo]) -> String {
+    let mut result = String::new();
+
+    for token_info in tokens {
+        result.push_str(&&token_info.token.to_string());
+    }
+
+    result.trim_end().to_string()
 }
 
 impl<'st> Interpreter<'st> {
@@ -39,7 +48,7 @@ impl<'st> Interpreter<'st> {
     }
 
     fn parse_expanded_tokens(&self, tokens: &[TokenInfo]) -> Result<Expr, String> {
-        let input = str::tokens_to_string(tokens);
+        let input = tokens_to_string(tokens);
         let lexer = Lexer::new(input);
         let mut parser = crate::parser::Parser::new(lexer);
 
