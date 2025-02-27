@@ -588,7 +588,7 @@ impl<'st> Interpreter {
                             if original_ptr.is_null() {
                                 Err("Reference contains null pointer".to_string())
                             } else {
-                                unsafe { Ok(Rc::from_raw(original_ptr)) }
+                                unsafe { Ok(Rc::from_raw(original_ptr)) } // maybe try Ok(_undropped.clone())?
                             }
                         }
 
@@ -1414,7 +1414,7 @@ impl<'st> Interpreter {
                             return Err("main function cannot be called directly".to_string());
                         }
 
-                        let function_value = self.evaluate_expression(&Expr::Identifier(name.clone()))?;
+                        let function_value = self.env.get_variable(name).expect("Expected value").clone();
                         let arg_values = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect::<Arguments>()?;
 
                         match function_value.borrow().inner() {
