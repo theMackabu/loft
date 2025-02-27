@@ -586,7 +586,7 @@ fn process_expr_local<'a>(expr: &'a Expr, env: &mut Scope, work_queue: &mut Work
             }
 
             let mut local_queue = WorkQueue::new();
-            work_queue.enqueue(ResolutionTask::Expr(body));
+            local_queue.enqueue(ResolutionTask::Expr(body));
 
             process_local_queue(&mut local_queue, env)?;
             env.exit_scope();

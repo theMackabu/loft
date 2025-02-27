@@ -181,8 +181,8 @@ impl<'st> Interpreter {
                 return Ok(val!(ValueType::Break(label.clone(), Some(val))));
             }
 
-            Stmt::Break(_, None) => {
-                return Ok(val!(ValueType::Break(None, None)));
+            Stmt::Break(label, None) => {
+                return Ok(val!(ValueType::Break(label.clone(), None)));
             }
 
             Stmt::Impl { target, items, .. } => {
