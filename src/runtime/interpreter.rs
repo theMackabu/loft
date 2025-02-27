@@ -1,3 +1,4 @@
+mod r#const;
 mod r#enum;
 mod r#let;
 mod r#macro;
@@ -110,6 +111,8 @@ impl<'st> Interpreter {
                 Stmt::Const {
                     name, initializer, type_annotation, ..
                 } => {
+                    self.validate_const_expression(&initializer)?;
+
                     let value = self.evaluate_expression(&initializer)?;
                     let value = self.perform_cast(value.clone(), type_annotation.as_ref().expect("expected op level types")).unwrap_or(value);
 
@@ -258,8 +261,8 @@ impl<'st> Interpreter {
             attr @ Stmt::Let { .. } => self.parse_let_statement(attr),
 
             fnc @ Stmt::Function { .. } => {
-                unbind! { Stmt::Function { name, visibility, params, return_type, body, .. } = fnc }
-                self.handle_function_declaration(name, params.clone(), body.clone(), return_type, *visibility)?;
+                unbind! { Stmt::Function { name, visibility, params, return_type, body, is_const, type_params, .. } = fnc }
+                self.handle_function_declaration(name, params.clone(), body.clone(), return_type, *visibility, *is_const, type_params.clone())?;
 
                 Ok(ValueEnum::unit())
             }

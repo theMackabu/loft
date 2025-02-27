@@ -22,7 +22,9 @@ pub struct FunctionData {
     pub body: Vec<Stmt>,
     pub return_type: Option<Type>,
     pub captures: Option<HashMap<String, Value>>,
+    pub type_params: Vec<GenericParam>,
     pub is_method: bool,
+    pub is_const: bool,
     pub visibility: bool,
 }
 

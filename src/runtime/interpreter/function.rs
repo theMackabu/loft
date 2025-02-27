@@ -12,13 +12,17 @@ enum Bounce {
 }
 
 impl<'st> Interpreter {
-    pub fn handle_function_declaration(&mut self, name: &str, params: Vec<(Pattern, Type)>, body: Vec<Stmt>, return_type: &Option<Type>, visibility: bool) -> Result<(), String> {
+    pub fn handle_function_declaration(
+        &mut self, name: &str, params: Vec<(Pattern, Type)>, body: Vec<Stmt>, return_type: &Option<Type>, visibility: bool, is_const: bool, type_params: Vec<GenericParam>,
+    ) -> Result<(), String> {
         let function_data = Rc::new(FunctionData {
             params,
             body,
+            type_params,
 
             captures: None,
             is_method: false,
+            is_const,
             visibility,
 
             name: Some(name.to_string()),
@@ -31,6 +35,8 @@ impl<'st> Interpreter {
     }
 
     pub fn execute_program(&mut self) -> Result<Value, String> {
+        self.evaluate_const_functions()?;
+
         for stmt in self.program.clone() {
             if let Stmt::Function {
                 name,
@@ -38,10 +44,14 @@ impl<'st> Interpreter {
                 body,
                 return_type,
                 visibility,
+                is_const,
+                type_params,
                 ..
             } = stmt
             {
-                self.handle_function_declaration(&name, params.to_vec(), body.to_vec(), &return_type, visibility)?;
+                if !is_const {
+                    self.handle_function_declaration(&name, params.to_vec(), body.to_vec(), &return_type, visibility, is_const, type_params)?;
+                }
             } else {
                 self.execute_statement(&stmt)?;
             }
@@ -55,6 +65,7 @@ impl<'st> Interpreter {
                     let borrowed = result.borrow();
                     borrowed.inner().clone()
                 };
+
                 if let ValueType::TailCall { function, arguments } = inner {
                     result = self.call_function(function.clone(), arguments)?;
                 } else {
@@ -280,6 +291,7 @@ impl<'st> Interpreter {
                     pending_result: None,
                 });
             }
+
             ValueType::Return(val) => {
                 if !self.current_call_stack.is_empty() {
                     let current_index = self.current_call_stack.len() - 1;
@@ -287,6 +299,7 @@ impl<'st> Interpreter {
                     self.current_call_stack[current_index].ip = self.current_call_stack[current_index].function_data.body.len();
                 }
             }
+
             ValueType::Break(_, break_value) => {
                 if !self.current_call_stack.is_empty() {
                     let current_index = self.current_call_stack.len() - 1;
@@ -294,6 +307,7 @@ impl<'st> Interpreter {
                     self.current_call_stack[current_index].ip = self.current_call_stack[current_index].function_data.body.len();
                 }
             }
+
             _ => {
                 if !self.current_call_stack.is_empty() {
                     let current_index = self.current_call_stack.len() - 1;

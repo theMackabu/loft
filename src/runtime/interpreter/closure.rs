@@ -42,6 +42,8 @@ impl<'st> Interpreter {
             return_type: None,
             captures: Some(captures),
             is_method: false,
+            is_const: false,
+            type_params: Vec::new(),
             visibility: false,
         });
 

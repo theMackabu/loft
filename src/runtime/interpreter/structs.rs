@@ -40,7 +40,15 @@ impl<'st> Interpreter {
             match cell.inner_mut() {
                 ValueType::StructDef { methods, .. } => {
                     for method_stmt in items {
-                        if let Stmt::Function { name: method_name, params, body, .. } = method_stmt {
+                        if let Stmt::Function {
+                            name: method_name,
+                            params,
+                            body,
+                            is_const,
+                            type_params,
+                            ..
+                        } = method_stmt
+                        {
                             let is_static = params.is_empty() || {
                                 let first_param = &params[0].0;
                                 !matches!(first_param, Pattern::Identifier { name, .. } if name == "self")
@@ -54,6 +62,8 @@ impl<'st> Interpreter {
                                     params: params.clone(),
                                     body: body.clone(),
                                     is_method: true,
+                                    type_params: type_params.clone(),
+                                    is_const: *is_const,
                                     is_static,
                                 },
                             );
@@ -63,7 +73,15 @@ impl<'st> Interpreter {
 
                 ValueType::EnumDef { methods, .. } => {
                     for method_stmt in items {
-                        if let Stmt::Function { name: method_name, params, body, .. } = method_stmt {
+                        if let Stmt::Function {
+                            name: method_name,
+                            params,
+                            body,
+                            is_const,
+                            type_params,
+                            ..
+                        } = method_stmt
+                        {
                             let is_static = params.is_empty() || {
                                 let first_param = &params[0].0;
                                 !matches!(first_param, Pattern::Identifier { name, .. } if name == "self")
@@ -77,6 +95,8 @@ impl<'st> Interpreter {
                                     params: params.clone(),
                                     body: body.clone(),
                                     is_method: true,
+                                    type_params: type_params.clone(),
+                                    is_const: *is_const,
                                     is_static,
                                 },
                             );

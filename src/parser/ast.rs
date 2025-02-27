@@ -23,6 +23,18 @@ pub enum NumericType {
     F64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TraitBound {
+    pub trait_name: Path,
+    pub type_params: Vec<Type>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GenericParam {
+    pub name: String,
+    pub bounds: Vec<TraitBound>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
     Identifier { name: String, mutable: bool },
@@ -45,6 +57,8 @@ pub struct Function {
     pub body: Vec<Stmt>,
     pub is_method: bool,
     pub is_static: bool,
+    pub is_const: bool,
+    pub type_params: Vec<GenericParam>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -92,6 +106,10 @@ pub enum Type {
     Array { element_type: Box<Type>, size: usize },
     Generic { path: Path, type_params: Vec<Type> },
     Function { params: Vec<Type>, return_type: Box<Type> },
+
+    Fn { params: Vec<Type>, return_type: Box<Type> },
+    FnMut { params: Vec<Type>, return_type: Box<Type> },
+    FnOnce { params: Vec<Type>, return_type: Box<Type> },
 
     Reference { mutable: bool, inner: Box<Type> },
     Pointer { inner: Box<Type> },
@@ -370,7 +388,8 @@ pub enum Stmt {
         name: String,
         visibility: bool,
         is_async: bool,
-        type_params: Vec<String>,
+        is_const: bool,
+        type_params: Vec<GenericParam>,
         params: Vec<(Pattern, Type)>,
         return_type: Option<Type>,
         body: Vec<Stmt>,
@@ -437,6 +456,39 @@ impl fmt::Display for Type {
                 write!(f, ") -> {}", return_type)
             }
 
+            Type::Fn { params, return_type } => {
+                write!(f, "Fn(")?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, ") -> {}", return_type)
+            }
+
+            Type::FnMut { params, return_type } => {
+                write!(f, "FnMut(")?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, ") -> {}", return_type)
+            }
+
+            Type::FnOnce { params, return_type } => {
+                write!(f, "FnOnce(")?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, ") -> {}", return_type)
+            }
+
             Type::Reference { mutable, inner } => {
                 if *mutable {
                     write!(f, "&mut {}", inner)
@@ -471,5 +523,46 @@ impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let path_str = self.segments.iter().map(|segment| segment.to_string()).collect::<Vec<_>>().join("::");
         write!(f, "{}", path_str)
+    }
+}
+
+impl fmt::Display for GenericParam {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+
+        if !self.bounds.is_empty() {
+            write!(f, ": ")?;
+            for (i, bound) in self.bounds.iter().enumerate() {
+                if i > 0 {
+                    write!(f, " + ")?;
+                }
+                write!(f, "{}", bound)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for TraitBound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.trait_name)?;
+
+        if !self.type_params.is_empty() {
+            if self.type_params.len() == 1 && matches!(self.type_params[0], Type::Function { .. }) {
+                write!(f, "{}", self.type_params[0])?;
+            } else {
+                write!(f, "<")?;
+                for (i, param) in self.type_params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, ">")?;
+            }
+        }
+
+        Ok(())
     }
 }

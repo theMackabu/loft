@@ -61,6 +61,13 @@ impl Result<T, E> {
          None => T::default(),
       }
    }
+   
+   pub fn unwrap_or_else<F: FnOnce() -> T>(self, op: F) -> T {
+      match self {
+         Some(x) => x,
+         None => op(),
+      }
+   }
 }
 
 impl Option<T> {
@@ -93,6 +100,13 @@ impl Option<T> {
       match self {
          Some(x) => x,
          None => T::default(),
+      }
+   }
+   
+   pub fn unwrap_or_else<F: FnOnce(E) -> T>(self, op: F) -> T {
+      match self {
+         Ok(t) => t,
+         Err(e) => op(e),
       }
    }
 }

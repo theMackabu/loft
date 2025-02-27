@@ -12,6 +12,13 @@ enum DeclarationKind {
     Static,
 }
 
+enum FunctionTypeKind {
+    Function,
+    Fn,
+    FnMut,
+    FnOnce,
+}
+
 const MAX_RECURSION_DEPTH: i32 = 500;
 const PRECEDENCE_LOWEST: i32 = 0;
 const PRECEDENCE_ASSIGN: i32 = 1;
@@ -142,13 +149,7 @@ impl Parser {
         self.enter_recursion()?;
 
         let attributes = self.parse_attributes()?;
-
-        let visibility = if matches!(self.current.token, Token::Pub) {
-            self.advance(); // consume 'pub'
-            true
-        } else {
-            false
-        };
+        let visibility = self.consume_if(Token::Pub);
 
         let label = if let Token::Lifetime(l) = &self.current.token {
             if self.peek.token == Token::Colon {
@@ -177,15 +178,24 @@ impl Parser {
             Token::Module => self.parse_module_statement(visibility, attributes),
             Token::Struct => self.parse_struct_declaration(visibility, attributes),
             Token::Trait => self.parse_trait_declaration(visibility, attributes),
-            Token::Fn => self.parse_function_statement(visibility, attributes, false),
+            Token::Fn => self.parse_function_statement(visibility, attributes, false, false),
             Token::MacroRules => self.parse_macro_definition(attributes, visibility),
 
             Token::Loop => Ok(Stmt::ExpressionStmt(self.parse_loop_expression(label)?)),
             Token::While => Ok(Stmt::ExpressionStmt(self.parse_while_expression(label)?)),
             Token::For => Ok(Stmt::ExpressionStmt(self.parse_for_expression(label)?)),
 
-            Token::Const => self.parse_const_static_statement(DeclarationKind::Const, visibility, attributes),
             Token::Static => self.parse_const_static_statement(DeclarationKind::Static, visibility, attributes),
+
+            Token::Const => {
+                if self.peek.token == Token::Fn {
+                    let is_const = true;
+                    self.advance(); // consume 'const'
+                    return self.parse_function_statement(false, Vec::new(), false, is_const);
+                } else {
+                    return self.parse_const_static_statement(DeclarationKind::Const, false, Vec::new());
+                }
+            }
 
             Token::LeftBrace => {
                 self.advance();
@@ -205,7 +215,7 @@ impl Parser {
 
             Token::Async => {
                 if self.peek.token == Token::Fn {
-                    self.parse_function_statement(visibility, attributes, false)
+                    self.parse_function_statement(visibility, attributes, false, false)
                 } else {
                     let expr = self.parse_expression(0)?;
                     match self.current.token {
@@ -345,6 +355,8 @@ impl Parser {
 
         while self.current.token != Token::RightBrace {
             let method_attributes = self.parse_attributes()?;
+            let is_const = self.consume_if(Token::Const);
+
             if self.current.token != Token::Fn && self.current.token != Token::Async {
                 return Err(ParseError::UnexpectedToken {
                     found: self.current.clone(),
@@ -352,7 +364,7 @@ impl Parser {
                 });
             }
 
-            let method = self.parse_function_statement(false, method_attributes, true)?;
+            let method = self.parse_function_statement(false, method_attributes, true, is_const)?;
             if self.current.token == Token::Semicolon {
                 self.advance();
             }
@@ -386,6 +398,7 @@ impl Parser {
 
         while self.current.token != Token::RightBrace {
             let method_attributes = self.parse_attributes()?;
+            let is_const = self.consume_if(Token::Const);
 
             let visibility = if self.current.token == Token::Pub {
                 self.advance(); // consume 'pub'
@@ -401,7 +414,7 @@ impl Parser {
                 });
             }
 
-            let method = self.parse_function_statement(visibility, method_attributes, false)?;
+            let method = self.parse_function_statement(visibility, method_attributes, false, is_const)?;
             items.push(method);
         }
 
@@ -717,37 +730,85 @@ impl Parser {
         })
     }
 
-    fn parse_function_statement(&mut self, visibility: bool, attributes: Vec<Attribute>, is_trait: bool) -> Result<Stmt, ParseError> {
-        let is_async = if self.current.token == Token::Async {
-            self.advance(); // consume 'async'
-            true
-        } else {
-            false
-        };
+    fn parse_generic_params(&mut self) -> Result<Vec<GenericParam>, ParseError> {
+        if self.current.token != Token::LeftAngle {
+            return Ok(Vec::new());
+        }
+
+        self.advance(); // consume '<'
+        let mut params = Vec::new();
+
+        while self.current.token != Token::RightAngle {
+            if !params.is_empty() {
+                self.expect(Token::Comma)?;
+                if self.current.token == Token::RightAngle {
+                    break;
+                }
+            }
+
+            let param_name = self.expect_identifier()?;
+            let mut bounds = Vec::new();
+
+            if self.current.token == Token::Colon {
+                self.advance(); // consume ':'
+
+                let trait_path = self.parse_path()?;
+                let type_params = if self.current.token == Token::LeftParen { self.parse_trait_bound_params()? } else { Vec::new() };
+
+                bounds.push(TraitBound { trait_name: trait_path, type_params });
+
+                while self.current.token == Token::Plus {
+                    self.advance(); // consume '+'
+                    let trait_path = self.parse_path()?;
+                    let type_params = if self.current.token == Token::LeftParen { self.parse_trait_bound_params()? } else { Vec::new() };
+
+                    bounds.push(TraitBound { trait_name: trait_path, type_params });
+                }
+            }
+
+            params.push(GenericParam { name: param_name, bounds });
+        }
+
+        self.expect(Token::RightAngle)?; // consume '>'
+        Ok(params)
+    }
+
+    fn parse_trait_bound_params(&mut self) -> Result<Vec<Type>, ParseError> {
+        self.expect(Token::LeftParen)?; // consume '('
+
+        let mut params = Vec::new();
+        if self.current.token != Token::RightParen {
+            loop {
+                params.push(self.parse_type()?);
+
+                if self.current.token != Token::Comma {
+                    break;
+                }
+                self.advance(); // consume ','
+            }
+        }
+
+        self.expect(Token::RightParen)?; // consume ')'
+
+        if self.current.token == Token::Arrow {
+            self.advance(); // consume '->'
+            let return_type = self.parse_type()?;
+            return Ok(vec![Type::Function {
+                params: params,
+                return_type: Box::new(return_type),
+            }]);
+        }
+
+        Ok(params)
+    }
+
+    fn parse_function_statement(&mut self, visibility: bool, attributes: Vec<Attribute>, is_trait: bool, is_const: bool) -> Result<Stmt, ParseError> {
+        let is_async = self.consume_if(Token::Async);
 
         self.expect(Token::Fn)?; // consume 'fn'
         let name = self.expect_identifier()?;
 
-        let type_params = if self.current.token == Token::LeftAngle {
-            self.advance(); // consume '<'
-            let mut params = Vec::new();
-
-            while self.current.token != Token::RightAngle {
-                if !params.is_empty() {
-                    self.expect(Token::Comma)?;
-                    if self.current.token == Token::RightAngle {
-                        break;
-                    }
-                }
-                params.push(self.expect_identifier()?);
-            }
-
-            self.expect(Token::RightAngle)?;
-            params
-        } else {
-            Vec::new()
-        };
-
+        let type_params = self.parse_generic_params()?;
         let params = self.parse_function_parameters()?;
 
         let return_type = if self.current.token == Token::Arrow {
@@ -763,6 +824,7 @@ impl Parser {
                 name,
                 visibility,
                 is_async,
+                is_const,
                 type_params,
                 params,
                 return_type,
@@ -773,6 +835,7 @@ impl Parser {
 
         self.expect(Token::LeftBrace)?; // consume '{'
         let mut body = Vec::new();
+
         while self.current.token != Token::RightBrace {
             body.push(self.parse_statement()?);
         }
@@ -790,6 +853,7 @@ impl Parser {
             name,
             visibility,
             is_async,
+            is_const,
             type_params,
             params,
             return_type,
@@ -978,26 +1042,23 @@ impl Parser {
             }
 
             Token::Fn => {
-                self.advance(); // consume 'fn'
-                self.expect(Token::LeftParen)?;
+                self.advance(); // Consume 'fn'
+                return self.parse_function_type(FunctionTypeKind::Function);
+            }
 
-                let mut params = Vec::new();
-                while self.current.token != Token::RightParen {
-                    if !params.is_empty() {
-                        self.expect(Token::Comma)?;
+            Token::Identifier(ident) if ident == "Fn" => {
+                self.advance(); // consume 'Fn'
+                return self.parse_function_type(FunctionTypeKind::Fn);
+            }
 
-                        if self.current.token == Token::RightParen {
-                            break;
-                        }
-                    }
-                    params.push(self.parse_type()?);
-                }
+            Token::Identifier(ident) if ident == "FnMut" => {
+                self.advance(); // consume 'FnMut'
+                return self.parse_function_type(FunctionTypeKind::FnMut);
+            }
 
-                self.expect(Token::RightParen)?;
-                self.expect(Token::Arrow)?;
-                let return_type = Box::new(self.parse_type()?);
-
-                Ok(Type::Function { params, return_type })
+            Token::Identifier(ident) if ident == "FnOnce" => {
+                self.advance(); // consume 'FnOnce'
+                return self.parse_function_type(FunctionTypeKind::FnOnce);
             }
 
             Token::Identifier(_) => {
@@ -1070,6 +1131,39 @@ impl Parser {
             _ => Err(ParseError::ExpectedIdentifier {
                 location: self.current.location.clone(),
             }),
+        }
+    }
+
+    fn parse_function_type(&mut self, kind: FunctionTypeKind) -> Result<Type, ParseError> {
+        self.expect(Token::LeftParen)?;
+
+        let mut params = Vec::new();
+
+        if self.current.token != Token::RightParen {
+            loop {
+                params.push(self.parse_type()?);
+
+                if self.current.token != Token::Comma {
+                    break;
+                }
+                self.advance(); // Consume ','
+            }
+        }
+
+        self.expect(Token::RightParen)?;
+
+        let return_type = if self.current.token == Token::Arrow {
+            self.advance(); // Consume '->'
+            Box::new(self.parse_type()?)
+        } else {
+            Box::new(Type::Unit)
+        };
+
+        match kind {
+            FunctionTypeKind::Function => Ok(Type::Function { params, return_type }),
+            FunctionTypeKind::Fn => Ok(Type::Fn { params, return_type }),
+            FunctionTypeKind::FnMut => Ok(Type::FnMut { params, return_type }),
+            FunctionTypeKind::FnOnce => Ok(Type::FnOnce { params, return_type }),
         }
     }
 
@@ -2586,6 +2680,15 @@ impl Parser {
             | Token::BitXorAssign
             | Token::BitOrAssign => PRECEDENCE_ASSIGN,
             _ => PRECEDENCE_LOWEST,
+        }
+    }
+
+    fn consume_if(&mut self, token: Token) -> bool {
+        if self.current.token == token {
+            self.advance();
+            true
+        } else {
+            false
         }
     }
 }
