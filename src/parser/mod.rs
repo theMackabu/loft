@@ -1665,11 +1665,12 @@ impl Parser {
     }
 
     fn parse_closure_expression_with_async(&mut self, is_async: bool) -> Result<Expr, ParseError> {
-        self.advance(); // consume the first '|'
+        self.advance();
+
         let mut params: Vec<(String, Option<Type>)> = Vec::new();
 
         if self.current.token == Token::BitOr {
-            self.advance(); // consume the second '|'
+            self.advance();
         } else {
             while self.current.token != Token::BitOr {
                 if !params.is_empty() {
@@ -1688,6 +1689,13 @@ impl Parser {
             self.expect(Token::BitOr)?; // consume the closing '|'
         }
 
+        let return_type = if self.current.token == Token::Arrow {
+            self.advance(); // consume '->'
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
         let body = if self.current.token == Token::LeftBrace {
             self.advance(); // consume '{'
             self.parse_block_expression_with_async(false)?
@@ -1697,6 +1705,7 @@ impl Parser {
 
         Ok(Expr::Closure {
             params,
+            return_type,
             body: Box::new(body),
             is_async,
         })

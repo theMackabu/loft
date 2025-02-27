@@ -179,6 +179,7 @@ pub enum Expr {
 
     Closure {
         params: Vec<(String, Option<Type>)>,
+        return_type: Option<Type>,
         body: Box<Expr>,
         is_async: bool,
     },
