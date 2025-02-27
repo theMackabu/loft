@@ -40,6 +40,8 @@ impl Scope {
         }
     }
 
+    pub fn in_closure(&self) -> bool { self.function_boundaries.len() > 1 }
+
     pub fn enter_scope(&mut self) { self.scopes.push(HashMap::new()); }
 
     pub fn exit_scope(&mut self) { self.scopes.pop(); }
@@ -191,7 +193,17 @@ impl Scope {
             }
         }
 
-        if current_boundary > 0 { self.scopes[0].get(name) } else { None }
+        if self.function_boundaries.len() > 1 {
+            for i in (0..current_boundary).rev() {
+                if let Some(info) = self.scopes[i].get(name) {
+                    return Some(info);
+                }
+            }
+        } else if current_boundary > 0 {
+            return self.scopes[0].get(name);
+        }
+
+        None
     }
 
     pub fn mark_as_initialized(&mut self, name: &str) -> Result<(), String> {

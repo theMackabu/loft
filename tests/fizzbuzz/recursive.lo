@@ -15,7 +15,7 @@ fn fizzbuzz(n: i32) -> str {
       (_, 0) => "Buzz",
       (_, _) => n.as_str(),
    });
-
+   
    result
 }
 

@@ -13,6 +13,8 @@ impl ValueType {
             ValueType::Struct { fields, .. } => fields.is_empty(),
             ValueType::Enum { data, .. } => data.as_ref().map_or(true, |d| d.is_empty()),
             ValueType::Range { start, end, .. } => start.borrow().inner().is_empty() && end.borrow().inner().is_empty(),
+            ValueType::Return(val) => val.borrow().inner().is_empty(),
+            ValueType::Function(func_data) => func_data.body.is_empty(),
 
             ValueType::Reference { original_ptr, _undropped, .. } => {
                 if (*original_ptr).is_null() {
@@ -53,6 +55,9 @@ impl ValueType {
 
             ValueType::Str(s) => Ok(!s.is_empty()),
             ValueType::Unit => Ok(false),
+            ValueType::Function(_) => Ok(true),
+
+            ValueType::Reference { _undropped, .. } => _undropped.borrow().inner().to_bool(),
 
             _ => Err(format!("Cannot convert value to boolean")),
         }

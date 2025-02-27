@@ -154,12 +154,13 @@ pub fn value_equals(lhs: &Value, rhs: &Value) -> Result<bool, String> {
 
         // references
         (ValueEnum::Immutable(ValueType::Reference { _undropped: a, .. }), _) => value_equals(a, rhs),
-
         (_, ValueEnum::Immutable(ValueType::Reference { _undropped: b, .. })) => value_equals(lhs, b),
-
         (ValueEnum::Mutable(ValueType::Reference { _undropped: a, .. }), _) => value_equals(a, rhs),
-
         (_, ValueEnum::Mutable(ValueType::Reference { _undropped: b, .. })) => value_equals(lhs, b),
+
+        // return
+        (_, ValueEnum::Immutable(ValueType::Return(val))) | (_, ValueEnum::Mutable(ValueType::Return(val))) => value_equals(lhs, val),
+        (ValueEnum::Immutable(ValueType::Return(val)), _) | (ValueEnum::Mutable(ValueType::Return(val)), _) => value_equals(val, rhs),
 
         // struct equality
         (ValueEnum::Immutable(ValueType::Struct { name: name_a, fields: fields_a }), ValueEnum::Immutable(ValueType::Struct { name: name_b, fields: fields_b }))
@@ -365,12 +366,13 @@ pub fn compare_values(lhs: &Value, rhs: &Value) -> Result<Ordering, String> {
 
         // references
         (ValueEnum::Immutable(ValueType::Reference { _undropped: a, .. }), _) => compare_values(a, rhs),
-
         (_, ValueEnum::Immutable(ValueType::Reference { _undropped: b, .. })) => compare_values(lhs, b),
-
         (ValueEnum::Mutable(ValueType::Reference { _undropped: a, .. }), _) => compare_values(a, rhs),
-
         (_, ValueEnum::Mutable(ValueType::Reference { _undropped: b, .. })) => compare_values(lhs, b),
+
+        // return
+        (_, ValueEnum::Immutable(ValueType::Return(val))) | (_, ValueEnum::Mutable(ValueType::Return(val))) => compare_values(lhs, val),
+        (ValueEnum::Immutable(ValueType::Return(val)), _) | (ValueEnum::Mutable(ValueType::Return(val)), _) => compare_values(val, rhs),
 
         _ => Err(format!("Comparison not supported between {lhs_val} and {rhs_val}")),
     }
