@@ -74,6 +74,15 @@ impl Environment {
         None
     }
 
+    /// Checks if value of a variable is const from the environment.
+    pub fn is_const(&self, name: &str) -> bool {
+        if let Some(symbol_info) = self.scope_resolver.resolve(name) {
+            return symbol_info.is_const;
+        } else {
+            return false;
+        }
+    }
+
     /// Sets the value of a declared variable in the current scope.
     pub fn set_variable(&mut self, name: &str, value: Value) -> Result<(), String> {
         let can_assign = {

@@ -1,0 +1,19 @@
+const fn test() -> &str {
+   "hello world"
+}
+
+const fn add(a: i32, b: i32) -> i32 {
+   a + b
+}
+
+const fn double(x: i32) -> i32 {
+   add(x, x)
+}
+
+fn main() {
+   const HELLO: &str = test;
+   test_eq!(HELLO, "hello world");
+   
+   const FOUR: fn(i32) -> i32 = double(2);
+   test_eq!(FOUR, 4); 
+}

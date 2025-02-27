@@ -116,7 +116,7 @@ impl<'st> Interpreter {
                     let value = self.evaluate_expression(&initializer)?;
                     let value = self.perform_cast(value.clone(), type_annotation.as_ref().expect("expected op level types")).unwrap_or(value);
 
-                    self.env.scope_resolver.declare_variable(&name, false);
+                    self.env.scope_resolver.declare_const(&name, false);
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
@@ -233,10 +233,12 @@ impl<'st> Interpreter {
             Stmt::Const {
                 name, initializer, type_annotation, ..
             } => {
+                self.validate_const_expression(&initializer)?;
+
                 let value = self.evaluate_expression(initializer)?;
                 let value = self.perform_cast(value.clone(), type_annotation.as_ref().expect("expected op level types")).unwrap_or(value);
 
-                self.env.scope_resolver.declare_variable(name, false);
+                self.env.scope_resolver.declare_const(name, false);
                 if let Some(scope) = self.env.scopes.first_mut() {
                     scope.insert(name.clone(), value);
                 }

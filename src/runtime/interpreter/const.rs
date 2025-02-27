@@ -15,29 +15,30 @@ impl<'st> Interpreter {
                 ..
             } = stmt
             {
-                const_functions.push((name.clone(), params.clone(), body.clone(), return_type.clone(), type_params.clone()));
+                let function_data = Rc::new(FunctionData {
+                    params: params.clone(),
+                    body: body.clone(),
+                    type_params: type_params.clone(),
+                    name: Some(name.clone()),
+                    return_type: return_type.clone(),
+                    captures: None,
+                    is_method: false,
+                    is_const: true,
+                    visibility: true,
+                });
+
+                self.env.scope_resolver.declare_const(&name, false);
+                self.env.set_variable(&name, val!(ValueType::Function(function_data)))?;
+                const_functions.push((name.clone(), params.clone(), body.clone()));
             }
         }
 
-        for (name, params, body, return_type, type_params) in const_functions {
-            self.validate_const_function(&body)?;
-
-            let function_data = Rc::new(FunctionData {
-                params: params.clone(),
-                body,
-                type_params,
-                name: Some(name.clone()),
-                return_type,
-                captures: None,
-                is_method: false,
-                is_const: true,
-                visibility: true,
-            });
-
-            self.env.set_variable(&name, val!(ValueType::Function(function_data)))?;
-
+        for (name, params, body) in const_functions {
             if params.is_empty() {
+                self.validate_const_function(&body)?;
                 let result = self.call_function(self.env.get_variable(&name).unwrap().clone(), Vec::new())?;
+
+                self.env.scope_resolver.declare_const(&name, false);
                 self.env.set_variable(&name, result)?;
             }
         }
@@ -80,12 +81,51 @@ impl<'st> Interpreter {
 
             Expr::Identifier(name) => {
                 if let Some(_) = self.env.get_variable(name) {
-                    // check if it's a const value
+                    if !self.env.is_const(name) {
+                        return Err(format!("Identifier `{name}` is not a constant"));
+                    }
+                } else {
+                    return Err(format!("Identifier `{name}` is not defined"));
+                }
+            }
+
+            Expr::If { condition, then_branch, else_branch } => {
+                self.validate_const_expression(condition)?;
+                self.validate_const_expression(then_branch)?;
+
+                if let Some(else_expr) = else_branch {
+                    self.validate_const_expression(else_expr)?;
+                }
+            }
+
+            Expr::Match { value, arms } => {
+                self.validate_const_expression(value)?;
+                for arm in arms {
+                    self.validate_const_expression(&arm.body)?;
+                }
+            }
+
+            Expr::Call { function, arguments } => {
+                if let Expr::Identifier(name) = &**function {
+                    if let Some(value) = self.env.get_variable(name) {
+                        if !matches!(value.borrow().inner(), ValueType::Function(ref func) if func.is_const) {
+                            return Err(format!("Function `{name}` is not a constant function"));
+                        }
+                    } else {
+                        return Err(format!("Function `{name}` is not defined"));
+                    }
+                } else {
+                    return Err("Only direct function calls are allowed in constant expressions".into());
+                }
+
+                for arg in arguments {
+                    self.validate_const_expression(arg)?;
                 }
             }
 
             _ => return Err("Expression is not allowed in a const function".into()),
         }
+
         Ok(())
     }
 }

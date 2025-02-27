@@ -17,6 +17,7 @@ pub struct SymbolInfo {
     pub name: String,
     pub kind: DeclKind,
     pub mutable: bool,
+    pub is_const: bool,
     pub is_function: bool,
     pub initialized: bool,
 }
@@ -78,6 +79,23 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Variable,
                     mutable,
+                    is_const: false,
+                    is_function: false,
+                    initialized: false,
+                },
+            );
+        }
+    }
+
+    pub fn declare_const(&mut self, name: &str, mutable: bool) {
+        if let Some(current) = self.scopes.last_mut() {
+            current.insert(
+                name.to_owned(),
+                SymbolInfo {
+                    name: name.to_owned(),
+                    kind: DeclKind::Variable,
+                    mutable,
+                    is_const: true,
                     is_function: false,
                     initialized: false,
                 },
@@ -93,6 +111,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Reference { mutable },
                     mutable,
+                    is_const: false,
                     is_function: false,
                     initialized: false,
                 },
@@ -112,6 +131,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Enum,
                     mutable: false,
+                    is_const: false,
                     is_function: false,
                     initialized: true,
                 },
@@ -134,6 +154,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Variable,
                     mutable,
+                    is_const: false,
                     is_function: false,
                     initialized: false,
                 },
@@ -157,6 +178,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Function,
                     mutable: false,
+                    is_const: false,
                     is_function: true,
                     initialized: true,
                 },
@@ -178,6 +200,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Module,
                     mutable: false,
+                    is_const: false,
                     is_function: false,
                     initialized: true,
                 },
@@ -375,8 +398,12 @@ fn process_stmt_local<'a>(stmt: &'a Stmt, env: &mut Scope, work_queue: &mut Work
         }
 
         Const { name, initializer, .. } | Static { name, initializer, .. } => {
-            work_queue.enqueue(ResolutionTask::Expr(initializer));
-            env.declare_variable(name, false);
+            let mut local_queue = WorkQueue::new();
+            local_queue.enqueue(ResolutionTask::Expr(initializer));
+
+            env.declare_const(name, false);
+            process_local_queue(&mut local_queue, env)?;
+
             env.mark_as_initialized(name)?;
         }
 

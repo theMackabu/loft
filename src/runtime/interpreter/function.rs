@@ -9,6 +9,7 @@ pub struct CallFrame {
 enum Bounce {
     Continue,
     Result(Value),
+    Error(String),
 }
 
 impl<'st> Interpreter {
@@ -108,18 +109,19 @@ impl<'st> Interpreter {
     pub fn call_function(&mut self, func_value: Value, arguments: Vec<Value>) -> Result<Value, String> {
         let previous_call_stack = std::mem::take(&mut self.current_call_stack);
         let bounce = self.call_function_bounce(func_value, arguments)?;
-        let result = self.trampoline(bounce);
+        let result = self.trampoline(bounce)?;
 
         self.current_call_stack = previous_call_stack;
 
         Ok(result)
     }
 
-    fn trampoline(&mut self, mut bounce: Bounce) -> Value {
+    fn trampoline(&mut self, mut bounce: Bounce) -> Result<Value, String> {
         loop {
             match bounce {
                 Bounce::Continue => bounce = self.execute_function_step(),
-                Bounce::Result(value) => return value,
+                Bounce::Result(value) => return Ok(value),
+                Bounce::Error(err) => return Err(err),
             }
         }
     }
@@ -221,7 +223,7 @@ impl<'st> Interpreter {
                     if is_self_call {
                         let func_val = match self.evaluate_expression(&function) {
                             Ok(val) => val,
-                            Err(_) => return Bounce::Result(val!(ValueType::Unit)),
+                            Err(err) => return Bounce::Error(err),
                         };
 
                         let mut arg_values = Vec::with_capacity(arguments.len());
@@ -229,7 +231,7 @@ impl<'st> Interpreter {
                         for arg in arguments {
                             match self.evaluate_expression(&arg) {
                                 Ok(val) => arg_values.push(val),
-                                Err(_) => return Bounce::Result(val!(ValueType::Unit)),
+                                Err(err) => return Bounce::Error(err),
                             }
                         }
 
@@ -240,7 +242,7 @@ impl<'st> Interpreter {
 
                         match self.call_function_bounce(func_val, arg_values) {
                             Ok(_) => return Bounce::Continue,
-                            Err(_) => return Bounce::Result(val!(ValueType::Unit)),
+                            Err(err) => return Bounce::Error(err),
                         }
                     }
                 }
@@ -249,7 +251,7 @@ impl<'st> Interpreter {
 
         let res = match self.execute_statement(&stmt) {
             Ok(value) => value,
-            Err(_) => return Bounce::Result(val!(ValueType::Unit)),
+            Err(err) => return Bounce::Error(err),
         };
 
         let inner = res.borrow().inner().clone();
@@ -258,11 +260,11 @@ impl<'st> Interpreter {
             ValueType::TailCall { function, arguments } => {
                 let new_func_data = match function.borrow().inner().clone() {
                     ValueType::Function(data) => (*data).clone(),
-                    _ => return Bounce::Result(val!(ValueType::Unit)),
+                    _ => return Bounce::Error("Not a function".to_string()),
                 };
 
                 if arguments.len() != new_func_data.params.len() {
-                    return Bounce::Result(val!(ValueType::Unit));
+                    return Bounce::Error("Argument count mismatch".to_string());
                 }
 
                 if !self.current_call_stack.is_empty() {
@@ -273,15 +275,15 @@ impl<'st> Interpreter {
                 self.env.enter_function_scope();
                 if let Some(captures) = &new_func_data.captures {
                     for (name, val) in captures {
-                        if let Err(_) = self.env.set_variable_raw(name, val.clone()) {
-                            return Bounce::Result(val!(ValueType::Unit));
+                        if let Err(err) = self.env.set_variable_raw(name, val.clone()) {
+                            return Bounce::Error(err);
                         }
                     }
                 }
 
                 for ((pattern, param_type), arg) in new_func_data.params.iter().zip(&arguments) {
-                    if let Err(_) = self.declare_pattern(pattern, Some(param_type), arg, true) {
-                        return Bounce::Result(val!(ValueType::Unit));
+                    if let Err(err) = self.declare_pattern(pattern, Some(param_type), arg, true) {
+                        return Bounce::Error(err);
                     }
                 }
 
