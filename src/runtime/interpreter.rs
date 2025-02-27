@@ -25,6 +25,7 @@ use crate::{
 
 use super::value::*;
 use environment::Environment;
+use function::CallFrame;
 
 use std::{
     cell::RefCell,
@@ -42,6 +43,7 @@ pub struct Interpreter {
 
     mcs: HashMap<String, Macro>,
     fnc_name: Option<String>,
+    current_call_stack: Vec<CallFrame>,
 }
 
 impl<'st> Interpreter {
@@ -51,6 +53,7 @@ impl<'st> Interpreter {
             program: ast.to_vec(),
             mcs: HashMap::new(),
             fnc_name: None,
+            current_call_stack: Vec::new(),
         }
     }
 
@@ -177,7 +180,8 @@ impl<'st> Interpreter {
                                 arguments: arg_values,
                             }));
                         } else {
-                            return self.call_function(func_val, arg_values);
+                            let value = self.evaluate_expression(expr)?;
+                            return Ok(value.into_return());
                         }
                     }
                     let value = self.evaluate_expression(expr)?;

@@ -1,9 +1,14 @@
 use super::*;
 
-struct CallFrame {
+pub struct CallFrame {
     ip: usize,
     function_data: FunctionData,
     pending_result: Option<Value>,
+}
+
+enum Bounce {
+    Continue,
+    Result(Value),
 }
 
 impl<'st> Interpreter {
@@ -90,8 +95,25 @@ impl<'st> Interpreter {
     }
 
     pub fn call_function(&mut self, func_value: Value, arguments: Vec<Value>) -> Result<Value, String> {
-        let mut call_stack: Vec<CallFrame> = Vec::new();
+        let previous_call_stack = std::mem::take(&mut self.current_call_stack);
+        let bounce = self.call_function_bounce(func_value, arguments)?;
+        let result = self.trampoline(bounce);
 
+        self.current_call_stack = previous_call_stack;
+
+        Ok(result)
+    }
+
+    fn trampoline(&mut self, mut bounce: Bounce) -> Value {
+        loop {
+            match bounce {
+                Bounce::Continue => bounce = self.execute_function_step(),
+                Bounce::Result(value) => return value,
+            }
+        }
+    }
+
+    fn call_function_bounce(&mut self, func_value: Value, arguments: Vec<Value>) -> Result<Bounce, String> {
         let function_data = match func_value.borrow().inner().clone() {
             ValueType::Function(data) => (*data).clone(),
             _ => return Err("Not a function".to_string()),
@@ -112,7 +134,6 @@ impl<'st> Interpreter {
             ));
         }
 
-        // make dry
         self.env.enter_function_scope();
         if let Some(captures) = &function_data.captures {
             for (name, val) in captures {
@@ -123,113 +144,164 @@ impl<'st> Interpreter {
             self.declare_pattern(pattern, Some(param_type), arg, true)?;
         }
 
-        call_stack.push(CallFrame {
+        let initial_frame = CallFrame {
             ip: 0,
             function_data: function_data.clone(),
             pending_result: None,
-        });
+        };
 
-        let mut final_result = ValueEnum::unit();
+        self.current_call_stack.push(initial_frame);
 
-        while let Some(frame) = call_stack.last_mut() {
-            if frame.ip >= frame.function_data.body.len() {
-                let result = frame.pending_result.clone().unwrap_or_else(|| ValueEnum::unit());
-                call_stack.pop();
-                self.env.exit_function_scope();
+        Ok(Bounce::Continue)
+    }
 
-                if let Some(caller) = call_stack.last_mut() {
-                    caller.pending_result = Some(result);
-                } else {
-                    final_result = result;
-                }
-                continue;
+    fn execute_function_step(&mut self) -> Bounce {
+        if self.current_call_stack.is_empty() {
+            self.fnc_name = None;
+            return Bounce::Result(ValueEnum::unit());
+        }
+
+        let frame_index = self.current_call_stack.len() - 1;
+        if frame_index >= self.current_call_stack.len() {
+            return Bounce::Result(val!(ValueType::Unit));
+        }
+
+        if self.current_call_stack[frame_index].ip >= self.current_call_stack[frame_index].function_data.body.len() {
+            let result = self.current_call_stack[frame_index].pending_result.clone().unwrap_or_else(|| ValueEnum::unit());
+
+            self.current_call_stack.pop();
+            self.env.exit_function_scope();
+
+            if !self.current_call_stack.is_empty() {
+                let caller_index = self.current_call_stack.len() - 1;
+                self.current_call_stack[caller_index].pending_result = Some(result);
+                return Bounce::Continue;
+            } else {
+                self.fnc_name = None;
+                return Bounce::Result(result);
             }
+        }
 
-            let is_tail = frame.ip == frame.function_data.body.len() - 1;
-            let stmt = frame.function_data.body[frame.ip].clone();
-            frame.ip += 1;
+        let body_len = self.current_call_stack[frame_index].function_data.body.len();
+        let is_tail = body_len > 0 && self.current_call_stack[frame_index].ip == body_len - 1;
 
-            if is_tail {
-                if let Stmt::ExpressionStmt(expr_box) = stmt.clone() {
-                    if let Expr::Call { function, arguments } = expr_box {
-                        if let (Some(current_name), Expr::Identifier(called_name)) = (&frame.function_data.name, &*function) {
-                            if current_name == called_name {
-                                let func_val = self.evaluate_expression(&function)?;
-                                let mut arg_values = Vec::with_capacity(arguments.len());
+        let curr_ip = self.current_call_stack[frame_index].ip;
+        if curr_ip >= body_len {
+            return Bounce::Result(val!(ValueType::Unit));
+        }
 
-                                for arg in arguments {
-                                    arg_values.push(self.evaluate_expression(&arg)?);
-                                }
+        let stmt = self.current_call_stack[frame_index].function_data.body[curr_ip].clone();
+        self.current_call_stack[frame_index].ip += 1;
 
-                                frame.pending_result = Some(val!(ValueType::TailCall {
-                                    function: func_val,
-                                    arguments: arg_values,
-                                }));
-
-                                frame.ip = frame.function_data.body.len();
-                                continue;
+        if is_tail {
+            if let Stmt::ExpressionStmt(expr_box) = stmt.clone() {
+                if let Expr::Call { function, arguments } = expr_box {
+                    let is_self_call = match &self.current_call_stack[frame_index].function_data.name {
+                        Some(current_name) => {
+                            if let Expr::Identifier(called_name) = &*function {
+                                current_name == called_name
+                            } else {
+                                false
                             }
                         }
-                    }
-                }
-            }
-
-            let res = self.execute_statement(&stmt)?;
-            let inner = res.borrow().inner().clone();
-
-            match inner {
-                ValueType::TailCall { function, arguments } => {
-                    let new_func_data = match function.borrow().inner().clone() {
-                        ValueType::Function(data) => (*data).clone(),
-                        _ => return Err("Tail value is not a function".into()),
+                        None => false,
                     };
 
-                    if arguments.len() != new_func_data.params.len() {
-                        return Err(format!(
-                            "Function '{}' expects {} arguments but got {}",
-                            new_func_data.name.as_deref().unwrap_or("anonymous"),
-                            new_func_data.params.len(),
-                            arguments.len()
-                        ));
-                    }
+                    if is_self_call {
+                        let func_val = match self.evaluate_expression(&function) {
+                            Ok(val) => val,
+                            Err(_) => return Bounce::Result(val!(ValueType::Unit)),
+                        };
 
-                    // make dry
-                    self.env.enter_function_scope();
-                    if let Some(captures) = &new_func_data.captures {
-                        for (name, val) in captures {
-                            self.env.set_variable_raw(name, val.clone())?;
+                        let mut arg_values = Vec::with_capacity(arguments.len());
+
+                        for arg in arguments {
+                            match self.evaluate_expression(&arg) {
+                                Ok(val) => arg_values.push(val),
+                                Err(_) => return Bounce::Result(val!(ValueType::Unit)),
+                            }
+                        }
+
+                        if !self.current_call_stack.is_empty() {
+                            self.current_call_stack.pop();
+                        }
+                        self.env.exit_function_scope();
+
+                        match self.call_function_bounce(func_val, arg_values) {
+                            Ok(_) => return Bounce::Continue,
+                            Err(_) => return Bounce::Result(val!(ValueType::Unit)),
                         }
                     }
-
-                    for ((pattern, param_type), arg) in new_func_data.params.iter().zip(&arguments) {
-                        self.declare_pattern(pattern, Some(param_type), arg, true)?;
-                    }
-
-                    call_stack.push(CallFrame {
-                        function_data: new_func_data,
-                        ip: 0,
-                        pending_result: None,
-                    });
-                }
-
-                ValueType::Return(val) => {
-                    frame.pending_result = Some(val.clone());
-                    frame.ip = frame.function_data.body.len();
-                }
-
-                ValueType::Break(_, break_value) => {
-                    frame.pending_result = Some(break_value.unwrap_or(ValueEnum::unit()));
-                    frame.ip = frame.function_data.body.len();
-                }
-
-                _ => {
-                    frame.pending_result = Some(res.clone());
                 }
             }
         }
 
-        self.fnc_name = None;
+        let res = match self.execute_statement(&stmt) {
+            Ok(value) => value,
+            Err(_) => return Bounce::Result(val!(ValueType::Unit)),
+        };
 
-        Ok(final_result)
+        let inner = res.borrow().inner().clone();
+
+        match inner {
+            ValueType::TailCall { function, arguments } => {
+                let new_func_data = match function.borrow().inner().clone() {
+                    ValueType::Function(data) => (*data).clone(),
+                    _ => return Bounce::Result(val!(ValueType::Unit)),
+                };
+
+                if arguments.len() != new_func_data.params.len() {
+                    return Bounce::Result(val!(ValueType::Unit));
+                }
+
+                if !self.current_call_stack.is_empty() {
+                    self.current_call_stack.pop();
+                }
+                self.env.exit_function_scope();
+
+                self.env.enter_function_scope();
+                if let Some(captures) = &new_func_data.captures {
+                    for (name, val) in captures {
+                        if let Err(_) = self.env.set_variable_raw(name, val.clone()) {
+                            return Bounce::Result(val!(ValueType::Unit));
+                        }
+                    }
+                }
+
+                for ((pattern, param_type), arg) in new_func_data.params.iter().zip(&arguments) {
+                    if let Err(_) = self.declare_pattern(pattern, Some(param_type), arg, true) {
+                        return Bounce::Result(val!(ValueType::Unit));
+                    }
+                }
+
+                self.current_call_stack.push(CallFrame {
+                    ip: 0,
+                    function_data: new_func_data,
+                    pending_result: None,
+                });
+            }
+            ValueType::Return(val) => {
+                if !self.current_call_stack.is_empty() {
+                    let current_index = self.current_call_stack.len() - 1;
+                    self.current_call_stack[current_index].pending_result = Some(val.clone());
+                    self.current_call_stack[current_index].ip = self.current_call_stack[current_index].function_data.body.len();
+                }
+            }
+            ValueType::Break(_, break_value) => {
+                if !self.current_call_stack.is_empty() {
+                    let current_index = self.current_call_stack.len() - 1;
+                    self.current_call_stack[current_index].pending_result = Some(break_value.unwrap_or(ValueEnum::unit()));
+                    self.current_call_stack[current_index].ip = self.current_call_stack[current_index].function_data.body.len();
+                }
+            }
+            _ => {
+                if !self.current_call_stack.is_empty() {
+                    let current_index = self.current_call_stack.len() - 1;
+                    self.current_call_stack[current_index].pending_result = Some(res.clone());
+                }
+            }
+        }
+
+        Bounce::Continue
     }
 }
