@@ -16,7 +16,7 @@ fn fizzbuzz(n: i32) -> str {
       (_, _) => n.as_str(),
    });
    
-   result
+   return result;
 }
 
 fn main() {

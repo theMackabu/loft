@@ -149,12 +149,26 @@ impl<'st> Interpreter {
             }
 
             Stmt::Return(expr) => {
-                let res = match expr {
-                    Some(e) => self.evaluate_expression(e)?,
-                    None => ValueEnum::unit(),
-                };
+                if let Some(expr) = expr {
+                    if let Expr::Call { function, arguments } = expr {
+                        let func_val = self.evaluate_expression(function)?;
 
-                Ok(res.into_return())
+                        let mut arg_values = Vec::with_capacity(arguments.len());
+                        for arg in arguments {
+                            arg_values.push(self.evaluate_expression(arg)?);
+                        }
+
+                        return Ok(val!(ValueType::TailCall {
+                            function: func_val,
+                            arguments: arg_values,
+                        }));
+                    }
+
+                    let value = self.evaluate_expression(expr)?;
+                    return Ok(value.into_return());
+                } else {
+                    return Ok(ValueEnum::unit().into_return());
+                }
             }
 
             Stmt::MacroDefinition { name, tokens, .. } => {
@@ -368,15 +382,39 @@ impl<'st> Interpreter {
 
                 for stmt in statements {
                     let result = self.execute_statement(stmt)?;
-                    if matches!(result.borrow().inner(), ValueType::Return(_) | ValueType::Break(_, _) | ValueType::Continue(_)) {
+                    let is_return = { matches!(result.borrow().inner(), ValueType::Return(_)) };
+
+                    if is_return {
+                        self.env.exit_scope();
+                        return Ok(result);
+                    }
+
+                    let is_tail_call = { matches!(result.borrow().inner(), ValueType::TailCall { .. }) };
+
+                    if is_tail_call {
                         self.env.exit_scope();
                         return Ok(result);
                     }
                 }
 
-                let result = match value {
-                    Some(expr) => self.evaluate_expression(expr)?,
-                    None => ValueEnum::unit(),
+                let result = if let Some(expr) = value {
+                    if let Expr::Call { function, arguments } = expr.as_ref() {
+                        let func_val = self.evaluate_expression(function)?;
+
+                        let mut arg_values = Vec::with_capacity(arguments.len());
+                        for arg in arguments {
+                            arg_values.push(self.evaluate_expression(arg)?);
+                        }
+
+                        val!(ValueType::TailCall {
+                            function: func_val,
+                            arguments: arg_values,
+                        })
+                    } else {
+                        self.evaluate_expression(expr)?
+                    }
+                } else {
+                    val!(ValueType::Unit)
                 };
 
                 self.env.exit_scope();
