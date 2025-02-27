@@ -29,7 +29,7 @@ pub(crate) fn tokens_to_string(tokens: &[TokenInfo]) -> String {
     result.trim_end().to_string()
 }
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     pub fn handle_macro_definition(&mut self, name: &str, tokens: &[TokenInfo]) -> Result<(), String> {
         let delimiter = extract_macro_delimiter(tokens)?;
         let branches = extract_macro_branches(tokens)?;

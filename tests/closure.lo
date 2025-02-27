@@ -1,3 +1,42 @@
-fn main() {
+fn test_scope() {
+   let value = "outer";
    
+   let test = || {
+      value
+   };
+   
+   test_eq!(test(), value);
+}
+
+fn sub(x: isize, y: isize) -> isize {
+   x - y
+}
+
+fn test_callback(func: Fn) {
+   let value = func(5, 5);
+      
+   if value == 10 || value == 0 || value == 25 {
+      test_pass!(format!("expected: `{value}`"))
+   } else {
+      test_fail!(format!("unexpected: `{value}`"))
+   }
+}
+
+fn main() {
+   let add = |x: i32, y: i32| x + y;
+   test_eq!(add(2, 2), 4);
+   
+   let tuple = |x, y, z| {
+      (x, y, z + 10)
+   };
+   test_eq!(tuple(1, 2, 3), (1, 2, 13));
+   
+   let blank = || {};
+   test_eq!(blank(), ());
+   
+   test_scope();
+   
+   test_callback(add);
+   test_callback(sub);
+   test_callback(|x, y| x * y)
 }

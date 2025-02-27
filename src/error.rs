@@ -16,7 +16,7 @@ pub enum Error {
     UnexpectedReturnValue(ValueEnum),
 }
 
-pub type Result = StdResult<(), Error>;
+pub type Result<T> = StdResult<T, Error>;
 
 impl StdError for Error {}
 

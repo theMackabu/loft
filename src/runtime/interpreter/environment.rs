@@ -2,6 +2,7 @@ use super::*;
 use crate::runtime::scope::Scope;
 
 /// Manages the runtime environment with scoped variable storage.
+#[derive(Debug)]
 pub struct Environment {
     pub scopes: Vec<HashMap<String, Value>>,
     pub scope_resolver: Scope,
@@ -79,8 +80,9 @@ impl Environment {
             if let Some(symbol_info) = self.scope_resolver.resolve(name) {
                 let is_mutable = symbol_info.mutable;
                 let is_initialized = symbol_info.initialized;
+                let is_function = symbol_info.is_function;
 
-                is_mutable || !is_initialized
+                is_mutable || !is_initialized || is_function
             } else {
                 return Err(format!("Variable '{}' not found", name));
             }
@@ -258,7 +260,16 @@ impl Environment {
             self.enter_scope();
         }
 
-        self.scopes.first_mut().ok_or("No global scope found")?.insert(variant.to_string(), global_value);
+        let global_scope = self.scopes.first_mut().ok_or("No global scope found")?;
+
+        if global_scope.contains_key(variant) {
+            return Err(format!("Global variant '{}' is already registered", variant));
+        }
+
+        global_scope.insert(variant.to_string(), global_value);
+
+        self.scope_resolver.declare_variable(variant, false);
+        self.scope_resolver.mark_as_initialized(variant)?;
 
         Ok(())
     }

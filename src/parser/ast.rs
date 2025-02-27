@@ -81,8 +81,10 @@ pub struct Path {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Type {
     Unit,
+
     Path(Path),
     Simple(String),
+    Implied(String),
     Tuple(Vec<Type>),
     TypeParam(String),
 
@@ -380,6 +382,8 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Type::Unit => write!(f, "()"),
+
+            Type::Implied(name) => write!(f, "<{name}>"),
 
             Type::Path(path) => write!(f, "{}", path),
 

@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     pub(crate) fn handle_str_method_call(&mut self, handle: Method, value: Vec<u8>) -> Result<Value, String> {
         let Method { object, args, call } = handle;
 

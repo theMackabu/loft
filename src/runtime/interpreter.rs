@@ -4,7 +4,9 @@ mod r#macro;
 
 mod assign;
 mod cast;
+mod closure;
 mod environment;
+mod function;
 mod loops;
 mod methods;
 mod pattern;
@@ -34,66 +36,18 @@ use std::{
 
 type Macro = (MacroDelimiter, Vec<TokenInfo>, Vec<r#macro::MacroBranch>);
 
-pub struct Interpreter<'st> {
-    env: Environment,
-    fnc: HashMap<String, &'st Stmt>,
+pub struct Interpreter {
+    pub env: Environment,
+    pub program: Vec<Stmt>,
     mcs: HashMap<String, Macro>,
 }
 
-impl<'st> Interpreter<'st> {
-    pub fn new(ast: &'st [Stmt]) -> Result<Self, String> {
-        let function_count = ast.iter().filter(|stmt| matches!(stmt, Stmt::Function { .. })).count();
-        let mut fnc = HashMap::with_capacity(function_count);
-
-        for stmt in ast {
-            if let Stmt::Function { name, .. } = stmt {
-                fnc.insert(name.clone(), stmt);
-            }
-        }
-
-        let mut intrp = Self {
-            fnc,
+impl<'st> Interpreter {
+    pub fn new(ast: &Vec<Stmt>) -> Self {
+        Self {
             mcs: HashMap::new(),
+            program: ast.to_vec(),
             env: Environment::new(),
-        };
-
-        intrp.env.scope_resolver.resolve_program(ast)?;
-
-        intrp.declare_globals(ast)?;
-        intrp.import_prelude()?;
-
-        Ok(intrp)
-    }
-
-    pub fn start_main(&mut self) -> Result<Value, String> {
-        let main_func = self.fnc.get("main").ok_or("No main function found")?;
-        let result = self.execute_statement(&main_func.to_owned())?;
-
-        let result_inner = {
-            let borrowed = result.borrow();
-            borrowed.inner()
-        };
-
-        match result_inner {
-            ValueType::Enum { enum_type, variant, data } if enum_type == "Result" => match variant.as_str() {
-                "Ok" => match data {
-                    Some(values) if !values.is_empty() => Ok(values[0].clone()),
-                    _ => Ok(val!(ValueType::Unit)),
-                },
-
-                "Err" => match data {
-                    Some(values) if !values.is_empty() => Err(values[0].borrow().to_string()),
-                    _ => Err("Unknown error".to_string()),
-                },
-
-                _ => Ok(val!(ValueType::Enum {
-                    enum_type: enum_type.clone(),
-                    variant: variant.clone(),
-                    data: data.clone(),
-                })),
-            },
-
-            _ => Ok(result),
         }
     }
 
@@ -128,7 +82,7 @@ impl<'st> Interpreter<'st> {
         Ok(last_value)
     }
 
-    fn import_prelude(&mut self) -> Result<(), String> {
+    pub fn import_prelude(&mut self) -> Result<(), String> {
         self.env.register_global_variant("Some", "Option")?;
         self.env.register_global_variant("None", "Option")?;
         self.env.register_global_variant("Ok", "Result")?;
@@ -137,27 +91,11 @@ impl<'st> Interpreter<'st> {
         Ok(())
     }
 
-    fn declare_globals(&mut self, statements: &[Stmt]) -> Result<(), String> {
+    pub fn declare_globals(&mut self, statements: Vec<Stmt>) -> Result<(), String> {
         for stmt in statements {
             match stmt {
-                Stmt::Impl { target, items, .. } => {
-                    self.handle_impl_block(target, items)?;
-                }
-
-                Stmt::Struct { path, fields, .. } => {
-                    self.handle_struct_def(path, fields.to_owned())?;
-                }
-
-                Stmt::Enum { name, variants, .. } => {
-                    self.handle_enum_def(name, variants.to_owned())?;
-                }
-
-                Stmt::MacroDefinition { name, tokens, .. } => {
-                    self.handle_macro_definition(name, tokens)?;
-                }
-
                 Stmt::Module { name, body, .. } => {
-                    self.env.scope_resolver.declare_module(name)?;
+                    self.env.scope_resolver.declare_module(&name)?;
                     self.env.enter_scope();
                     self.declare_globals(body)?;
                     self.env.exit_scope();
@@ -166,10 +104,10 @@ impl<'st> Interpreter<'st> {
                 Stmt::Const {
                     name, initializer, type_annotation, ..
                 } => {
-                    let value = self.evaluate_expression(initializer)?;
+                    let value = self.evaluate_expression(&initializer)?;
                     let value = self.perform_cast(value.clone(), type_annotation.as_ref().expect("expected op level types")).unwrap_or(value);
 
-                    self.env.scope_resolver.declare_variable(name, false);
+                    self.env.scope_resolver.declare_variable(&name, false);
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
@@ -178,10 +116,10 @@ impl<'st> Interpreter<'st> {
                 Stmt::Static {
                     name, initializer, type_annotation, ..
                 } => {
-                    let value = self.evaluate_expression(initializer)?;
+                    let value = self.evaluate_expression(&initializer)?;
                     let value = self.perform_cast(value.clone(), type_annotation.as_ref().expect("expected op level types")).unwrap_or(value);
 
-                    self.env.scope_resolver.declare_variable(name, false);
+                    self.env.scope_resolver.declare_variable(&name, false);
                     if let Some(scope) = self.env.scopes.first_mut() {
                         scope.insert(name.clone(), value);
                     }
@@ -193,7 +131,7 @@ impl<'st> Interpreter<'st> {
         Ok(())
     }
 
-    fn execute_statement(&mut self, stmt: &Stmt) -> Result<Value, String> {
+    pub fn execute_statement(&mut self, stmt: &Stmt) -> Result<Value, String> {
         match stmt {
             Stmt::ExpressionValue(expr) => self.evaluate_expression(expr),
 
@@ -219,9 +157,19 @@ impl<'st> Interpreter<'st> {
                 Ok(res.into_return())
             }
 
+            Stmt::MacroDefinition { name, tokens, .. } => {
+                self.handle_macro_definition(name, tokens)?;
+                Ok(ValueEnum::unit())
+            }
+
             Stmt::Break(label, value) => {
                 let break_value = if let Some(expr) = value { Some(self.evaluate_expression(expr)?) } else { None };
                 Ok(val!(ValueType::Break(label.clone(), break_value)))
+            }
+
+            Stmt::Impl { target, items, .. } => {
+                self.handle_impl_block(target, items)?;
+                Ok(ValueEnum::unit())
             }
 
             Stmt::Struct { path, fields, .. } => {
@@ -231,11 +179,6 @@ impl<'st> Interpreter<'st> {
 
             Stmt::Enum { name, variants, .. } => {
                 self.handle_enum_def(name, variants.to_owned())?;
-                Ok(ValueEnum::unit())
-            }
-
-            Stmt::MacroDefinition { name, tokens, .. } => {
-                self.handle_macro_definition(name, tokens)?;
                 Ok(ValueEnum::unit())
             }
 
@@ -276,56 +219,11 @@ impl<'st> Interpreter<'st> {
 
             attr @ Stmt::Let { .. } => self.parse_let_statement(attr),
 
-            Stmt::Function { name, params, body, return_type, .. } => {
-                if name == "main" {
-                    if !params.is_empty() {
-                        return Err("main function cannot have parameters".into());
-                    }
+            fnc @ Stmt::Function { .. } => {
+                unbind! { Stmt::Function { name, visibility, params, return_type, body, .. } = fnc }
+                self.handle_function_declaration(name, params.clone(), body.clone(), return_type, *visibility)?;
 
-                    if let Some(ret_type) = return_type {
-                        match ret_type {
-                            Type::Path(path)
-                                if matches! { path.segments.as_slice(),
-                                    [seg] if seg.ident == "i32" && seg.generics.is_empty()
-                                } => {}
-
-                            Type::Path(path)
-                                if matches! { path.segments.as_slice(),
-                                    [seg] if seg.ident == "Result" && seg.generics.len() == 2
-                                } => {}
-
-                            _ => return Err("main function can only return i32, Result<T, E>, or nothing".into()),
-                        }
-                    }
-                }
-
-                self.env.scope_resolver.declare_function(name)?;
-                self.env.enter_function_scope();
-
-                for (pat, ty) in params {
-                    if let Pattern::Identifier { name, mutable } = pat {
-                        match &ty {
-                            Type::Reference { mutable: ref_mutable, .. } => {
-                                self.env.scope_resolver.declare_reference(name, *ref_mutable);
-                            }
-                            _ => {
-                                self.env.scope_resolver.declare_variable(name, *mutable);
-                            }
-                        }
-                    }
-                }
-                let result = self.execute(body)?;
-
-                let return_val = {
-                    let borrowed = result.borrow();
-                    match borrowed.inner() {
-                        ValueType::Return(val) => val.clone(),
-                        _ => result.clone(),
-                    }
-                };
-
-                self.env.exit_function_scope();
-                Ok(return_val)
+                Ok(ValueEnum::unit())
             }
 
             _ => Ok(ValueEnum::unit()),
@@ -397,6 +295,8 @@ impl<'st> Interpreter<'st> {
             Expr::While { label, condition, body } => self.handle_while(label, condition, body),
 
             Expr::For { label, pattern, iterable, body } => self.handle_for(label, pattern, iterable, body),
+
+            Expr::Closure { params, body, .. } => self.evaluate_closure(params, body),
 
             Expr::Range { start, end, inclusive } => {
                 let start_val = match start {
@@ -1467,7 +1367,7 @@ impl<'st> Interpreter<'st> {
                             if let Some(method_fn) = methods.get(method_name) {
                                 let function = method_fn.clone();
 
-                                let mut evaluated_args = Vec::new();
+                                let mut evaluated_args = Vec::with_capacity(arguments.len());
                                 for arg in arguments {
                                     evaluated_args.push(self.evaluate_expression(arg)?);
                                 }
@@ -1508,93 +1408,57 @@ impl<'st> Interpreter<'st> {
                     }
 
                     Expr::Identifier(name) => {
+                        type Arguments = Result<Vec<Value>, String>;
+
                         if name == "main" {
                             return Err("main function cannot be called directly".to_string());
                         }
 
-                        let evaluated_args: Result<Vec<Value>, String> = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect();
-                        let arg_values = evaluated_args?;
+                        let function_value = self.evaluate_expression(&Expr::Identifier(name.clone()))?;
+                        let arg_values = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect::<Arguments>()?;
 
-                        let (params, body) = if let Some(Stmt::Function { params, body, .. }) = self.fnc.get(name) {
-                            (params.clone(), body.clone())
-                        } else {
-                            let callable = self.evaluate_expression(function)?;
-                            let callable_type = callable.borrow().inner();
+                        match function_value.borrow().inner() {
+                            ValueType::Function(_) => self.call_function(function_value.clone(), arg_values),
 
-                            return match callable_type {
-                                ValueType::StructDef { name, fields, .. } => {
-                                    if !fields.keys().all(|k| k.parse::<usize>().is_ok()) {
-                                        return Err(format!("Regular struct '{name}' cannot be initialized with function-call syntax, use '{{...}}' syntax instead",));
-                                    }
-
-                                    if arguments.len() != fields.len() {
-                                        return Err(format!("Expected {} arguments for tuple struct '{name}', got {}", fields.len(), arguments.len()));
-                                    }
-
-                                    let mut field_values = HashMap::new();
-                                    let mut sorted_fields: Vec<_> = fields.iter().collect();
-
-                                    sorted_fields.sort_by_key(|(k, _)| k.parse::<usize>().unwrap());
-
-                                    for ((index, _), arg) in sorted_fields.iter().zip(arguments.iter()) {
-                                        let arg_value = self.evaluate_expression(arg)?;
-                                        field_values.insert(index.to_string(), arg_value);
-                                    }
-
-                                    Ok(val!(ValueType::Struct { name, fields: field_values }))
+                            ValueType::StructDef { name, fields, .. } => {
+                                if !fields.keys().all(|k| k.parse::<usize>().is_ok()) {
+                                    return Err(format!("Regular struct '{name}' cannot be initialized with function-call syntax, use '{{...}}' syntax instead"));
                                 }
 
-                                ValueType::EnumConstructor { enum_name, variant_name, fields } => self.handle_enum_constructor_call(arguments, enum_name, variant_name, fields),
-
-                                ValueType::EnumStructConstructor { enum_name, variant_name, fields } => self.handle_enum_struct_call(arguments, enum_name, variant_name, fields),
-
-                                _ => return Err(format!("Function '{}' not found", name)),
-                            };
-                        };
-
-                        if arg_values.len() != params.len() {
-                            return Err(format!("Function '{}' expects {} arguments but got {}", name, params.len(), arg_values.len()));
-                        }
-
-                        self.env.enter_function_scope();
-
-                        for ((param, param_type), value) in params.iter().zip(arg_values) {
-                            if let Pattern::Identifier { name, .. } = param {
-                                match param_type {
-                                    Type::Reference { mutable: ref_mutable, .. } => {
-                                        self.env.scope_resolver.declare_reference(name, *ref_mutable);
-
-                                        if *ref_mutable && !value.borrow().is_mutable() {
-                                            return Err("Cannot pass immutable reference as mutable".to_string());
-                                        }
-
-                                        if let Some(scope) = self.env.scopes.last_mut() {
-                                            if let Some(existing) = scope.get(name) {
-                                                *existing.borrow_mut() = value.borrow().clone();
-                                            } else {
-                                                scope.insert(name.to_string(), value.clone());
-                                            }
-                                        }
-                                    }
-
-                                    _ => {
-                                        self.env.scope_resolver.declare_variable(name, false);
-                                        if let Some(scope) = self.env.scopes.last_mut() {
-                                            if let Some(existing) = scope.get(name) {
-                                                *existing.borrow_mut() = value.borrow().clone().into_immutable();
-                                            } else {
-                                                scope.insert(name.to_string(), value.clone());
-                                            }
-                                        }
-                                    }
+                                if arguments.len() != fields.len() {
+                                    return Err(format!("Expected {} arguments for tuple struct '{name}', got {}", fields.len(), arguments.len()));
                                 }
+
+                                let mut field_values = HashMap::new();
+                                let mut sorted_fields: Vec<_> = fields.iter().collect();
+                                sorted_fields.sort_by_key(|(k, _)| k.parse::<usize>().unwrap());
+
+                                for ((index, _), arg_value) in sorted_fields.iter().zip(arg_values.iter()) {
+                                    field_values.insert(index.to_string(), arg_value.clone());
+                                }
+
+                                Ok(val!(ValueType::Struct {
+                                    name: name.clone(),
+                                    fields: field_values
+                                }))
                             }
+
+                            ValueType::EnumConstructor { enum_name, variant_name, fields } => {
+                                if arg_values.len() != fields.len() {
+                                    return Err(format!("Expected {} arguments for enum variant {}, got {}", fields.len(), variant_name, arg_values.len()));
+                                }
+
+                                Ok(val!(ValueType::Enum {
+                                    enum_type: enum_name.clone(),
+                                    variant: variant_name.clone(),
+                                    data: Some(arg_values),
+                                }))
+                            }
+
+                            ValueType::EnumStructConstructor { enum_name, variant_name, fields } => self.handle_enum_struct_call(arguments, enum_name.clone(), variant_name.clone(), fields.clone()),
+
+                            _ => Err(format!("'{}' is not a function or callable type", name)),
                         }
-
-                        let result = self.execute(&body);
-                        self.env.exit_function_scope();
-
-                        result
                     }
 
                     _ => Err(format!("Unsupported function call type: {:?}", function)),
@@ -1862,229 +1726,6 @@ impl<'st> Interpreter<'st> {
             }
 
             _ => Ok(ValueEnum::unit()),
-        }
-    }
-
-    fn pattern_matches(&mut self, pattern: &Pattern, value: &Value) -> Result<bool, String> {
-        match (pattern, value) {
-            (Pattern::Literal(expr), value) => {
-                let pattern_value = self.evaluate_expression(expr)?;
-
-                let pattern_inner = {
-                    let borrowed = pattern_value.borrow();
-                    borrowed.inner()
-                };
-
-                let value_inner = {
-                    let borrowed = value.borrow();
-                    borrowed.inner()
-                };
-
-                Ok(pattern_inner == value_inner)
-            }
-
-            (Pattern::Path(path), value) => {
-                if path.segments.len() != 2 {
-                    return Ok(false);
-                }
-
-                let enum_name = &path.segments[0].ident;
-                let variant_name = &path.segments[1].ident;
-
-                if self.env.get_variable(enum_name).is_none() {
-                    return Err(format!("Enum type '{}' not found in pattern matching", enum_name));
-                }
-
-                let enum_def = self.env.get_variable(enum_name).unwrap();
-                let valid_variant = match enum_def.borrow().inner() {
-                    ValueType::EnumDef { variants, .. } => variants.iter().any(|v| match v {
-                        EnumVariant::Simple(name) => name == variant_name,
-                        EnumVariant::Tuple(name, _) => name == variant_name,
-                        EnumVariant::Struct(name, _) => name == variant_name,
-                    }),
-                    _ => return Err(format!("'{}' is not an enum type", enum_name)),
-                };
-
-                if !valid_variant {
-                    return Err(format!("Enum '{}' does not have variant '{}'", enum_name, variant_name));
-                }
-
-                let inner_value = {
-                    let borrowed = value.borrow();
-                    borrowed.inner()
-                };
-
-                if let ValueType::Enum { variant, data, enum_type } = inner_value {
-                    Ok(*enum_name == enum_type && *variant_name == variant && data.as_ref().map_or(true, |v| v.is_empty()))
-                } else {
-                    Ok(false)
-                }
-            }
-
-            // simplify pattern matching in ast
-            (Pattern::TupleStruct { path, elements }, value) => {
-                let value_inner = value.borrow().inner();
-                if let ValueType::Enum { variant, data, enum_type } = value_inner {
-                    if path.segments.len() == 2 {
-                        if path.segments[0].ident == *enum_type && path.segments[1].ident == *variant {
-                            match data {
-                                Some(values) if elements.len() == values.len() => {
-                                    for (element, val) in elements.iter().zip(values.iter()) {
-                                        if !self.pattern_matches(element, val)? {
-                                            return Ok(false);
-                                        }
-                                    }
-                                    Ok(true)
-                                }
-                                None if elements.is_empty() => Ok(true),
-                                _ => Ok(false),
-                            }
-                        } else {
-                            Ok(false)
-                        }
-                    } else if path.segments.len() == 1 {
-                        if path.segments[0].ident == variant {
-                            match data {
-                                Some(values) if elements.len() == values.len() => {
-                                    for (element, val) in elements.iter().zip(values.iter()) {
-                                        if !self.pattern_matches(element, val)? {
-                                            return Ok(false);
-                                        }
-                                    }
-                                    Ok(true)
-                                }
-                                None if elements.is_empty() => Ok(true),
-                                _ => Ok(false),
-                            }
-                        } else {
-                            Ok(false)
-                        }
-                    } else {
-                        Ok(false)
-                    }
-                } else {
-                    Ok(false)
-                }
-            }
-
-            (Pattern::Tuple(elements), value) => {
-                let inner_value = {
-                    let borrowed = value.borrow();
-                    borrowed.inner()
-                };
-
-                match inner_value {
-                    ValueType::Tuple(values) => {
-                        if elements.len() == values.len() {
-                            for (element, field_val) in elements.iter().zip(values.iter()) {
-                                if !self.pattern_matches(element, field_val)? {
-                                    return Ok(false);
-                                }
-                            }
-                            Ok(true)
-                        } else {
-                            Ok(false)
-                        }
-                    }
-                    ValueType::Enum { data: Some(values), .. } => {
-                        if elements.len() == values.len() {
-                            for (element, field_val) in elements.iter().zip(values.iter()) {
-                                if !self.pattern_matches(element, field_val)? {
-                                    return Ok(false);
-                                }
-                            }
-                            Ok(true)
-                        } else {
-                            Ok(false)
-                        }
-                    }
-                    _ => Ok(false),
-                }
-            }
-
-            (Pattern::Struct { path, fields, rest }, value) => {
-                let value_inner = {
-                    let borrowed = value.borrow();
-                    borrowed.inner()
-                };
-
-                match value_inner {
-                    ValueType::Struct { name, fields: value_fields, .. } => {
-                        if path.segments.last().unwrap().ident != *name {
-                            return Ok(false);
-                        }
-
-                        for (field_name, field_pattern) in fields {
-                            if let Some(field_value) = value_fields.get(field_name) {
-                                if !self.pattern_matches(field_pattern, field_value)? {
-                                    return Ok(false);
-                                }
-                            } else if !rest {
-                                return Ok(false);
-                            }
-                        }
-
-                        Ok(true)
-                    }
-                    ValueType::Reference { original_ptr, .. } => {
-                        if original_ptr.is_null() {
-                            return Ok(false);
-                        }
-
-                        unsafe {
-                            let rc = Rc::from_raw(original_ptr);
-                            let result = self.pattern_matches(pattern, &rc.clone());
-                            std::mem::forget(rc);
-                            result
-                        }
-                    }
-                    _ => Ok(false),
-                }
-            }
-
-            (Pattern::Reference { mutable, pattern }, value) => {
-                let inner_value = {
-                    let borrowed = value.borrow();
-                    borrowed.inner()
-                };
-
-                match inner_value {
-                    ValueType::Reference { original_ptr, .. } => {
-                        if *mutable && !value.borrow().is_mutable() {
-                            return Ok(false);
-                        }
-                        if original_ptr.is_null() {
-                            Ok(false)
-                        } else {
-                            unsafe { self.pattern_matches(pattern, &Rc::from_raw(original_ptr)) }
-                        }
-                    }
-                    _ => self.pattern_matches(pattern, value),
-                }
-            }
-
-            (Pattern::Or(patterns), value) => {
-                for pattern in patterns {
-                    if self.pattern_matches(pattern, value)? {
-                        return Ok(true);
-                    }
-                }
-                Ok(false)
-            }
-
-            (Pattern::Identifier { name, mutable }, value) => {
-                self.env.scope_resolver.declare_variable(name, *mutable);
-                self.env.set_variable(name, value.clone())?;
-                Ok(true)
-            }
-
-            (Pattern::BindingPattern { name, mutable, subpattern }, value) => {
-                self.env.scope_resolver.declare_variable(name, *mutable);
-                self.env.set_variable(name, value.clone())?;
-                self.pattern_matches(subpattern, value)
-            }
-
-            (Pattern::Wildcard, _) => Ok(true),
         }
     }
 

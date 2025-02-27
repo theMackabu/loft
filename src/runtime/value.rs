@@ -2,7 +2,7 @@ mod bool;
 mod clone;
 mod display;
 
-use crate::parser::ast::{EnumVariant, Function, Type};
+use crate::parser::ast::*;
 use std::{borrow::Cow, cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 pub type Cell = RefCell<ValueEnum>;
@@ -16,7 +16,20 @@ pub enum ValueEnum {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct FunctionData {
+    pub name: Option<String>,
+    pub params: Vec<(Pattern, Type)>,
+    pub body: Vec<Stmt>,
+    pub return_type: Option<Type>,
+    pub captures: Option<HashMap<String, Value>>,
+    pub is_method: bool,
+    pub visibility: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ValueType {
+    Function(Rc<FunctionData>),
+
     I8(i8),
     I16(i16),
     I32(i32),
@@ -227,6 +240,8 @@ impl ValueEnum {
 
     pub fn kind(&self) -> String {
         match self.inner() {
+            ValueType::Function(_) => String::from("function"),
+
             ValueType::I8(_) => String::from("i8"),
             ValueType::I16(_) => String::from("i16"),
             ValueType::I32(_) => String::from("i32"),

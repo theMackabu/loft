@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     pub fn handle_loop(&mut self, label: &Option<String>, body: &Expr) -> Result<Value, String> {
         loop {
             match self.evaluate_expression(body)? {
@@ -58,7 +58,7 @@ impl<'st> Interpreter<'st> {
                 WhileCondition::Let(pattern, expr) => {
                     let value = self.evaluate_expression(expr)?;
                     self.env.enter_scope();
-                    match self.match_pattern(pattern, &value, true) {
+                    match self.declare_pattern(pattern, None, &value, true) {
                         Ok(_) => true,
                         Err(_) => {
                             self.env.exit_scope();
@@ -138,7 +138,7 @@ impl<'st> Interpreter<'st> {
             ValueType::Array { ref el, .. } => {
                 for item in el {
                     self.env.enter_scope();
-                    self.match_pattern(pattern, item, true)?;
+                    self.declare_pattern(pattern, None, item, true)?;
 
                     match self.evaluate_expression(body)? {
                         break_value if matches!(break_value.borrow().inner(), ValueType::Return(_)) => {
@@ -203,7 +203,7 @@ impl<'st> Interpreter<'st> {
                                 let mut i = 0;
                                 loop {
                                     self.env.enter_scope();
-                                    self.match_pattern(pattern, &val!(ValueType::$variant(s + i)), true)?;
+                                    self.declare_pattern(pattern, None, &val!(ValueType::$variant(s + i)), true)?;
                                     match self.evaluate_expression(body)? {
                                         break_value if matches!(break_value.borrow().inner(), ValueType::Return(_)) => {
                                             self.env.exit_scope();
@@ -262,7 +262,7 @@ impl<'st> Interpreter<'st> {
                             Some(e) => {
                                 for i in s..if inclusive { e + 1 } else { e } {
                                     self.env.enter_scope();
-                                    self.match_pattern(pattern, &val!(ValueType::$variant(i)), true)?;
+                                    self.declare_pattern(pattern, None, &val!(ValueType::$variant(i)), true)?;
                                     match self.evaluate_expression(body)? {
                                         break_value if matches!(break_value.borrow().inner(), ValueType::Return(_)) => {
                                             self.env.exit_scope();

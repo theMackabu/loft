@@ -1,10 +1,24 @@
 use super::*;
 
+fn is_string_value(value: &Value) -> bool {
+    let borrowed = value.borrow();
+    match borrowed.inner() {
+        ValueType::Str(_) => true,
+        ValueType::Reference { original_ptr, .. } if !original_ptr.is_null() => unsafe {
+            let ref_borrowed = (*original_ptr).borrow();
+            matches!(ref_borrowed.inner(), ValueType::Str(_))
+        },
+        _ => false,
+    }
+}
+
 impl fmt::Display for ValueEnum {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value_type = self.inner();
 
         match value_type {
+            ValueType::Function(func) => write!(f, "{:?}", func.name),
+
             ValueType::Str(v) => write!(f, "{}", String::from_utf8_lossy(&v)),
 
             ValueType::I8(v) => write!(f, "{v}"),
@@ -63,18 +77,6 @@ impl fmt::Display for ValueEnum {
 
             ValueType::EnumStructConstructor { enum_name, variant_name, .. } => write!(f, "<struct-constructor {}::{}>", enum_name, variant_name),
 
-            ValueType::Tuple(values) => {
-                write!(f, "(")?;
-                for (i, value) in values.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    // add quotes
-                    write!(f, "{}", value.borrow())?;
-                }
-                write!(f, ")")
-            }
-
             ValueType::FieldRef { base, chain, .. } => {
                 if self.is_mutable() {
                     write!(f, "&mut ")?;
@@ -96,47 +98,19 @@ impl fmt::Display for ValueEnum {
                 }
             }
 
-            ValueType::Struct { name, fields } => {
-                if fields.keys().all(|k| k.parse::<usize>().is_ok()) {
-                    let mut sorted_fields: Vec<_> = fields.iter().collect();
-                    sorted_fields.sort_by_key(|(k, _)| k.parse::<usize>().unwrap());
-
-                    write!(f, "{name}(")?;
-                    for (i, (_, value)) in sorted_fields.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
+            ValueType::Tuple(values) => {
+                write!(f, "(")?;
+                for (i, value) in values.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    if is_string_value(value) {
+                        write!(f, "\"{}\"", value.borrow())?;
+                    } else {
                         write!(f, "{}", value.borrow())?;
                     }
-                    write!(f, ")")
-                } else {
-                    write!(f, "{name} {{ ")?;
-                    for (i, (field_name, value)) in fields.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
-                        // add quotes
-                        write!(f, "{}: {}", field_name, value.borrow())?;
-                    }
-                    write!(f, " }}")
                 }
-            }
-
-            ValueType::Enum { variant, data, .. } => {
-                write!(f, "{variant}")?;
-                if let Some(values) = data {
-                    write!(f, "(")?;
-                    for (i, value) in values.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
-                        // add quotes
-                        write!(f, "{}", value.borrow())?;
-                    }
-                    write!(f, ")")
-                } else {
-                    Ok(())
-                }
+                write!(f, ")")
             }
 
             ValueType::Array { el, .. } => {
@@ -145,8 +119,11 @@ impl fmt::Display for ValueEnum {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    // add quotes
-                    write!(f, "{}", value.borrow())?;
+                    if is_string_value(value) {
+                        write!(f, "\"{}\"", value.borrow())?;
+                    } else {
+                        write!(f, "{}", value.borrow())?;
+                    }
                 }
                 write!(f, "]")
             }
@@ -157,10 +134,66 @@ impl fmt::Display for ValueEnum {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    // add quotes
-                    write!(f, "{}", value.borrow())?;
+                    if is_string_value(value) {
+                        write!(f, "\"{}\"", value.borrow())?;
+                    } else {
+                        write!(f, "{}", value.borrow())?;
+                    }
                 }
                 write!(f, "]")
+            }
+
+            ValueType::Enum { variant, data, .. } => {
+                write!(f, "{variant}")?;
+                if let Some(values) = data {
+                    write!(f, "(")?;
+                    for (i, value) in values.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        if is_string_value(value) {
+                            write!(f, "\"{}\"", value.borrow())?;
+                        } else {
+                            write!(f, "{}", value.borrow())?;
+                        }
+                    }
+                    write!(f, ")")
+                } else {
+                    Ok(())
+                }
+            }
+
+            ValueType::Struct { name, fields } => {
+                if fields.keys().all(|k| k.parse::<usize>().is_ok()) {
+                    let mut sorted_fields: Vec<_> = fields.iter().collect();
+                    sorted_fields.sort_by_key(|(k, _)| k.parse::<usize>().unwrap());
+
+                    write!(f, "{name}(")?;
+                    for (i, (_, value)) in sorted_fields.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        if is_string_value(value) {
+                            write!(f, "\"{}\"", value.borrow())?;
+                        } else {
+                            write!(f, "{}", value.borrow())?;
+                        }
+                    }
+                    write!(f, ")")
+                } else {
+                    write!(f, "{name} {{ ")?;
+                    for (i, (field_name, value)) in fields.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        if is_string_value(value) {
+                            write!(f, "{}: \"{}\"", field_name, value.borrow())?;
+                        } else {
+                            write!(f, "{}: {}", field_name, value.borrow())?;
+                        }
+                    }
+                    write!(f, " }}")
+                }
             }
         }
     }

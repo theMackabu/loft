@@ -122,12 +122,12 @@ pub struct TokenInfo {
 #[derive(Clone)]
 pub struct Lexer {
     input: Vec<char>,
-    position: usize,
     current_char: Option<char>,
+    token_buffer: Vec<TokenInfo>,
 
-    // error info
     line: usize,
     column: usize,
+    position: usize,
 }
 
 impl Lexer {
@@ -137,10 +137,12 @@ impl Lexer {
 
         Self {
             input: chars,
-            position: 0,
             current_char: current,
+            token_buffer: Vec::new(),
+
             line: 1,
             column: 1,
+            position: 0,
         }
     }
 
@@ -421,6 +423,10 @@ impl Lexer {
     }
 
     pub fn next_token(&mut self) -> TokenInfo {
+        if let Some(token) = self.token_buffer.pop() {
+            return token;
+        }
+
         self.skip_whitespace_and_comments();
 
         let location = Location { line: self.line, column: self.column };
@@ -637,7 +643,11 @@ impl Lexer {
                     self.advance();
                     if self.current_char == Some('|') {
                         self.advance();
-                        Token::Or
+                        self.token_buffer.push(TokenInfo {
+                            token: Token::BitOr,
+                            location: location.clone(),
+                        });
+                        Token::BitOr
                     } else if self.current_char == Some('=') {
                         self.advance();
                         Token::BitOrAssign

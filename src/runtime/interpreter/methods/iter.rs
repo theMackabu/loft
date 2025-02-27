@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     pub(crate) fn handle_range_method_call(&mut self, handle: Method, range: ValueType) -> Result<Value, String> {
         let Method { object, args, call } = handle;
         unbind! { ValueType::Range { start, end, inclusive } = range }

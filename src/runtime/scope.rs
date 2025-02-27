@@ -2,7 +2,7 @@ use crate::parser::ast::{self, Expr, Stmt};
 use crate::util::extract_identifier_info;
 use std::collections::HashMap;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DeclKind {
     Enum,
     Variable,
@@ -11,11 +11,12 @@ pub enum DeclKind {
     Reference { mutable: bool },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SymbolInfo {
     pub name: String,
     pub kind: DeclKind,
     pub mutable: bool,
+    pub is_function: bool,
     pub initialized: bool,
 }
 
@@ -25,6 +26,7 @@ pub enum BindingKind {
     Reference(bool),
 }
 
+#[derive(Debug)]
 pub struct Scope {
     scopes: Vec<HashMap<String, SymbolInfo>>,
     function_boundaries: Vec<usize>,
@@ -54,11 +56,9 @@ impl Scope {
         self.function_boundaries.pop();
     }
 
-    pub fn resolve_program(&self, statements: &[Stmt]) -> Result<(), String> {
-        let mut env = Self::new();
-
+    pub fn resolve_program(&mut self, statements: &[Stmt]) -> Result<(), String> {
         for stmt in statements {
-            resolve_stmt(stmt, &mut env)?;
+            resolve_stmt(stmt, self)?;
         }
 
         Ok(())
@@ -72,6 +72,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Variable,
                     mutable,
+                    is_function: false,
                     initialized: false,
                 },
             );
@@ -86,6 +87,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Reference { mutable },
                     mutable,
+                    is_function: false,
                     initialized: false,
                 },
             );
@@ -104,6 +106,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Enum,
                     mutable: false,
+                    is_function: false,
                     initialized: true,
                 },
             );
@@ -125,6 +128,7 @@ impl Scope {
                     name: name.to_owned(),
                     kind: DeclKind::Variable,
                     mutable,
+                    is_function: false,
                     initialized: false,
                 },
             );
@@ -144,9 +148,10 @@ impl Scope {
             current.insert(
                 name.to_owned(),
                 SymbolInfo {
-                    mutable: false,
                     name: name.to_owned(),
                     kind: DeclKind::Function,
+                    mutable: false,
+                    is_function: true,
                     initialized: true,
                 },
             );
@@ -164,9 +169,10 @@ impl Scope {
             current.insert(
                 name.to_owned(),
                 SymbolInfo {
-                    mutable: false,
                     name: name.to_owned(),
                     kind: DeclKind::Module,
+                    mutable: false,
+                    is_function: false,
                     initialized: true,
                 },
             );
@@ -290,9 +296,7 @@ fn resolve_stmt(stmt: &Stmt, env: &mut Scope) -> Result<(), String> {
             Ok(())
         }
 
-        Enum { name, variants, .. } => {
-            env.declare_enum(name)?;
-
+        Enum { variants, .. } => {
             for variant in variants {
                 match variant {
                     EnumVariant::Simple(var_name) => {

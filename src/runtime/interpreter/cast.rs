@@ -1,7 +1,7 @@
 use super::*;
 use std::mem;
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     // over time implement more casts
     pub fn perform_cast(&mut self, value: Value, target_type: &Type) -> Result<Value, String> {
         match target_type {

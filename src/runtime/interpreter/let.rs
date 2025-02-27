@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     #[inline]
     pub(crate) fn parse_let_statement(&mut self, attr: &Stmt) -> Result<Value, String> {
         unbind! { Stmt::Let { pattern, initializer, type_annotation, .. } = attr }

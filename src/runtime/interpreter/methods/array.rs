@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     pub(crate) fn handle_array_method_call(&mut self, handle: Method, element_type: &ValueType, elements: &[Value], length: usize) -> Result<Value, String> {
         let Method { object, args, call } = handle;
 

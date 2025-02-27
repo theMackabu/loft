@@ -34,6 +34,8 @@ fn main() {
       _ => "positive"
    };
    
+   success.unwrap();
+   
    test_eq!(result, 42);
    test_eq!(error_msg, "error message",);
    test_eq!(opt_value, 123);

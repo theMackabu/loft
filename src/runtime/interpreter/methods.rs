@@ -15,7 +15,7 @@ impl<'st> Method<'st> {
     fn new(object: Value, call: &'st str, args: &[Expr]) -> Self { Self { object, call, args: args.to_vec() } }
 }
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     pub fn evaluate_method_call(&mut self, object: Value, method: &str, args: &[Expr]) -> Result<Value, String> {
         match method {
             "clone" => {
@@ -126,6 +126,7 @@ impl<'st> Interpreter<'st> {
         let handle = Method::new(object, method, args);
 
         match value_type {
+            // add numerical methods
             ValueType::Str(val) => self.handle_str_method_call(handle, val),
 
             ValueType::Array { ref ty, ref el, len } => self.handle_array_method_call(handle, ty, el, len),

@@ -1,7 +1,7 @@
 use super::{methods::Method, *};
 use std::{cell::RefCell, rc::Rc};
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     pub fn extract_field_chain(&self, expr: &Expr) -> Result<(String, Vec<String>), String> {
         match expr {
             Expr::Identifier(name) => Ok((name.clone(), vec![])),

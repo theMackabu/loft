@@ -3,6 +3,8 @@ use super::*;
 impl ValueType {
     pub fn deep_clone(&self) -> ValueType {
         match self {
+            ValueType::Function(func) => ValueType::Function(func.clone()),
+
             ValueType::I8(v) => ValueType::I8(*v),
             ValueType::I16(v) => ValueType::I16(*v),
             ValueType::I32(v) => ValueType::I32(*v),

@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'st> Interpreter<'st> {
+impl<'st> Interpreter {
     pub fn handle_enum_def(&mut self, name: &str, variants: Vec<EnumVariant>) -> Result<(), String> {
         let enum_def = val!(mut ValueType::EnumDef {
             name: name.to_string(),
