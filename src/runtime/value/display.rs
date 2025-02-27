@@ -77,6 +77,19 @@ impl fmt::Display for ValueEnum {
 
             ValueType::EnumStructConstructor { enum_name, variant_name, .. } => write!(f, "<struct-constructor {}::{}>", enum_name, variant_name),
 
+            ValueType::TailCall { function, arguments } => {
+                write!(f, "tail_call(")?;
+                write!(f, "{}", function.borrow())?;
+                write!(f, ", [")?;
+                for (i, arg) in arguments.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg.borrow())?;
+                }
+                write!(f, "])")
+            }
+
             ValueType::FieldRef { base, chain, .. } => {
                 if self.is_mutable() {
                     write!(f, "&mut ")?;

@@ -20,4 +20,3 @@ lto = true
 codegen-units = 1
 
 [dependencies]
-# macros-rs = "1.4.1"

@@ -36,6 +36,11 @@ impl ValueType {
 
             ValueType::Break(b, v) => ValueType::Break(b.clone(), v.clone()),
 
+            ValueType::TailCall { function, arguments } => ValueType::TailCall {
+                function: function.clone(),
+                arguments: arguments.iter().map(|arg| arg.borrow().deep_clone()).collect(),
+            },
+
             ValueType::Struct { name, fields } => {
                 let cloned_fields = fields.iter().map(|(k, v)| (k.clone(), v.borrow().deep_clone())).collect();
                 ValueType::Struct {

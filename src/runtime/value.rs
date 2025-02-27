@@ -56,6 +56,11 @@ pub enum ValueType {
     Continue(Option<String>),
     Break(Option<String>, Option<Value>),
 
+    TailCall {
+        function: Value,
+        arguments: Vec<Value>,
+    },
+
     Range {
         start: Value,
         end: Value,
@@ -241,6 +246,7 @@ impl ValueEnum {
     pub fn kind(&self) -> String {
         match self.inner() {
             ValueType::Function(_) => String::from("function"),
+            ValueType::TailCall { .. } => String::from("tail_call"),
 
             ValueType::I8(_) => String::from("i8"),
             ValueType::I16(_) => String::from("i16"),

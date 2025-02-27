@@ -58,6 +58,7 @@ impl ValueType {
             ValueType::Function(_) => Ok(true),
 
             ValueType::Reference { _undropped, .. } => _undropped.borrow().inner().to_bool(),
+            ValueType::TailCall { .. } => Err("Cannot convert tail call to boolean".to_string()),
 
             _ => Err(format!("Cannot convert value to boolean")),
         }
