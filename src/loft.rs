@@ -39,6 +39,7 @@ fn run() -> Result<()> {
     runtime.declare_globals(ast).map_err(|err| Error::RuntimeError(err))?;
     runtime.env.scope_resolver.resolve_program(&runtime.program).map_err(|err| Error::RuntimeError(err))?;
 
+    // stacker::maybe_grow(16 * 1024 * 1024, 128 * 1024 * 1024, || {
     let result = runtime.execute_program().map_err(|err| Error::RuntimeError(err.to_string()))?;
     let borrowed = result.borrow().clone();
 
@@ -48,6 +49,7 @@ fn run() -> Result<()> {
 
         _ => Err(Error::UnexpectedReturnValue(borrowed)),
     }
+    // })
 }
 
 fn main() {
