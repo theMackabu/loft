@@ -778,6 +778,14 @@ impl Parser {
         }
         self.expect(Token::RightBrace)?; // consume '}'
 
+        if let Some(last_stmt) = body.last() {
+            if let Stmt::ExpressionValue(_) = last_stmt {
+                if let Some(Stmt::ExpressionValue(expr)) = body.pop() {
+                    body.push(Stmt::Return(Some(expr)));
+                }
+            }
+        }
+
         Ok(Stmt::Function {
             name,
             visibility,

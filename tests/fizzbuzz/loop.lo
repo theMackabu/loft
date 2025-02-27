@@ -8,7 +8,7 @@ fn fizz_buzz(i: i32) -> Option<str> {
 fn main() {
    println!("\nloop");
    
-   for i in 1..=30 {
+   for i in 1..=30 {      
       match fizz_buzz(i) {
          Some(v) => println!("{v}"),
          None => println!("{i}"),

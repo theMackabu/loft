@@ -43,7 +43,19 @@ impl<'st> Interpreter {
         }
 
         if let Some(main_func) = self.env.get_variable("main") {
-            let result = self.call_function(main_func.clone(), Vec::new())?;
+            let mut result = self.call_function(main_func.clone(), Vec::new())?;
+
+            loop {
+                let inner = {
+                    let borrowed = result.borrow();
+                    borrowed.inner().clone()
+                };
+                if let ValueType::TailCall { function, arguments } = inner {
+                    result = self.call_function(function.clone(), arguments)?;
+                } else {
+                    break;
+                }
+            }
 
             let result_inner = {
                 let borrowed = result.borrow();
@@ -84,6 +96,8 @@ impl<'st> Interpreter {
             ValueType::Function(data) => (*data).clone(),
             _ => return Err("Not a function".to_string()),
         };
+
+        self.fnc_name = function_data.name.clone();
 
         if function_data.name.clone().unwrap_or_default() == "main" && !function_data.params.is_empty() {
             return Err("main() cannot have parameters".into());
@@ -131,8 +145,34 @@ impl<'st> Interpreter {
                 continue;
             }
 
+            let is_tail = frame.ip == frame.function_data.body.len() - 1;
             let stmt = frame.function_data.body[frame.ip].clone();
             frame.ip += 1;
+
+            if is_tail {
+                if let Stmt::ExpressionStmt(expr_box) = stmt.clone() {
+                    if let Expr::Call { function, arguments } = expr_box {
+                        if let (Some(current_name), Expr::Identifier(called_name)) = (&frame.function_data.name, &*function) {
+                            if current_name == called_name {
+                                let func_val = self.evaluate_expression(&function)?;
+                                let mut arg_values = Vec::with_capacity(arguments.len());
+
+                                for arg in arguments {
+                                    arg_values.push(self.evaluate_expression(&arg)?);
+                                }
+
+                                frame.pending_result = Some(val!(ValueType::TailCall {
+                                    function: func_val,
+                                    arguments: arg_values,
+                                }));
+
+                                frame.ip = frame.function_data.body.len();
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
 
             let res = self.execute_statement(&stmt)?;
             let inner = res.borrow().inner().clone();
@@ -187,6 +227,8 @@ impl<'st> Interpreter {
                 }
             }
         }
+
+        self.fnc_name = None;
 
         Ok(final_result)
     }

@@ -39,15 +39,18 @@ type Macro = (MacroDelimiter, Vec<TokenInfo>, Vec<r#macro::MacroBranch>);
 pub struct Interpreter {
     pub env: Environment,
     pub program: Vec<Stmt>,
+
     mcs: HashMap<String, Macro>,
+    fnc_name: Option<String>,
 }
 
 impl<'st> Interpreter {
     pub fn new(ast: &Vec<Stmt>) -> Self {
         Self {
-            mcs: HashMap::new(),
-            program: ast.to_vec(),
             env: Environment::new(),
+            program: ast.to_vec(),
+            mcs: HashMap::new(),
+            fnc_name: None,
         }
     }
 
@@ -153,17 +156,30 @@ impl<'st> Interpreter {
                     if let Expr::Call { function, arguments } = expr {
                         let func_val = self.evaluate_expression(function)?;
 
+                        let is_self_call = if let ValueType::Function(ref func_data) = func_val.borrow().inner() {
+                            if let Some(current_name) = &self.fnc_name {
+                                if let Some(call_name) = &func_data.name { current_name == call_name } else { false }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
                         let mut arg_values = Vec::with_capacity(arguments.len());
                         for arg in arguments {
                             arg_values.push(self.evaluate_expression(arg)?);
                         }
 
-                        return Ok(val!(ValueType::TailCall {
-                            function: func_val,
-                            arguments: arg_values,
-                        }));
+                        if is_self_call {
+                            return Ok(val!(ValueType::TailCall {
+                                function: func_val,
+                                arguments: arg_values,
+                            }));
+                        } else {
+                            return self.call_function(func_val, arg_values);
+                        }
                     }
-
                     let value = self.evaluate_expression(expr)?;
                     return Ok(value.into_return());
                 } else {
@@ -401,16 +417,29 @@ impl<'st> Interpreter {
                 let result = if let Some(expr) = value {
                     if let Expr::Call { function, arguments } = expr.as_ref() {
                         let func_val = self.evaluate_expression(function)?;
-
                         let mut arg_values = Vec::with_capacity(arguments.len());
                         for arg in arguments {
                             arg_values.push(self.evaluate_expression(arg)?);
                         }
 
-                        val!(ValueType::TailCall {
-                            function: func_val,
-                            arguments: arg_values,
-                        })
+                        let is_self_call = if let ValueType::Function(ref func_data) = func_val.borrow().inner() {
+                            if let (Some(current_fn), Some(callee_fn)) = (self.fnc_name.as_ref(), func_data.name.as_ref()) {
+                                current_fn == callee_fn
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        if is_self_call {
+                            val!(ValueType::TailCall {
+                                function: func_val,
+                                arguments: arg_values,
+                            })
+                        } else {
+                            self.evaluate_expression(expr)?
+                        }
                     } else {
                         self.evaluate_expression(expr)?
                     }

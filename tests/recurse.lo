@@ -1,12 +1,12 @@
 fn recurse(n: i32) -> i32 {
    if n <= 0 {
       return 0;
-   } else {
-      println!("{n}");
-      return recurse(n - 1);
-   }
+   } 
+   
+   println!("{n}");
+   recurse(n - 1)
 }
 
-fn main() {
-   recurse(100);
+fn main() {   
+   recurse(20);
 }

@@ -109,7 +109,7 @@ impl<'st> Interpreter {
                 {
                     let new_elem_inner = new_element.borrow();
                     if !self.types_are_compatible(&new_elem_inner.inner(), &slice_element_type) {
-                        return Err("Type mismatch: cannot push element to slice".to_string());
+                        return Err(format!("Type mismatch: cannot push {new_elem_inner} to {slice_element_type:?}"));
                     }
                 }
 
