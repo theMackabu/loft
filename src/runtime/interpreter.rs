@@ -176,9 +176,13 @@ impl<'st> Interpreter {
                 Ok(ValueEnum::unit())
             }
 
-            Stmt::Break(label, value) => {
-                let break_value = if let Some(expr) = value { Some(self.evaluate_expression(expr)?) } else { None };
-                Ok(val!(ValueType::Break(label.clone(), break_value)))
+            Stmt::Break(label, Some(expr)) => {
+                let val = self.evaluate_expression(expr)?;
+                return Ok(val!(ValueType::Break(label.clone(), Some(val))));
+            }
+
+            Stmt::Break(_, None) => {
+                return Ok(val!(ValueType::Break(None, None)));
             }
 
             Stmt::Impl { target, items, .. } => {
@@ -382,16 +386,13 @@ impl<'st> Interpreter {
 
                 for stmt in statements {
                     let result = self.execute_statement(stmt)?;
-                    let is_return = { matches!(result.borrow().inner(), ValueType::Return(_)) };
+
+                    let is_return = matches!(
+                        result.borrow().inner(),
+                        ValueType::Return(_) | ValueType::TailCall { .. } | ValueType::Break(_, _) | ValueType::Continue(_)
+                    );
 
                     if is_return {
-                        self.env.exit_scope();
-                        return Ok(result);
-                    }
-
-                    let is_tail_call = { matches!(result.borrow().inner(), ValueType::TailCall { .. }) };
-
-                    if is_tail_call {
                         self.env.exit_scope();
                         return Ok(result);
                     }
@@ -416,6 +417,16 @@ impl<'st> Interpreter {
                 } else {
                     val!(ValueType::Unit)
                 };
+
+                let is_return = matches!(
+                    result.borrow().inner(),
+                    ValueType::Return(_) | ValueType::TailCall { .. } | ValueType::Break(_, _) | ValueType::Continue(_)
+                );
+
+                if is_return {
+                    self.env.exit_scope();
+                    return Ok(result);
+                }
 
                 self.env.exit_scope();
                 Ok(result)

@@ -1,3 +1,4 @@
+use super::stack::WorkQueue;
 use crate::parser::ast::{self, *};
 use crate::util::extract_identifier_info;
 use std::collections::HashMap;
@@ -230,420 +231,464 @@ impl Scope {
     }
 }
 
-pub fn resolve_ast_iteratively(statements: &[Stmt], env: &mut Scope) -> Result<(), String> {
-    let mut work_queue = super::stack::WorkQueue::new();
+fn resolve_ast_iteratively(statements: &[Stmt], env: &mut Scope) -> Result<(), String> {
+    let mut work_queue = WorkQueue::new();
 
     for stmt in statements {
         work_queue.enqueue(ResolutionTask::Stmt(stmt));
     }
 
+    Ok(process_local_queue(&mut work_queue, env)?)
+}
+
+fn process_local_queue<'a>(mut work_queue: &mut WorkQueue<ResolutionTask<'a>>, env: &mut Scope) -> Result<(), String> {
     while !work_queue.is_empty() {
         let task = work_queue.dequeue().unwrap();
-
         match task {
-            ResolutionTask::Stmt(stmt) => {
-                use ast::Stmt::*;
-                match stmt {
-                    Let { pattern, initializer, .. } => {
-                        if let Some(init_expr) = initializer {
-                            work_queue.enqueue(ResolutionTask::Expr(init_expr));
-                        }
+            ResolutionTask::Stmt(stmt) => process_stmt_local(stmt, env, &mut work_queue)?,
+            ResolutionTask::Expr(expr) => process_expr_local(expr, env, &mut work_queue)?,
+        }
+    }
+    Ok(())
+}
 
-                        let (init_is_ref, init_ref_mut) = if let Some(init_expr) = initializer {
-                            match &**init_expr {
-                                Expr::Reference { mutable, .. } => (true, *mutable),
-                                _ => (true, true),
-                            }
-                        } else {
-                            (false, false)
-                        };
-
-                        for (name, binding) in extract_identifier_info(pattern) {
-                            match binding {
-                                BindingKind::Variable(var_mut) => {
-                                    if init_is_ref {
-                                        env.declare_reference(&name, init_ref_mut);
-                                    } else {
-                                        env.declare_variable(&name, var_mut);
-                                    }
-                                }
-                                BindingKind::Reference(ref_mut) => {
-                                    env.declare_reference(&name, ref_mut);
-                                }
-                            }
-                            if initializer.is_some() {
-                                env.mark_as_initialized(&name)?;
-                            }
-                        }
-                    }
-
-                    Function { name, params, body, .. } => {
-                        env.declare_function(name)?;
-                        env.enter_scope();
-
-                        for (pat, ty) in params {
-                            for (param_name, binding) in extract_identifier_info(pat) {
-                                match binding {
-                                    BindingKind::Variable(ident_mutable) => match ty {
-                                        Type::Reference { mutable: ref_mutable, .. } => {
-                                            env.declare_reference(&param_name, *ref_mutable);
-                                        }
-                                        _ => env.declare_variable(&param_name, ident_mutable),
-                                    },
-
-                                    BindingKind::Reference(ident_mutable) => {
-                                        env.declare_reference(&param_name, ident_mutable);
-                                    }
-                                }
-                                env.mark_as_initialized(&param_name)?;
-                            }
-                        }
-
-                        for s in body {
-                            work_queue.enqueue(ResolutionTask::Stmt(s));
-                        }
-
-                        env.exit_scope();
-                    }
-
-                    Module { body, .. } => {
-                        env.enter_scope();
-                        for s in body {
-                            work_queue.enqueue(ResolutionTask::Stmt(s));
-                        }
-                        env.exit_scope();
-                    }
-
-                    Impl { items, .. } | TraitImpl { items, .. } => {
-                        env.enter_scope();
-                        for item in items {
-                            work_queue.enqueue(ResolutionTask::Stmt(item));
-                        }
-                        env.exit_scope();
-                    }
-
-                    Trait { items, .. } => {
-                        env.enter_scope();
-                        for item in items {
-                            work_queue.enqueue(ResolutionTask::Stmt(item));
-                        }
-                        env.exit_scope();
-                    }
-
-                    Enum { variants, .. } => {
-                        for variant in variants {
-                            match variant {
-                                EnumVariant::Simple(var_name) | EnumVariant::Tuple(var_name, _) | EnumVariant::Struct(var_name, _) => {
-                                    env.declare_variable(var_name, false);
-                                    env.mark_as_initialized(var_name)?;
-                                }
-                            }
-                        }
-                    }
-
-                    Struct { path, .. } => {
-                        if let Some(name) = path.segments.last().map(|seg| &seg.ident) {
-                            env.declare_variable(name, false);
-                            env.mark_as_initialized(name)?;
-                        }
-                    }
-
-                    Const { name, initializer, .. } | Static { name, initializer, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(initializer));
-                        env.declare_variable(name, false);
-                        env.mark_as_initialized(name)?;
-                    }
-
-                    Use { path, alias, .. } => {
-                        let name = match (path, alias) {
-                            (UsePath::Simple(name), None) => name,
-                            (_, Some(alias_name)) => alias_name,
-                            (UsePath::Nested(segments), None) => segments.last().ok_or_else(|| "Empty use path".to_string())?,
-                        };
-                        env.declare_reference(name, false);
-                        env.mark_as_initialized(name)?;
-                    }
-
-                    Return(expr_opt) => {
-                        if let Some(expr) = expr_opt {
-                            work_queue.enqueue(ResolutionTask::Expr(expr));
-                        }
-                    }
-
-                    Break(_, Some(expr)) | ExpressionStmt(expr) | ExpressionValue(expr) => {
-                        work_queue.enqueue(ResolutionTask::Expr(expr));
-                    }
-
-                    Continue(_) | Break(_, None) => {}
-
-                    TypeAlias { .. } | MacroDefinition { .. } => {}
-                }
+fn process_stmt_local<'a>(stmt: &'a Stmt, env: &mut Scope, work_queue: &mut WorkQueue<ResolutionTask<'a>>) -> Result<(), String> {
+    use ast::Stmt::*;
+    match stmt {
+        Let { pattern, initializer, .. } => {
+            if let Some(init_expr) = initializer {
+                work_queue.enqueue(ResolutionTask::Expr(init_expr));
             }
 
-            ResolutionTask::Expr(expr) => {
-                use ast::Expr::*;
+            let (init_is_ref, init_ref_mut) = if let Some(init_expr) = initializer {
+                match &**init_expr {
+                    Expr::Reference { mutable, .. } => (true, *mutable),
+                    _ => (true, true),
+                }
+            } else {
+                (false, false)
+            };
 
-                match expr {
-                    Block { statements, value, .. } => {
-                        env.enter_scope();
-                        for s in statements {
-                            work_queue.enqueue(ResolutionTask::Stmt(s));
-                        }
-                        if let Some(inner) = value {
-                            work_queue.enqueue(ResolutionTask::Expr(inner));
-                        }
-                        env.exit_scope();
-                    }
-
-                    Closure { params, body, .. } => {
-                        env.enter_function_scope();
-
-                        for (name, _) in params {
-                            env.declare_variable(name, false);
-                            env.mark_as_initialized(name)?;
-                        }
-
-                        work_queue.enqueue(ResolutionTask::Expr(body));
-                        env.exit_function_scope();
-                    }
-
-                    Call { function, arguments } => {
-                        work_queue.enqueue(ResolutionTask::Expr(function));
-                        for arg in arguments {
-                            work_queue.enqueue(ResolutionTask::Expr(arg));
-                        }
-                    }
-
-                    MethodCall { object, arguments, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(object));
-                        for arg in arguments {
-                            work_queue.enqueue(ResolutionTask::Expr(arg));
-                        }
-                    }
-
-                    Binary { left, right, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(left));
-                        work_queue.enqueue(ResolutionTask::Expr(right));
-                    }
-
-                    Index { array, index } => {
-                        work_queue.enqueue(ResolutionTask::Expr(array));
-                        work_queue.enqueue(ResolutionTask::Expr(index));
-                    }
-
-                    MemberAssignment { object, value, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(object));
-                        work_queue.enqueue(ResolutionTask::Expr(value));
-                    }
-
-                    ArrayRepeat { value, count } => {
-                        work_queue.enqueue(ResolutionTask::Expr(value));
-                        work_queue.enqueue(ResolutionTask::Expr(count));
-                    }
-
-                    Range { start, end, .. } => {
-                        if let Some(start_expr) = start {
-                            work_queue.enqueue(ResolutionTask::Expr(start_expr));
-                        }
-                        if let Some(end_expr) = end {
-                            work_queue.enqueue(ResolutionTask::Expr(end_expr));
-                        }
-                    }
-
-                    StructInit { fields, .. } => {
-                        for (_, (expr, _)) in fields {
-                            work_queue.enqueue(ResolutionTask::Expr(expr));
-                        }
-                    }
-
-                    Array(elements) => {
-                        for elem in elements {
-                            work_queue.enqueue(ResolutionTask::Expr(elem));
-                        }
-                    }
-
-                    Tuple(elements) => {
-                        for elem in elements {
-                            work_queue.enqueue(ResolutionTask::Expr(elem));
-                        }
-                    }
-
-                    If {
-                        condition, then_branch, else_branch, ..
-                    } => {
-                        work_queue.enqueue(ResolutionTask::Expr(condition));
-                        work_queue.enqueue(ResolutionTask::Expr(then_branch));
-                        if let Some(else_expr) = else_branch {
-                            work_queue.enqueue(ResolutionTask::Expr(else_expr));
-                        }
-                    }
-
-                    IfLet {
-                        pattern,
-                        value,
-                        then_branch,
-                        else_branch,
-                    } => {
-                        work_queue.enqueue(ResolutionTask::Expr(value));
-                        env.enter_scope();
-
-                        for (name, binding) in extract_identifier_info(pattern) {
-                            match binding {
-                                BindingKind::Variable(mutable) => env.declare_variable(&name, mutable),
-                                BindingKind::Reference(mutable) => env.declare_reference(&name, mutable),
-                            }
-                            env.mark_as_initialized(&name)?;
-                        }
-
-                        work_queue.enqueue(ResolutionTask::Expr(then_branch));
-                        env.exit_scope();
-
-                        if let Some(else_expr) = else_branch {
-                            work_queue.enqueue(ResolutionTask::Expr(else_expr));
-                        }
-                    }
-
-                    While { condition, body, .. } => {
-                        match condition {
-                            WhileCondition::Expression(expr) => {
-                                work_queue.enqueue(ResolutionTask::Expr(expr));
-                            }
-
-                            WhileCondition::Let(pattern, expr) => {
-                                work_queue.enqueue(ResolutionTask::Expr(expr));
-                                env.enter_scope();
-
-                                for (name, binding) in extract_identifier_info(pattern) {
-                                    match binding {
-                                        BindingKind::Variable(mutable) => env.declare_variable(&name, mutable),
-                                        BindingKind::Reference(mutable) => env.declare_reference(&name, mutable),
-                                    }
-                                    env.mark_as_initialized(&name)?;
-                                }
-
-                                work_queue.enqueue(ResolutionTask::Expr(body));
-                                env.exit_scope();
-
-                                continue;
-                            }
-                        }
-
-                        work_queue.enqueue(ResolutionTask::Expr(body));
-                    }
-
-                    For { pattern, iterable, body, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(iterable));
-                        env.enter_scope();
-
-                        for (name, binding) in extract_identifier_info(pattern) {
-                            match binding {
-                                BindingKind::Variable(mutable) => env.declare_variable(&name, mutable),
-                                BindingKind::Reference(mutable) => env.declare_reference(&name, mutable),
-                            }
-                            env.mark_as_initialized(&name)?;
-                        }
-
-                        work_queue.enqueue(ResolutionTask::Expr(body));
-                        env.exit_scope();
-                    }
-
-                    Identifier(name) => {
-                        if let Some(info) = env.resolve(name) {
-                            if !info.initialized {
-                                return Err(format!("Variable '{}' used before initialization", name));
-                            }
+            for (name, binding) in extract_identifier_info(pattern) {
+                match binding {
+                    BindingKind::Variable(var_mut) => {
+                        if init_is_ref {
+                            env.declare_reference(&name, init_ref_mut);
                         } else {
-                            return Err(format!("Variable '{}' not found", name));
+                            env.declare_variable(&name, var_mut);
                         }
                     }
-
-                    Assignment { target, value } => {
-                        work_queue.enqueue(ResolutionTask::Expr(value));
-
-                        if let Expr::Identifier(name) = target.as_ref() {
-                            if let Some(info) = env.resolve(name) {
-                                if info.initialized && !info.mutable {
-                                    return Err(format!("Cannot assign to immutable variable '{}'", name));
-                                }
-                            } else {
-                                return Err(format!("Variable '{}' not found", name));
-                            }
-                        } else {
-                            work_queue.enqueue(ResolutionTask::Expr(target));
-                        }
+                    BindingKind::Reference(ref_mut) => {
+                        env.declare_reference(&name, ref_mut);
                     }
-
-                    CompoundAssignment { target, value, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(target));
-                        work_queue.enqueue(ResolutionTask::Expr(value));
-
-                        if let Expr::Identifier(name) = target.as_ref() {
-                            if let Some(info) = env.resolve(name) {
-                                if !info.initialized {
-                                    return Err(format!("Variable '{}' used before initialization", name));
-                                }
-                                if !info.mutable {
-                                    return Err(format!("Cannot modify immutable variable '{}'", name));
-                                }
-                            } else {
-                                return Err(format!("Variable '{}' not found", name));
-                            }
-                        }
-                    }
-
-                    Match { value, arms } => {
-                        work_queue.enqueue(ResolutionTask::Expr(value));
-
-                        for arm in arms {
-                            env.enter_scope();
-
-                            for (name, binding) in extract_identifier_info(&arm.pattern) {
-                                match binding {
-                                    BindingKind::Variable(mutable) => env.declare_variable(&name, mutable),
-                                    BindingKind::Reference(mutable) => env.declare_reference(&name, mutable),
-                                }
-                                env.mark_as_initialized(&name)?;
-                            }
-
-                            if let Some(guard) = &arm.guard {
-                                work_queue.enqueue(ResolutionTask::Expr(guard));
-                            }
-
-                            work_queue.enqueue(ResolutionTask::Expr(&arm.body));
-                            env.exit_scope();
-                        }
-                    }
-
-                    Cast { expr, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(expr));
-                    }
-
-                    Try(expr) | Await(expr) => {
-                        work_queue.enqueue(ResolutionTask::Expr(expr));
-                    }
-
-                    Loop { body, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(body));
-                    }
-
-                    MemberAccess { object, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(object));
-                    }
-
-                    Unary { operand, .. } => {
-                        work_queue.enqueue(ResolutionTask::Expr(operand));
-                    }
-
-                    Reference { operand, .. } | Dereference { operand } => {
-                        work_queue.enqueue(ResolutionTask::Expr(operand));
-                    }
-
-                    Path(_) | Boolean(_) | String(_) | Integer(_, _) | Float(_, _) | Unit => {}
-
-                    MacroInvocation { .. } => {}
+                }
+                if initializer.is_some() {
+                    env.mark_as_initialized(&name)?;
                 }
             }
         }
+
+        Function { name, params, body, .. } => {
+            env.declare_function(name)?;
+            env.enter_scope();
+
+            // add type checking for ty
+            for (pat, ty) in params {
+                for (param_name, binding) in extract_identifier_info(pat) {
+                    match binding {
+                        BindingKind::Variable(ident_mutable) => match ty {
+                            Type::Reference { mutable: ref_mutable, .. } => {
+                                env.declare_reference(&param_name, *ref_mutable);
+                            }
+                            _ => env.declare_variable(&param_name, ident_mutable),
+                        },
+
+                        BindingKind::Reference(ident_mutable) => {
+                            env.declare_reference(&param_name, ident_mutable);
+                        }
+                    }
+                    env.mark_as_initialized(&param_name)?;
+                }
+            }
+
+            let mut local_queue = WorkQueue::new();
+            for s in body {
+                local_queue.enqueue(ResolutionTask::Stmt(s));
+            }
+
+            process_local_queue(&mut local_queue, env)?;
+            env.exit_scope();
+        }
+
+        Module { body, .. } => {
+            env.enter_scope();
+
+            let mut local_queue = WorkQueue::new();
+            for s in body {
+                local_queue.enqueue(ResolutionTask::Stmt(s));
+            }
+
+            process_local_queue(&mut local_queue, env)?;
+            env.exit_scope();
+        }
+
+        Impl { items, .. } | TraitImpl { items, .. } => {
+            env.enter_scope();
+
+            let mut local_queue = WorkQueue::new();
+            for item in items {
+                local_queue.enqueue(ResolutionTask::Stmt(item));
+            }
+
+            process_local_queue(&mut local_queue, env)?;
+            env.exit_scope();
+        }
+
+        Trait { items, .. } => {
+            env.enter_scope();
+
+            let mut local_queue = WorkQueue::new();
+            for item in items {
+                local_queue.enqueue(ResolutionTask::Stmt(item));
+            }
+
+            process_local_queue(&mut local_queue, env)?;
+            env.exit_scope();
+        }
+
+        Enum { variants, .. } => {
+            for variant in variants {
+                match variant {
+                    EnumVariant::Simple(var_name) | EnumVariant::Tuple(var_name, _) | EnumVariant::Struct(var_name, _) => {
+                        env.declare_variable(var_name, false);
+                        env.mark_as_initialized(var_name)?;
+                    }
+                }
+            }
+        }
+
+        Struct { path, .. } => {
+            if let Some(name) = path.segments.last().map(|seg| &seg.ident) {
+                env.declare_variable(name, false);
+                env.mark_as_initialized(name)?;
+            }
+        }
+
+        Const { name, initializer, .. } | Static { name, initializer, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(initializer));
+            env.declare_variable(name, false);
+            env.mark_as_initialized(name)?;
+        }
+
+        Use { path, alias, .. } => {
+            let name = match (path, alias) {
+                (UsePath::Simple(name), None) => name,
+                (_, Some(alias_name)) => alias_name,
+                (UsePath::Nested(segments), None) => segments.last().ok_or_else(|| "Empty use path".to_string())?,
+            };
+
+            env.declare_reference(name, false);
+            env.mark_as_initialized(name)?;
+        }
+
+        Return(expr_opt) => {
+            if let Some(expr) = expr_opt {
+                work_queue.enqueue(ResolutionTask::Expr(expr));
+            }
+        }
+
+        Break(_, Some(expr)) | ExpressionStmt(expr) | ExpressionValue(expr) => {
+            work_queue.enqueue(ResolutionTask::Expr(expr));
+        }
+
+        Continue(_) | Break(_, None) => {}
+
+        TypeAlias { .. } | MacroDefinition { .. } => {}
     }
+
+    Ok(())
+}
+
+fn process_expr_local<'a>(expr: &'a Expr, env: &mut Scope, work_queue: &mut WorkQueue<ResolutionTask<'a>>) -> Result<(), String> {
+    use ast::Expr::*;
+    match expr {
+        Block { statements, value, .. } => {
+            env.enter_scope();
+
+            let mut local_queue = WorkQueue::new();
+            for s in statements {
+                local_queue.enqueue(ResolutionTask::Stmt(s));
+            }
+
+            if let Some(inner) = value {
+                local_queue.enqueue(ResolutionTask::Expr(inner));
+            }
+
+            process_local_queue(&mut local_queue, env)?;
+            env.exit_scope();
+        }
+
+        Closure { params, body, .. } => {
+            env.enter_function_scope();
+
+            for (name, _) in params {
+                env.declare_variable(name, false);
+                env.mark_as_initialized(name)?;
+            }
+
+            let mut local_queue = WorkQueue::new();
+            local_queue.enqueue(ResolutionTask::Expr(body));
+
+            process_local_queue(&mut local_queue, env)?;
+            env.exit_function_scope();
+        }
+
+        Call { function, arguments } => {
+            work_queue.enqueue(ResolutionTask::Expr(function));
+            for arg in arguments {
+                work_queue.enqueue(ResolutionTask::Expr(arg));
+            }
+        }
+
+        MethodCall { object, arguments, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(object));
+            for arg in arguments {
+                work_queue.enqueue(ResolutionTask::Expr(arg));
+            }
+        }
+
+        Binary { left, right, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(left));
+            work_queue.enqueue(ResolutionTask::Expr(right));
+        }
+
+        Index { array, index } => {
+            work_queue.enqueue(ResolutionTask::Expr(array));
+            work_queue.enqueue(ResolutionTask::Expr(index));
+        }
+
+        MemberAssignment { object, value, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(object));
+            work_queue.enqueue(ResolutionTask::Expr(value));
+        }
+
+        ArrayRepeat { value, count } => {
+            work_queue.enqueue(ResolutionTask::Expr(value));
+            work_queue.enqueue(ResolutionTask::Expr(count));
+        }
+
+        Range { start, end, .. } => {
+            if let Some(start_expr) = start {
+                work_queue.enqueue(ResolutionTask::Expr(start_expr));
+            }
+            if let Some(end_expr) = end {
+                work_queue.enqueue(ResolutionTask::Expr(end_expr));
+            }
+        }
+
+        StructInit { fields, .. } => {
+            for (_, (expr, _)) in fields {
+                work_queue.enqueue(ResolutionTask::Expr(expr));
+            }
+        }
+
+        Array(elements) => {
+            for elem in elements {
+                work_queue.enqueue(ResolutionTask::Expr(elem));
+            }
+        }
+
+        Tuple(elements) => {
+            for elem in elements {
+                work_queue.enqueue(ResolutionTask::Expr(elem));
+            }
+        }
+
+        If {
+            condition, then_branch, else_branch, ..
+        } => {
+            work_queue.enqueue(ResolutionTask::Expr(condition));
+            work_queue.enqueue(ResolutionTask::Expr(then_branch));
+            if let Some(else_expr) = else_branch {
+                work_queue.enqueue(ResolutionTask::Expr(else_expr));
+            }
+        }
+
+        IfLet {
+            pattern,
+            value,
+            then_branch,
+            else_branch,
+        } => {
+            work_queue.enqueue(ResolutionTask::Expr(value));
+            env.enter_scope();
+
+            for (name, binding) in extract_identifier_info(pattern) {
+                match binding {
+                    BindingKind::Variable(mutable) => env.declare_variable(&name, mutable),
+                    BindingKind::Reference(mutable) => env.declare_reference(&name, mutable),
+                }
+                env.mark_as_initialized(&name)?;
+            }
+
+            let mut local_queue = WorkQueue::new();
+            local_queue.enqueue(ResolutionTask::Expr(then_branch));
+
+            process_local_queue(&mut local_queue, env)?;
+            env.exit_scope();
+
+            if let Some(else_expr) = else_branch {
+                work_queue.enqueue(ResolutionTask::Expr(else_expr));
+            }
+        }
+
+        While { condition, body, .. } => {
+            match condition {
+                WhileCondition::Expression(expr) => {
+                    work_queue.enqueue(ResolutionTask::Expr(expr));
+                }
+
+                WhileCondition::Let(pattern, expr) => {
+                    work_queue.enqueue(ResolutionTask::Expr(expr));
+                    env.enter_scope();
+
+                    for (name, binding) in extract_identifier_info(pattern) {
+                        match binding {
+                            BindingKind::Variable(mutable) => env.declare_variable(&name, mutable),
+                            BindingKind::Reference(mutable) => env.declare_reference(&name, mutable),
+                        }
+                        env.mark_as_initialized(&name)?;
+                    }
+
+                    let mut local_queue = WorkQueue::new();
+                    local_queue.enqueue(ResolutionTask::Expr(body));
+
+                    process_local_queue(&mut local_queue, env)?;
+                    env.exit_scope();
+
+                    return Ok(());
+                }
+            }
+
+            work_queue.enqueue(ResolutionTask::Expr(body));
+        }
+
+        For { pattern, iterable, body, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(iterable));
+            env.enter_scope();
+
+            for (name, binding) in extract_identifier_info(pattern) {
+                match binding {
+                    BindingKind::Variable(mutable) => env.declare_variable(&name, mutable),
+                    BindingKind::Reference(mutable) => env.declare_reference(&name, mutable),
+                }
+                env.mark_as_initialized(&name)?;
+            }
+
+            let mut local_queue = WorkQueue::new();
+            work_queue.enqueue(ResolutionTask::Expr(body));
+
+            process_local_queue(&mut local_queue, env)?;
+            env.exit_scope();
+        }
+
+        Identifier(name) => {
+            if let Some(info) = env.resolve(name) {
+                if !info.initialized {
+                    return Err(format!("Variable '{}' used before initialization", name));
+                }
+            } else {
+                return Err(format!("Variable '{}' not found", name));
+            }
+        }
+
+        Assignment { target, value } => {
+            work_queue.enqueue(ResolutionTask::Expr(value));
+
+            if let Expr::Identifier(name) = target.as_ref() {
+                if let Some(info) = env.resolve(name) {
+                    if info.initialized && !info.mutable {
+                        return Err(format!("Cannot assign to immutable variable '{}'", name));
+                    }
+                } else {
+                    return Err(format!("Variable '{}' not found", name));
+                }
+            } else {
+                work_queue.enqueue(ResolutionTask::Expr(target));
+            }
+        }
+
+        CompoundAssignment { target, value, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(target));
+            work_queue.enqueue(ResolutionTask::Expr(value));
+
+            if let Expr::Identifier(name) = target.as_ref() {
+                if let Some(info) = env.resolve(name) {
+                    if !info.initialized {
+                        return Err(format!("Variable '{}' used before initialization", name));
+                    }
+                    if !info.mutable {
+                        return Err(format!("Cannot modify immutable variable '{}'", name));
+                    }
+                } else {
+                    return Err(format!("Variable '{}' not found", name));
+                }
+            }
+        }
+
+        Match { value, arms } => {
+            work_queue.enqueue(ResolutionTask::Expr(value));
+
+            for arm in arms {
+                env.enter_scope();
+
+                for (name, binding) in extract_identifier_info(&arm.pattern) {
+                    match binding {
+                        BindingKind::Variable(mutable) => env.declare_variable(&name, mutable),
+                        BindingKind::Reference(mutable) => env.declare_reference(&name, mutable),
+                    }
+                    env.mark_as_initialized(&name)?;
+                }
+
+                let mut local_queue = WorkQueue::new();
+                if let Some(guard) = &arm.guard {
+                    local_queue.enqueue(ResolutionTask::Expr(guard));
+                }
+                local_queue.enqueue(ResolutionTask::Expr(&arm.body));
+
+                process_local_queue(&mut local_queue, env)?;
+                env.exit_scope();
+            }
+        }
+
+        Cast { expr, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(expr));
+        }
+
+        Try(expr) | Await(expr) => {
+            work_queue.enqueue(ResolutionTask::Expr(expr));
+        }
+
+        Loop { body, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(body));
+        }
+
+        MemberAccess { object, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(object));
+        }
+
+        Unary { operand, .. } => {
+            work_queue.enqueue(ResolutionTask::Expr(operand));
+        }
+
+        Reference { operand, .. } | Dereference { operand } => {
+            work_queue.enqueue(ResolutionTask::Expr(operand));
+        }
+
+        Path(_) | Boolean(_) | String(_) | Integer(_, _) | Float(_, _) | Unit => {}
+
+        MacroInvocation { .. } => {}
+    }
+
     Ok(())
 }

@@ -1,6 +1,6 @@
 fn test_assignment(val: &mut i32) -> &mut i32 {
    *val += 3;
-   
+      
    test_eq!(val, 8);
    return val;
 }
