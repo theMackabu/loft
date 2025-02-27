@@ -177,6 +177,11 @@ impl<'st> Interpreter {
                     frame.ip = frame.function_data.body.len();
                 }
 
+                ValueType::Break(_, break_value) => {
+                    frame.pending_result = Some(break_value.unwrap_or(ValueEnum::unit()));
+                    frame.ip = frame.function_data.body.len();
+                }
+
                 _ => {
                     frame.pending_result = Some(res.clone());
                 }
