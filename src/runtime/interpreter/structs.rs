@@ -180,7 +180,7 @@ impl<'st> Interpreter {
 
         let function = type_def.get(call).ok_or_else(|| format!("Method '{call}' not found on type '{type_name}'"))?.clone();
 
-        self.env.enter_scope();
+        self.env.enter_function_scope();
         let mut params_to_process = Vec::new();
 
         if !function.is_static {
@@ -230,7 +230,7 @@ impl<'st> Interpreter {
         }
 
         let result = self.execute(&function.body)?;
-        self.env.exit_scope();
+        self.env.exit_function_scope();
 
         Ok(result)
     }
