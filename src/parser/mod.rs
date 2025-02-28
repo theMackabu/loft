@@ -544,7 +544,6 @@ impl Parser {
                         },
                         None,
                     ));
-                } else {
                 }
             } else {
                 return Err(ParseError::ExpectedIdentifier {
@@ -553,7 +552,9 @@ impl Parser {
             }
         }
 
+        let mut is_mut_binding = false;
         if self.current.token == Token::Mut {
+            is_mut_binding = true;
             self.advance(); // consume 'mut'
             if let Token::Identifier(id) = &self.current.token {
                 if id == "self" {
@@ -582,15 +583,13 @@ impl Parser {
             }
         }
 
-        let mut is_mut_binding = false;
-        if self.current.token == Token::Mut {
-            is_mut_binding = true;
-            self.advance();
-        }
         let pattern = if let Token::Identifier(id) = &self.current.token {
             let ident = id.clone();
             self.advance();
-            Pattern::Identifier { name: ident, mutable: is_mut_binding }
+            Pattern::Identifier { 
+                name: ident, 
+                mutable: is_mut_binding
+            }
         } else {
             return Err(ParseError::ExpectedIdentifier {
                 location: self.current.location.clone(),
