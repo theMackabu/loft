@@ -1,13 +1,8 @@
 use super::*;
 
 impl<'st> Interpreter {
-    pub fn pattern_matches(&mut self, pattern: &Pattern, value: &Value) -> Result<bool, String> {
-        self.bind_pattern_variables(pattern, None, value)?;
-        self.pattern_matches_inner(pattern, value)
-    }
-
     pub fn declare_pattern(&mut self, pattern: &Pattern, param_type: Option<&Type>, value: &Value, declare_variables: bool) -> Result<(), String> {
-        if !self.pattern_matches_inner(pattern, value)? {
+        if !self.pattern_matches(pattern, value)? {
             return Err("Pattern does not match value".to_string());
         }
 
@@ -18,7 +13,7 @@ impl<'st> Interpreter {
         Ok(())
     }
 
-    fn pattern_matches_inner(&mut self, pattern: &Pattern, value: &Value) -> Result<bool, String> {
+    pub fn pattern_matches(&mut self, pattern: &Pattern, value: &Value) -> Result<bool, String> {
         match (pattern, value) {
             (Pattern::Literal(expr), value) => {
                 let pattern_value = self.evaluate_expression(expr)?;
@@ -233,7 +228,7 @@ impl<'st> Interpreter {
         }
     }
 
-    fn bind_pattern_variables(&mut self, pattern: &Pattern, param_type: Option<&Type>, value: &Value) -> Result<(), String> {
+    pub fn bind_pattern_variables(&mut self, pattern: &Pattern, param_type: Option<&Type>, value: &Value) -> Result<(), String> {
         let mut stack = vec![(pattern, param_type, value.clone())];
 
         while let Some((current_pattern, p_type, current_value)) = stack.pop() {

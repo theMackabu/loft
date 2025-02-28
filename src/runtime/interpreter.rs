@@ -896,7 +896,14 @@ impl<'st> Interpreter {
                                 continue;
                             }
                         }
-                        return self.evaluate_expression(&arm.body);
+
+                        self.env.enter_scope();
+                        self.bind_pattern_variables(&arm.pattern, None, &match_value)?;
+
+                        let result = self.evaluate_expression(&arm.body);
+                        self.env.exit_scope();
+
+                        return result;
                     }
                 }
 

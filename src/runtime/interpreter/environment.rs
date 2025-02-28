@@ -134,7 +134,8 @@ impl Environment {
     pub fn set_variable_raw(&mut self, name: &str, value: Value) -> Result<(), String> {
         if let Some(scope) = self.scopes.last_mut() {
             if let Some(existing) = scope.get(name) {
-                *existing.borrow_mut() = value.borrow().clone();
+                let new_value = value.borrow().clone();
+                *existing.borrow_mut() = new_value;
             } else {
                 scope.insert(name.to_string(), value);
             }
@@ -162,7 +163,8 @@ impl Environment {
             }
 
             if let Some(existing) = scope.get(name) {
-                *existing.borrow_mut() = value.borrow().clone();
+                let new_value = value.borrow().clone();
+                *existing.borrow_mut() = new_value;
             } else {
                 scope.insert(name.to_string(), value);
             }
@@ -176,7 +178,8 @@ impl Environment {
     pub fn update_scoped_variable(&mut self, name: &str, value: Value, scope_index: usize) -> Result<(), String> {
         if let Some(scope) = self.scopes.get_mut(scope_index) {
             if let Some(existing) = scope.get(name) {
-                *existing.borrow_mut() = value.borrow().clone();
+                let new_value = value.borrow().clone();
+                *existing.borrow_mut() = new_value;
             } else {
                 scope.insert(name.to_string(), value);
             }
