@@ -1508,7 +1508,7 @@ impl<'st> Interpreter {
                             return Err("main function cannot be called directly".to_string());
                         }
 
-                        let function_value = self.env.get_variable(name).expect("Expected value").clone();
+                        let function_value = self.env.get_variable(name).ok_or(format!("Undefined symbol: {name}"))?.clone();
                         let arg_values = arguments.iter().map(|arg| self.evaluate_expression(arg)).collect::<Arguments>()?;
 
                         match function_value.borrow().inner() {
