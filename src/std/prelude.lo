@@ -76,18 +76,18 @@ impl Option<T> {
          Some(_) => true,
          _ => false
       }
-    }
+   }
     
    pub fn is_none(&self) -> bool {
       !self.is_some()
-    }
+   }
     
    pub fn unwrap(self) -> T {
       match self {
          Some(v) => v,
          None => panic!("called `Option::unwrap()` on a `none` value")
       }
-    }
+   }
     
    pub fn unwrap_or(self, default: T) -> T {
       match self {

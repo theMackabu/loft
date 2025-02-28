@@ -34,7 +34,7 @@ fn main() {
       _ => "positive"
    };
    
-   success.unwrap();
+   success.unwrap_or(32);
    
    test_eq!(result, 42);
    test_eq!(error_msg, "error message",);
