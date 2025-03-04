@@ -1,3 +1,5 @@
 /target
 /todo*.md
 /.debug/*
+/node_modules
+/bun.lock

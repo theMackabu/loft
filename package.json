@@ -1,0 +1,6 @@
+{
+	"dependencies": {
+		"minio": "^8.0.4",
+		"pierre": "^2.1.14"
+	}
+}
