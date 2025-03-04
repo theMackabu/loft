@@ -1,34 +1,28 @@
-import { run, annotate } from 'pierre';
-import * as Minio from 'minio';
+import { run } from 'pierre';
+import { getVersion } from './version';
+import { upload_file } from './upload';
+
+async function add_toolchains() {
+	await run('rustup target add x86_64-pc-windows-gnu', { label: 'Add target windows (x86_64)' });
+	await run('rustup target add x86_64-apple-darwin', { label: 'Add target darwin (x86_64)' });
+	await run('rustup target add aarch64-apple-darwin', { label: 'Add target darwin (aarch64)' });
+}
 
 async function build() {
-	await run('cargo build --release', { label: 'Build binaries' });
+	await run('cargo build -r', { label: 'Build linux (x86_64)' });
+	await run('cargo build -r --target x86_64-pc-windows-gnu', { label: 'Build windows (x86_64)' });
+	await run('cargo build -r --target x86_64-apple-darwin', { label: 'Build darwin (x86_64)' });
+	await run('cargo build -r --target aarch64-apple-darwin', { label: 'Build darwin (aarch64)' });
 }
 
 async function upload() {
-	const timestamp = Date.now();
-	const bucket = 'artifacts';
+	const time = Date.now();
+	const version = await getVersion();
 
-	const sourceFile = 'target/release/loft';
-	const destinationObject = `pierre/loft-${timestamp}`;
-
-	const minioClient = new Minio.Client({
-		useSSL: true,
-		endPoint: 's3.themackabu.dev',
-		accessKey: process.env.S3_KEY,
-		secretKey: process.env.S3_SECRET
-	});
-
-	await minioClient.fPutObject(bucket, destinationObject, sourceFile, {
-		'Content-Type': 'application/octet-stream'
-	});
-
-	annotate({
-		icon: Icons.File,
-		color: 'fg',
-		label: 'Binary',
-		href: `https://artifacts.s3.themackabu.dev/${destinationObject}`
-	});
+	await upload_file({ time, version });
+	await upload_file({ time, version, path: 'x86_64-pc-windows-gnu' });
+	await upload_file({ time, version, path: 'x86_64-apple-darwin' });
+	await upload_file({ time, version, path: 'aarch64-apple-darwin' });
 }
 
-export default [build, upload];
+export default [add_toolchains, build, upload];
