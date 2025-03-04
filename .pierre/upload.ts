@@ -1,20 +1,6 @@
 import * as Minio from 'minio';
 import { annotate, Icons } from 'pierre';
-
-function extract_arch(path?: string): [string, string] {
-	if (!path || path === 'release') {
-		return ['x86_64', 'linux'];
-	} else if (path.includes('windows')) {
-		const parts = path.split('-');
-		return [parts[0], 'windows'];
-	} else {
-		const parts = path.split('-');
-		if (parts.length >= 2) {
-			return [parts[0], parts[parts.length - 1]];
-		}
-		return ['unknown', 'unknown'];
-	}
-}
+import { extract_arch } from './version';
 
 interface UploadSettings {
 	time: number;

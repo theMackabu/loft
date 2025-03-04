@@ -1,6 +1,6 @@
 import { run } from 'pierre';
-import { getVersion } from './version';
-import { upload_file } from './upload';
+import { getVersion } from '../version';
+import { upload_file } from '../upload';
 
 async function add_toolchains() {
 	await run('rustup target add x86_64-pc-windows-gnu', { label: 'Add target windows (x86_64)' });
