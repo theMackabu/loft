@@ -1,5 +1,5 @@
 import * as Minio from 'minio';
-import { annotate, Icons } from 'pierre';
+import { run, annotate, Icons } from 'pierre';
 import { extract_arch } from './version';
 
 interface UploadSettings {
@@ -9,8 +9,8 @@ interface UploadSettings {
 }
 
 export async function upload_file(upl: UploadSettings) {
-	const path = upl.path ?? 'release';
-	const [arch, platform] = extract_arch(path);
+	const [arch, platform] = extract_arch(upl.path);
+	const path = upl.path ? `${upl.path}/release` : 'release';
 
 	const bucket = 'artifacts';
 	const sourceFile = `target/${path}/loft`;
@@ -25,6 +25,8 @@ export async function upload_file(upl: UploadSettings) {
 		secretKey: process.env.S3_SECRET
 	});
 
+	await run(`echo ${destObject}`, { label: `uploading ${destFile}` });
+
 	await minioClient.fPutObject(bucket, destObject, sourceFile, {
 		'Content-Type': 'application/octet-stream'
 	});
@@ -33,6 +35,6 @@ export async function upload_file(upl: UploadSettings) {
 		icon: Icons.File,
 		color: 'fg',
 		label: 'Binary',
-		href: `https://artifacts.s3.themackabu.dev/${destinationObject}`
+		href: `https://artifacts.s3.themackabu.dev/${destObject}`
 	});
 }

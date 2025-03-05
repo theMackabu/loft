@@ -12,7 +12,7 @@ export async function getVersion() {
 }
 
 export function extract_arch(path?: string): [string, string] {
-	if (!path || path === 'release') {
+	if (!path) {
 		return ['x86_64', 'linux'];
 	} else if (path.includes('windows')) {
 		const parts = path.split('-');

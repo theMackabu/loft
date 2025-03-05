@@ -6,8 +6,8 @@ async function add_linkers() {
 	const appleSDK = 'https://github.com/roblabla/MacOSX-SDKs/releases/download/13.3/MacOSX13.3.sdk.tar.xz ';
 
 	await run('apt update && apt install tar mingw-w64 -y', { label: 'Add mingw-w64' });
-	await run(`curl -L ${appleSDK} | tar xJ`, { label: 'Add darwin' });
-	await run('export SDKROOT=$(pwd)/MacOSX13.3.sdk/ && export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER=rust-lld');
+	// await run(`curl -L ${appleSDK} | tar xJ`, { label: 'Add darwin' });
+	// await run('export SDKROOT=$(pwd)/MacOSX13.3.sdk/ && export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER=rust-lld');
 }
 
 async function add_toolchains() {
@@ -17,20 +17,20 @@ async function add_toolchains() {
 }
 
 async function build() {
-	await run('cargo build -r', { label: 'Build linux (x86_64)' });
-	await run('cargo build -r --target x86_64-pc-windows-gnu', { label: 'Build windows (x86_64)' });
-	await run('cargo build -r --target x86_64-apple-darwin', { label: 'Build darwin (x86_64)' });
-	await run('cargo build -r --target aarch64-apple-darwin', { label: 'Build darwin (aarch64)' });
-}
-
-async function upload() {
 	const time = Date.now();
 	const version = await getVersion();
 
+	await run('cargo build -r', { label: 'Build linux (x86_64)' });
 	await upload_file({ time, version });
+
+	await run('cargo build -r --target x86_64-pc-windows-gnu', { label: 'Build windows (x86_64)' });
 	await upload_file({ time, version, path: 'x86_64-pc-windows-gnu' });
-	await upload_file({ time, version, path: 'x86_64-apple-darwin' });
-	await upload_file({ time, version, path: 'aarch64-apple-darwin' });
+
+	// await run('cargo build -r --target x86_64-apple-darwin', { label: 'Build darwin (x86_64)' });
+	// await upload_file({ time, version, path: 'x86_64-apple-darwin' });
+
+	// await run('cargo build -r --target aarch64-apple-darwin', { label: 'Build darwin (aarch64)' });
+	// await upload_file({ time, version, path: 'aarch64-apple-darwin' });
 }
 
-export default [add_linkers, add_toolchains, build, upload];
+export default [add_linkers, add_toolchains, build];
