@@ -16,7 +16,7 @@ export function extract_arch(path?: string): [string, string] {
 		return ['x86_64', 'linux'];
 	} else if (path.includes('windows')) {
 		const parts = path.split('-');
-		return [parts[0], 'windows'];
+		return [parts[0], 'windows.exe'];
 	} else {
 		const parts = path.split('-');
 		if (parts.length >= 2) {
