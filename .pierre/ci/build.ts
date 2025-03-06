@@ -2,9 +2,19 @@ import { run } from 'pierre';
 import { getVersion } from '../version';
 import { upload_file } from '../upload';
 
+const ZIG_VERSION = '0.14.0';
+const ZIG_BUILD_VERSION = '0.19.8';
+
+const ZIG_BINARY = `https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz`;
+const ZIG_BUILD_BINARY = `github.com/rust-cross/cargo-zigbuild/releases/download/v${ZIG_BUILD_VERSION}/cargo-zigbuild-v${ZIG_BUILD_VERSION}.x86_64-unknown-linux-musl.tar.gz`;
+
 const LD_LIBRARY_PATH = 'LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH';
 const APPLE_SDK = 'github.com/roblabla/MacOSX-SDKs/releases/download/13.3/MacOSX13.3.sdk.tar.xz';
-const ZIG_BUILD_BINARY = 'github.com/rust-cross/cargo-zigbuild/releases/download/v0.19.8/cargo-zigbuild-v0.19.8.x86_64-unknown-linux-musl.tar.gz';
+
+async function install_zig() {
+	await run(`curl -L ${ZIG_BINARY} | tar xJ -C /usr/local`, { label: `Install zig ${ZIG_VERSION}` });
+	await run(`ln -s "/usr/local/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig`);
+}
 
 async function add_linkers() {
 	await run('apt-get update && apt-get install mingw-w64 -y', { label: 'Add mingw-w64' });
@@ -36,4 +46,4 @@ async function build() {
 	await upload_file({ time, version, path: 'aarch64-apple-darwin' });
 }
 
-export default [add_linkers, add_toolchains, build];
+export default [install_zig, add_linkers, add_toolchains, build];
