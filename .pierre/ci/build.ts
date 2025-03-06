@@ -2,14 +2,14 @@ import { run } from 'pierre';
 import { getVersion } from '../version';
 import { upload_file } from '../upload';
 
-async function add_linkers() {
-	const appleSDK = 'https://github.com/roblabla/MacOSX-SDKs/releases/download/13.3/MacOSX13.3.sdk.tar.xz';
-	const zigbuild = 'https://github.com/rust-cross/cargo-zigbuild/releases/download/v0.19.8/cargo-zigbuild-v0.19.8.x86_64-unknown-linux-musl.tar.gz';
+const LD_LIBRARY_PATH = 'LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH';
+const APPLE_SDK = 'github.com/roblabla/MacOSX-SDKs/releases/download/13.3/MacOSX13.3.sdk.tar.xz';
+const ZIG_BUILD_BINARY = 'github.com/rust-cross/cargo-zigbuild/releases/download/v0.19.8/cargo-zigbuild-v0.19.8.x86_64-unknown-linux-musl.tar.gz';
 
-	await run('export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH');
+async function add_linkers() {
 	await run('apt-get update && apt-get install mingw-w64 -y', { label: 'Add mingw-w64' });
-	await run(`curl -L ${zigbuild} | tar xJ -C /opt`, { label: 'Add cargo-zigbuild' });
-	await run(`curl -L ${appleSDK} | tar xJ -C /opt && export SDKROOT=/opt/MacOSX11.3.sdk`, { label: 'Add darwin sdk' });
+	await run(`${LD_LIBRARY_PATH} curl -L https://${APPLE_SDK} | tar xJ -C /opt`, { label: 'Add darwin sdk' });
+	await run(`${LD_LIBRARY_PATH} curl -L https://${ZIG_BUILD_BINARY} | tar xz -C opt`, { label: 'Add cargo-zigbuild' });
 }
 
 async function add_toolchains() {
@@ -36,4 +36,4 @@ async function build() {
 	await upload_file({ time, version, path: 'aarch64-apple-darwin' });
 }
 
-export default [add_linkers, add_toolchains, build];
+export default [add_linkers];
