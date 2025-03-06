@@ -6,7 +6,8 @@ async function add_linkers() {
 	const appleSDK = 'https://github.com/roblabla/MacOSX-SDKs/releases/download/13.3/MacOSX13.3.sdk.tar.xz';
 	const zigbuild = 'https://github.com/rust-cross/cargo-zigbuild/releases/download/v0.19.8/cargo-zigbuild-v0.19.8.x86_64-unknown-linux-musl.tar.gz';
 
-	await run('apt-get update && apt-get install curl mingw-w64 -y', { label: 'Add mingw-w64' });
+	await run('export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH');
+	await run('apt-get update && apt-get install mingw-w64 -y', { label: 'Add mingw-w64' });
 	await run(`curl -L ${zigbuild} | tar xJ -C /opt`, { label: 'Add cargo-zigbuild' });
 	await run(`curl -L ${appleSDK} | tar xJ -C /opt && export SDKROOT=/opt/MacOSX11.3.sdk`, { label: 'Add darwin sdk' });
 }
