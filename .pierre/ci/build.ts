@@ -2,7 +2,7 @@ import { run } from 'pierre';
 import { getVersion } from '../version';
 import { upload_file } from '../upload';
 
-const ZIG_VERSION = '0.10.1';
+const ZIG_VERSION = '0.14.0';
 const ZIG_BUILD_VERSION = '0.19.8';
 
 const ZIG_BINARY = `ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz`;

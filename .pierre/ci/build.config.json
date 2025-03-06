@@ -1,4 +1,4 @@
 {
-	"env": { "SDKROOT": "/opt/MacOSX11.3.sdk" },
+	"env": { "SDKROOT": "/opt/MacOSX13.3.sdk" },
 	"size": { "memory_mb": 4096, "cores": 2 }
 }
