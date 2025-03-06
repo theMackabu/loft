@@ -21,3 +21,6 @@ codegen-units = 1
 
 [dependencies]
 # stacker = "0.1.19"
+
+[build-dependencies]
+chrono = "0.4.40"

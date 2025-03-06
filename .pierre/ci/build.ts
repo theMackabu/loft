@@ -2,7 +2,7 @@ import { run } from 'pierre';
 import { getVersion } from '../version';
 import { upload_file } from '../upload';
 
-const ZIG_VERSION = '0.14.0';
+const ZIG_VERSION = '0.11.0';
 const ZIG_BUILD_VERSION = '0.19.8';
 
 const ZIG_BINARY = `ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz`;
@@ -46,4 +46,6 @@ async function build() {
 	await upload_file({ time, version, path: 'aarch64-apple-darwin' });
 }
 
-export default [install_zig, add_linkers, add_toolchains, build];
+// disable builds for now
+export default [];
+// export default [install_zig, add_linkers, add_toolchains, build];
