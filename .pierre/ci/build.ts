@@ -3,11 +3,12 @@ import { getVersion } from '../version';
 import { upload_file } from '../upload';
 
 async function add_linkers() {
-	const appleSDK = 'https://github.com/roblabla/MacOSX-SDKs/releases/download/13.3/MacOSX13.3.sdk.tar.xz ';
+	const appleSDK = 'https://github.com/roblabla/MacOSX-SDKs/releases/download/13.3/MacOSX13.3.sdk.tar.xz';
+	const zigbuild = 'https://github.com/rust-cross/cargo-zigbuild/releases/download/v0.19.8/cargo-zigbuild-v0.19.8.x86_64-unknown-linux-musl.tar.gz';
 
-	await run('apt update && apt install tar mingw-w64 -y', { label: 'Add mingw-w64' });
-	// await run(`curl -L ${appleSDK} | tar xJ`, { label: 'Add darwin' });
-	// await run('export SDKROOT=$(pwd)/MacOSX13.3.sdk/ && export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER=rust-lld');
+	await run('apt-get update && apt-get install mingw-w64 -y', { label: 'Add mingw-w64' });
+	await run(`curl -L ${zigbuild} | tar xJ -C /opt`, { label: 'Add cargo-zigbuild' });
+	await run(`curl -L ${appleSDK} | tar xJ -C /opt && export SDKROOT=/opt/MacOSX11.3.sdk`, { label: 'Add darwin sdk' });
 }
 
 async function add_toolchains() {
@@ -19,18 +20,19 @@ async function add_toolchains() {
 async function build() {
 	const time = Date.now();
 	const version = await getVersion();
+	const buildCommand = '/opt/cargo-zigbuild zigbuild -r';
 
-	await run('cargo build -r', { label: 'Build linux (x86_64)' });
+	await run(buildCommand, { label: 'Build linux (x86_64)' });
 	await upload_file({ time, version });
 
-	await run('cargo build -r --target x86_64-pc-windows-gnu', { label: 'Build windows (x86_64)' });
+	await run(`${buildCommand} --target x86_64-pc-windows-gnu`, { label: 'Build windows (x86_64)' });
 	await upload_file({ time, version, path: 'x86_64-pc-windows-gnu' });
 
-	// await run('cargo build -r --target x86_64-apple-darwin', { label: 'Build darwin (x86_64)' });
-	// await upload_file({ time, version, path: 'x86_64-apple-darwin' });
+	await run(`${buildCommand} --target x86_64-apple-darwin`, { label: 'Build darwin (x86_64)' });
+	await upload_file({ time, version, path: 'x86_64-apple-darwin' });
 
-	// await run('cargo build -r --target aarch64-apple-darwin', { label: 'Build darwin (aarch64)' });
-	// await upload_file({ time, version, path: 'aarch64-apple-darwin' });
+	await run(`${buildCommand} --target aarch64-apple-darwin`, { label: 'Build darwin (aarch64)' });
+	await upload_file({ time, version, path: 'aarch64-apple-darwin' });
 }
 
 export default [add_linkers, add_toolchains, build];
