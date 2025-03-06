@@ -16,7 +16,7 @@ export async function upload_file(upl: UploadSettings) {
 	const sourceFile = `target/${path}/loft${isWindows ? '.exe' : ''}`;
 
 	const destFile = `loft-${upl.version}-${arch}-${platform}`;
-	const destObject = `pierre/${upl.time}/${upl.version}/${destFile}`;
+	const destObject = `pierre/loft/${upl.time}/${upl.version}/${destFile}`;
 
 	const minioClient = new Minio.Client({
 		useSSL: true,

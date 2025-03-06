@@ -42,8 +42,8 @@ async function build() {
 	await run(`${buildCommand} --target x86_64-apple-darwin`, { label: 'Build darwin (x86_64)' });
 	await upload_file({ time, version, path: 'x86_64-apple-darwin' });
 
-	await run(`${buildCommand} --target aarch64-apple-darwin`, { label: 'Build darwin (aarch64)' });
-	await upload_file({ time, version, path: 'aarch64-apple-darwin' });
+	// 	await run(`${buildCommand} --target aarch64-apple-darwin`, { label: 'Build darwin (aarch64)' });
+	// 	await upload_file({ time, version, path: 'aarch64-apple-darwin' });
 }
 
 // disable builds for now
