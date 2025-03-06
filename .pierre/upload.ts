@@ -13,7 +13,7 @@ export async function upload_file(upl: UploadSettings) {
 	const path = upl.path ? `${upl.path}/release` : 'release';
 
 	const isWindows = path.includes('windows');
-	const sourceFile = `target/${path}/loft${isWindows ?? '.exe'}`;
+	const sourceFile = `target/${path}/loft${isWindows ? '.exe' : ''}`;
 
 	const destFile = `loft-${upl.version}-${arch}-${platform}`;
 	const destObject = `pierre/${upl.time}/${upl.version}/${destFile}`;
