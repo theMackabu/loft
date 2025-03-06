@@ -9,7 +9,7 @@ const ZIG_BUILD_BINARY = 'github.com/rust-cross/cargo-zigbuild/releases/download
 async function add_linkers() {
 	await run('apt-get update && apt-get install mingw-w64 -y', { label: 'Add mingw-w64' });
 	await run(`${LD_LIBRARY_PATH} curl -L https://${APPLE_SDK} | tar xJ -C /opt`, { label: 'Add darwin sdk' });
-	await run(`${LD_LIBRARY_PATH} curl -L https://${ZIG_BUILD_BINARY} | tar xz -C opt`, { label: 'Add cargo-zigbuild' });
+	await run(`${LD_LIBRARY_PATH} curl -L https://${ZIG_BUILD_BINARY} | tar xz -C /opt`, { label: 'Add cargo-zigbuild' });
 }
 
 async function add_toolchains() {
@@ -36,4 +36,4 @@ async function build() {
 	await upload_file({ time, version, path: 'aarch64-apple-darwin' });
 }
 
-export default [add_linkers];
+export default [add_linkers, add_toolchains, build];
